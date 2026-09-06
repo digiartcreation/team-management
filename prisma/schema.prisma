@@ -18,6 +18,7 @@ model User {
   teamId               String?
   activityLogs         ActivityLog[]
   announcementsCreated Announcement[]
+  clientsCreated       Client[]
   attendanceRecords    AttendanceRecord[]
   dailyUpdates         DailyUpdate[]
   feedbackSubmissions  FeedbackSubmission[]
@@ -42,6 +43,24 @@ model Team {
   updatedAt   DateTime @updatedAt
   tasks       Task[]
   members     User[]
+}
+
+model Client {
+  id            String   @id @default(cuid())
+  name          String   @unique
+  contactPerson String?
+  email         String?
+  phone         String?
+  services      String?  @db.Text
+  status        String   @default("Active")
+  notes         String?  @db.Text
+  createdById   String
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([createdById], map: "Client_createdById_fkey")
+  @@index([status])
 }
 
 model Task {

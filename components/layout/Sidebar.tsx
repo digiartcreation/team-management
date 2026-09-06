@@ -40,6 +40,7 @@ function getNavItems(role?: string) {
     { label: "Dashboard", href: "/" },
     { label: "Employees", href: "/employees" },
     { label: "Teams", href: "/teams" },
+    { label: "Client Management", href: "/clients" },
     { label: "Tasks", href: "/tasks" },
     { label: "Attendance", href: "/attendance" },
     { label: "Daily Updates", href: "/updates" },
