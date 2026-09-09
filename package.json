@@ -4,9 +4,10 @@
   "private": true,
   "scripts": {
     "dev": "next dev",
-    "build": "next build",
+    "build": "prisma generate && next build",
     "start": "next start",
     "lint": "eslint",
+    "postinstall": "prisma generate",
     "backfill:daily-updates": "ts-node --compiler-options \"{\\\"module\\\":\\\"CommonJS\\\"}\" scripts/backfill-daily-updates.ts"
   },
   "dependencies": {
