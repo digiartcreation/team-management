@@ -1,8 +1,9 @@
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
+import ServicesField from "@/components/clients/ServicesField";
 import {
   CLIENT_STATUS_OPTIONS,
-  SERVICE_OPTIONS,
-  parseServices,
+  getDigitalMarketingFocus,
+  getServiceNames,
 } from "@/lib/services";
 
 type ClientFormProps = {
@@ -28,7 +29,10 @@ export default function ClientForm({
   submitLabel,
   client,
 }: ClientFormProps) {
-  const selectedServices = new Set(parseServices(client?.services ?? null));
+  const selectedServices = getServiceNames(client?.services ?? null);
+  const digitalMarketingFocus = getDigitalMarketingFocus(
+    client?.services ?? null
+  );
 
   return (
     <form
@@ -101,28 +105,10 @@ export default function ClientForm({
           </label>
         </div>
 
-        <fieldset className="grid gap-3">
-          <legend className="text-sm font-medium text-slate-700">
-            Services
-          </legend>
-          <div className="grid gap-2 rounded-md border border-slate-200 p-3 sm:grid-cols-2">
-            {SERVICE_OPTIONS.map((service) => (
-              <label
-                key={service}
-                className="flex items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-slate-50"
-              >
-                <input
-                  name="services"
-                  type="checkbox"
-                  value={service}
-                  defaultChecked={selectedServices.has(service)}
-                  className="h-4 w-4 rounded border-slate-300"
-                />
-                <span className="font-medium text-slate-800">{service}</span>
-              </label>
-            ))}
-          </div>
-        </fieldset>
+        <ServicesField
+          selected={selectedServices}
+          digitalMarketingFocus={digitalMarketingFocus}
+        />
 
         <label className="grid gap-2">
           <span className="text-sm font-medium text-slate-700">Comments</span>

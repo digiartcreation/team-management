@@ -66,7 +66,10 @@ export async function createClient(formData: FormData) {
   const email = getValue(formData, "email");
   const phone = getValue(formData, "phone");
   const notes = getValue(formData, "notes");
-  const services = serializeServices(getServices(formData));
+  const services = serializeServices(
+    getServices(formData),
+    getValue(formData, "digitalMarketingFocus")
+  );
   const status = getStatus(formData);
 
   if (!name) {
@@ -114,7 +117,10 @@ export async function updateClient(formData: FormData) {
   const email = getValue(formData, "email");
   const phone = getValue(formData, "phone");
   const notes = getValue(formData, "notes");
-  const services = serializeServices(getServices(formData));
+  const services = serializeServices(
+    getServices(formData),
+    getValue(formData, "digitalMarketingFocus")
+  );
   const status = getStatus(formData);
 
   if (!id || !name) {
