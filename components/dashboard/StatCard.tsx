@@ -1,6 +1,7 @@
 type StatCardProps = {
   label: string;
-  value: number;
+  /** Already-formatted values are allowed, e.g. a "7h 30m" duration. */
+  value: number | string;
   description: string;
 };
 

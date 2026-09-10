@@ -47,6 +47,7 @@ function getNavItems(role?: string) {
     { label: "Learnings", href: "/learnings" },
     { label: "AI Tools", href: "/tools" },
     { label: "Feedback Center", href: "/feedback/submissions" },
+    { label: "Reports", href: "/reports" },
     { label: "Activity", href: "/activity" },
     { label: "Search", href: "/search" },
   ];
