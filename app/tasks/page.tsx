@@ -5,7 +5,8 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
-import { logTaskTime, updateOwnTaskStatus } from "@/app/tasks/actions";
+import LogTimeDialog from "@/components/tasks/LogTimeDialog";
+import { updateOwnTaskStatus } from "@/app/tasks/actions";
 import {
   formatDuration,
   summariseByUser,
@@ -413,58 +414,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       </td>
                       <td className="px-4 py-4">
                         <ActionMenu>
-                          <form action={logTaskTime} className="grid gap-2 border-b border-slate-200 p-2">
-                            <input type="hidden" name="taskId" value={task.id} />
-                            <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
-                              Log time
-                            </span>
-                            <div className="flex items-center gap-2">
-                              <input
-                                name="hours"
-                                type="number"
-                                min="0"
-                                max="24"
-                                step="1"
-                                placeholder="0"
-                                aria-label="Hours spent"
-                                className="w-14 rounded-md border border-slate-300 px-2 py-1 text-xs"
-                              />
-                              <span className="text-xs text-slate-500">h</span>
-                              <input
-                                name="minutes"
-                                type="number"
-                                min="0"
-                                max="59"
-                                step="1"
-                                placeholder="0"
-                                aria-label="Minutes spent"
-                                className="w-14 rounded-md border border-slate-300 px-2 py-1 text-xs"
-                              />
-                              <span className="text-xs text-slate-500">m</span>
-                            </div>
-                            <input
-                              name="date"
-                              type="date"
-                              defaultValue={today}
-                              max={today}
-                              required
-                              aria-label="Date the work was done"
-                              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-                            />
-                            <input
-                              name="note"
-                              type="text"
-                              placeholder="Note (optional)"
-                              aria-label="Note"
-                              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
-                            />
-                            <button
-                              type="submit"
-                              className="rounded-md bg-[#770FC2] px-2 py-1 text-xs font-medium text-white transition hover:bg-[#6B1BBD]"
-                            >
-                              Log time
-                            </button>
-                          </form>
+                          <LogTimeDialog
+                            taskId={task.id}
+                            taskTitle={task.title}
+                            today={today}
+                          />
                           <form action={updateOwnTaskStatus} className="grid gap-2 p-2">
                             <input type="hidden" name="id" value={task.id} />
                             <select

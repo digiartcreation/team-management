@@ -488,7 +488,17 @@ async function canLogTaskTime(
   return Boolean(user?.teamId) && user?.teamId === task.teamId;
 }
 
-export async function logTaskTime(formData: FormData) {
+/**
+ * Returned to the log-time dialog instead of thrown, so a bad entry shows an
+ * inline message in the dialog rather than replacing the page with the error
+ * boundary.
+ */
+export type LogTimeState = { ok: true } | { error: string } | null;
+
+export async function logTaskTime(
+  _previous: LogTimeState,
+  formData: FormData
+): Promise<LogTimeState> {
   const session = await auth();
   const sessionUser = session?.user as
     | (NonNullable<typeof session>["user"] & {
@@ -504,14 +514,24 @@ export async function logTaskTime(formData: FormData) {
   const taskId = getValue(formData, "taskId");
 
   if (!taskId) {
-    throw new Error("Task not found.");
+    return { error: "Task not found." };
   }
 
-  const minutes = parseDurationInput(
-    getValue(formData, "hours"),
-    getValue(formData, "minutes")
-  );
-  const date = parseLogDate(getValue(formData, "date"));
+  let minutes: number;
+  let date: Date;
+
+  try {
+    minutes = parseDurationInput(
+      getValue(formData, "hours"),
+      getValue(formData, "minutes")
+    );
+    date = parseLogDate(getValue(formData, "date"));
+  } catch (error) {
+    return {
+      error: error instanceof Error ? error.message : "Invalid time entry.",
+    };
+  }
+
   const note = getValue(formData, "note");
 
   const task = await prisma.task.findUnique({
@@ -520,11 +540,11 @@ export async function logTaskTime(formData: FormData) {
   });
 
   if (!task) {
-    throw new Error("Task not found.");
+    return { error: "Task not found." };
   }
 
   if (!(await canLogTaskTime(sessionUser.id, sessionUser.role, task))) {
-    redirect("/tasks");
+    return { error: "You cannot log time on this task." };
   }
 
   try {
@@ -545,10 +565,13 @@ export async function logTaskTime(formData: FormData) {
       entityId: taskId,
       description: `Logged ${formatDuration(minutes)} on task ${task.title}`,
     });
-  } catch (error) {
-    handlePrismaTaskError(error);
+  } catch {
+    return { error: "Could not save the time entry. Please try again." };
   }
 
   revalidatePath("/tasks");
+  revalidatePath("/reports");
   revalidatePath("/");
+
+  return { ok: true };
 }
