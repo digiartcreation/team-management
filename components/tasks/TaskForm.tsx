@@ -1,4 +1,7 @@
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
+import ClientWorkField, {
+  type TaskClientOption,
+} from "@/components/tasks/ClientWorkField";
 
 type TaskFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -12,12 +15,15 @@ type TaskFormProps = {
     id: string;
     name: string;
   }[];
+  clients: TaskClientOption[];
   task?: {
     id: string;
     title: string;
     description: string | null;
     assignedToId: string | null;
     teamId: string | null;
+    clientId: string | null;
+    clientWork: string | null;
     status: string;
     priority: string;
   };
@@ -40,6 +46,7 @@ export default function TaskForm({
   submitLabel,
   employees,
   teams,
+  clients,
   task,
 }: TaskFormProps) {
   return (
@@ -108,6 +115,12 @@ export default function TaskForm({
             </select>
           </label>
         </div>
+
+        <ClientWorkField
+          clients={clients}
+          selectedClientId={task?.clientId ?? null}
+          selectedWork={task?.clientWork ?? null}
+        />
 
         <div className="grid gap-5 md:grid-cols-2">
           <label className="grid gap-2">

@@ -5,6 +5,10 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ClientForm from "@/components/clients/ClientForm";
 import { updateClient } from "@/app/clients/actions";
+import {
+  seedMappingsFromLegacy,
+  toServiceMappings,
+} from "@/lib/clientServices";
 
 type EditClientPageProps = {
   params: Promise<{
@@ -40,12 +44,30 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
       services: true,
       status: true,
       notes: true,
+      serviceMappings: {
+        orderBy: { service: "asc" },
+        select: {
+          service: true,
+          focus: true,
+          paymentType: true,
+          percentage: true,
+          packageAmount: true,
+          billingCycle: true,
+        },
+      },
     },
   });
 
   if (!client) {
     notFound();
   }
+
+  // Clients created before payment mapping existed have no rows yet; seed the
+  // form from the legacy services text so their services are not lost.
+  const serviceMappings =
+    client.serviceMappings.length > 0
+      ? toServiceMappings(client.serviceMappings)
+      : seedMappingsFromLegacy(client.services);
 
   return (
     <DashboardLayout>
@@ -65,7 +87,7 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
         <ClientForm
           action={updateClient}
           submitLabel="Update Client"
-          client={client}
+          client={{ ...client, serviceMappings }}
         />
       </div>
     </DashboardLayout>

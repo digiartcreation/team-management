@@ -1,10 +1,6 @@
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ServicesField from "@/components/clients/ServicesField";
-import {
-  CLIENT_STATUS_OPTIONS,
-  getDigitalMarketingFocus,
-  getServiceNames,
-} from "@/lib/services";
+import { CLIENT_STATUS_OPTIONS, type ServiceMapping } from "@/lib/services";
 
 type ClientFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -15,9 +11,9 @@ type ClientFormProps = {
     contactPerson: string | null;
     email: string | null;
     phone: string | null;
-    services: string | null;
     status: string;
     notes: string | null;
+    serviceMappings: ServiceMapping[];
   };
 };
 
@@ -29,11 +25,6 @@ export default function ClientForm({
   submitLabel,
   client,
 }: ClientFormProps) {
-  const selectedServices = getServiceNames(client?.services ?? null);
-  const digitalMarketingFocus = getDigitalMarketingFocus(
-    client?.services ?? null
-  );
-
   return (
     <form
       action={action}
@@ -105,10 +96,7 @@ export default function ClientForm({
           </label>
         </div>
 
-        <ServicesField
-          selected={selectedServices}
-          digitalMarketingFocus={digitalMarketingFocus}
-        />
+        <ServicesField mappings={client?.serviceMappings ?? []} />
 
         <label className="grid gap-2">
           <span className="text-sm font-medium text-slate-700">Comments</span>

@@ -9,7 +9,15 @@ import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ActionMenu from "@/components/ui/ActionMenu";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteClient } from "@/app/clients/actions";
-import { CLIENT_STATUS_OPTIONS, parseServices } from "@/lib/services";
+import {
+  CLIENT_STATUS_OPTIONS,
+  formatPaymentTerms,
+  formatServiceLabel,
+} from "@/lib/services";
+import {
+  seedMappingsFromLegacy,
+  toServiceMappings,
+} from "@/lib/clientServices";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -64,6 +72,17 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
       include: {
         createdBy: {
           select: { id: true, name: true },
+        },
+        serviceMappings: {
+          orderBy: { service: "asc" },
+          select: {
+            service: true,
+            focus: true,
+            paymentType: true,
+            percentage: true,
+            packageAmount: true,
+            billingCycle: true,
+          },
         },
       },
     }),
@@ -147,7 +166,12 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                 </thead>
                 <tbody className="divide-y divide-slate-200">
                   {clients.map((client) => {
-                    const services = parseServices(client.services);
+                    // Pre-mapping clients still show their legacy services, with
+                    // payment terms blank until the client is edited once.
+                    const services =
+                      client.serviceMappings.length > 0
+                        ? toServiceMappings(client.serviceMappings)
+                        : seedMappingsFromLegacy(client.services);
 
                     return (
                       <tr key={client.id} className="hover:bg-slate-50">
@@ -176,14 +200,26 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                         </td>
                         <td className="px-4 py-4 text-slate-600">
                           {services.length > 0 ? (
-                            <div className="flex flex-wrap gap-1">
-                              {services.map((service) => (
-                                <span
-                                  key={service}
-                                  className="rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]"
+                            <div className="grid gap-1.5">
+                              {services.map((mapping) => (
+                                <div
+                                  key={mapping.service}
+                                  className="flex flex-wrap items-center gap-1.5"
                                 >
-                                  {service}
-                                </span>
+                                  <span className="rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
+                                    {formatServiceLabel(mapping)}
+                                  </span>
+                                  {mapping.percentage === null &&
+                                  mapping.packageAmount === null ? (
+                                    <span className="text-xs text-slate-400">
+                                      payment not set
+                                    </span>
+                                  ) : (
+                                    <span className="text-xs font-medium text-slate-600">
+                                      {formatPaymentTerms(mapping)}
+                                    </span>
+                                  )}
+                                </div>
                               ))}
                             </div>
                           ) : (

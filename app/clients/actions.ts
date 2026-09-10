@@ -6,17 +6,12 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { CLIENT_STATUS_OPTIONS, serializeServices } from "@/lib/services";
+import { CLIENT_STATUS_OPTIONS } from "@/lib/services";
+import { parseServiceMappings } from "@/lib/clientServices";
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
-}
-
-function getServices(formData: FormData) {
-  return formData
-    .getAll("services")
-    .filter((value): value is string => typeof value === "string");
 }
 
 function getStatus(formData: FormData) {
@@ -66,10 +61,7 @@ export async function createClient(formData: FormData) {
   const email = getValue(formData, "email");
   const phone = getValue(formData, "phone");
   const notes = getValue(formData, "notes");
-  const services = serializeServices(
-    getServices(formData),
-    getValue(formData, "digitalMarketingFocus")
-  );
+  const serviceMappings = parseServiceMappings(formData);
   const status = getStatus(formData);
 
   if (!name) {
@@ -83,10 +75,12 @@ export async function createClient(formData: FormData) {
         contactPerson: contactPerson || null,
         email: email || null,
         phone: phone || null,
-        services,
         status,
         notes: notes || null,
         createdById: sessionUser.id,
+        serviceMappings: {
+          create: serviceMappings,
+        },
       },
       select: {
         id: true,
@@ -117,10 +111,7 @@ export async function updateClient(formData: FormData) {
   const email = getValue(formData, "email");
   const phone = getValue(formData, "phone");
   const notes = getValue(formData, "notes");
-  const services = serializeServices(
-    getServices(formData),
-    getValue(formData, "digitalMarketingFocus")
-  );
+  const serviceMappings = parseServiceMappings(formData);
   const status = getStatus(formData);
 
   if (!id || !name) {
@@ -128,18 +119,25 @@ export async function updateClient(formData: FormData) {
   }
 
   try {
-    await prisma.client.update({
-      where: { id },
-      data: {
-        name,
-        contactPerson: contactPerson || null,
-        email: email || null,
-        phone: phone || null,
-        services,
-        status,
-        notes: notes || null,
-      },
-    });
+    // Replace the mapping wholesale in one transaction: a service can be
+    // unticked, and its payment terms must not survive as an orphan row.
+    await prisma.$transaction([
+      prisma.clientService.deleteMany({ where: { clientId: id } }),
+      prisma.client.update({
+        where: { id },
+        data: {
+          name,
+          contactPerson: contactPerson || null,
+          email: email || null,
+          phone: phone || null,
+          status,
+          notes: notes || null,
+          serviceMappings: {
+            create: serviceMappings,
+          },
+        },
+      }),
+    ]);
 
     await logActivity({
       userId: sessionUser.id,

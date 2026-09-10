@@ -51,6 +51,9 @@ model Client {
   contactPerson String?
   email         String?
   phone         String?
+  /// Legacy flat service list, superseded by the ClientService rows below.
+  /// Kept only so pre-existing clients can seed the edit form once; new writes
+  /// go to ClientService. Do not read it for payment or task mapping.
   services      String?  @db.Text
   status        String   @default("Active")
   notes         String?  @db.Text
@@ -58,9 +61,37 @@ model Client {
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  tasks         Task[]
+  serviceMappings ClientService[]
 
   @@index([createdById], map: "Client_createdById_fkey")
   @@index([status])
+}
+
+/// One service a client is engaged for, plus how that service is billed.
+/// Payment type is per row, so a client can be percentage-based on Video
+/// Editing and package-based on Digital Marketing at the same time.
+model ClientService {
+  id            String   @id @default(cuid())
+  clientId      String
+  /// One of SERVICE_OPTIONS in lib/services.ts.
+  service       String
+  /// Focus area, currently only used by Digital Marketing (e.g. "Google Ads").
+  focus         String?
+  /// "Percentage" or "Package".
+  paymentType   String
+  /// Set when paymentType is "Percentage". Percent, not a fraction: 20 = 20%.
+  percentage    Decimal? @db.Decimal(5, 2)
+  /// Set when paymentType is "Package". Amount in INR.
+  packageAmount Decimal? @db.Decimal(12, 2)
+  /// Set when paymentType is "Package": "Monthly" or "One-time".
+  billingCycle  String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+  client        Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+
+  @@unique([clientId, service])
+  @@index([clientId], map: "ClientService_clientId_fkey")
 }
 
 model Task {
@@ -71,13 +102,19 @@ model Task {
   priority     String   @default("medium")
   assignedToId String?
   teamId       String?
+  clientId     String?
+  /// One of the parent client's services, stored exactly as it appears in
+  /// Client.services, focus area included (e.g. "Digital Marketing (SEO)").
+  clientWork   String?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   assignedTo   User?    @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
   team         Team?    @relation(fields: [teamId], references: [id])
+  client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
 
   @@index([assignedToId], map: "Task_assignedToId_fkey")
   @@index([teamId], map: "Task_teamId_fkey")
+  @@index([clientId], map: "Task_clientId_fkey")
 }
 
 model DailyUpdate {

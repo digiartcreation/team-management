@@ -22,10 +22,19 @@ export const DIGITAL_MARKETING_OPTIONS = [
   "Other",
 ];
 
+export const PAYMENT_TYPE_OPTIONS = ["Percentage", "Package"];
+
+export const PERCENTAGE = "Percentage";
+export const PACKAGE = "Package";
+
+export const BILLING_CYCLE_OPTIONS = ["Monthly", "One-time"];
+
 /**
- * Services are stored as a comma-separated string. A service may carry a
- * parenthesised focus area, e.g. "Digital Marketing (Google Ads)". Focus
- * values never contain a comma, so comma splitting stays safe.
+ * Legacy Client.services parsing, kept only to seed the client form from
+ * pre-mapping data. Services were stored as a comma-separated string, and a
+ * service could carry a parenthesised focus area, e.g.
+ * "Digital Marketing (Google Ads)". Focus values never contain a comma, so
+ * comma splitting stays safe. New writes go to the ClientService table.
  */
 export function splitService(service: string) {
   const match = service.match(/^(.*?)\s*\(([^)]*)\)$/);
@@ -48,42 +57,76 @@ export function parseServices(value: string | null) {
     .filter(Boolean);
 }
 
-/** Service names without their focus area, for matching against SERVICE_OPTIONS. */
-export function getServiceNames(value: string | null) {
-  return parseServices(value).map((service) => splitService(service).name);
+/**
+ * Stable form-field suffix for a service name, so one <form> can carry a
+ * payment block per service ("paymentType-video-editing", etc.). Every entry in
+ * SERVICE_OPTIONS produces a distinct key.
+ */
+export function serviceKey(service: string) {
+  return service
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
 }
 
-export function getDigitalMarketingFocus(value: string | null) {
-  for (const service of parseServices(value)) {
-    const { name, focus } = splitService(service);
+export type ServiceMapping = {
+  service: string;
+  focus: string | null;
+  paymentType: string;
+  percentage: number | null;
+  packageAmount: number | null;
+  billingCycle: string | null;
+};
 
-    if (name === DIGITAL_MARKETING) {
-      return focus;
-    }
+const inrFormatter = new Intl.NumberFormat("en-IN", {
+  style: "currency",
+  currency: "INR",
+  maximumFractionDigits: 0,
+});
+
+export function formatInr(amount: number) {
+  return inrFormatter.format(amount);
+}
+
+/** Trims a percentage to at most 2 decimals without trailing zeroes: 20, 12.5. */
+export function formatPercentage(value: number) {
+  return `${Number(value.toFixed(2))}%`;
+}
+
+/** Human-readable payment terms for one service mapping. */
+export function formatPaymentTerms(mapping: {
+  paymentType: string;
+  percentage: number | null;
+  packageAmount: number | null;
+  billingCycle: string | null;
+}) {
+  if (mapping.paymentType === PERCENTAGE) {
+    return mapping.percentage === null
+      ? "Percentage"
+      : `${formatPercentage(mapping.percentage)} (percentage)`;
   }
 
-  return null;
-}
-
-export function serializeServices(
-  services: string[],
-  digitalMarketingFocus?: string | null
-) {
-  const allowed = services.filter((service) =>
-    SERVICE_OPTIONS.includes(service)
-  );
-
-  const withFocus = allowed.map((service) => {
-    if (
-      service === DIGITAL_MARKETING &&
-      digitalMarketingFocus &&
-      DIGITAL_MARKETING_OPTIONS.includes(digitalMarketingFocus)
-    ) {
-      return `${DIGITAL_MARKETING} (${digitalMarketingFocus})`;
+  if (mapping.paymentType === PACKAGE) {
+    if (mapping.packageAmount === null) {
+      return "Package";
     }
 
-    return service;
-  });
+    const amount = formatInr(mapping.packageAmount);
 
-  return withFocus.length > 0 ? withFocus.join(", ") : null;
+    return mapping.billingCycle
+      ? `${amount} (${mapping.billingCycle.toLowerCase()} package)`
+      : `${amount} (package)`;
+  }
+
+  return mapping.paymentType;
+}
+
+/** Label for a mapping, focus area included: "Digital Marketing (SEO)". */
+export function formatServiceLabel(mapping: {
+  service: string;
+  focus: string | null;
+}) {
+  return mapping.focus
+    ? `${mapping.service} (${mapping.focus})`
+    : mapping.service;
 }

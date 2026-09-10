@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { updateTask } from "@/app/tasks/actions";
+import { getTaskClientOptions } from "@/lib/taskClients";
 
 type EditTaskPageProps = {
   params: Promise<{
@@ -50,6 +51,8 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
         description: true,
         assignedToId: true,
         teamId: true,
+        clientId: true,
+        clientWork: true,
         status: true,
         priority: true,
       },
@@ -81,6 +84,9 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
     notFound();
   }
 
+  // Needs task.clientId, so it cannot join the Promise.all above.
+  const clients = await getTaskClientOptions(task.clientId);
+
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -101,6 +107,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
           submitLabel="Update Task"
           employees={employees}
           teams={teams}
+          clients={clients}
           task={task}
         />
       </div>

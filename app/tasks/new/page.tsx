@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { createTask } from "@/app/tasks/actions";
+import { getTaskClientOptions } from "@/lib/taskClients";
 
 export default async function NewTaskPage() {
   const session = await auth();
@@ -33,7 +34,7 @@ export default async function NewTaskPage() {
   const managerTeamId =
     sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
 
-  const [employees, teams] = await Promise.all([
+  const [employees, teams, clients] = await Promise.all([
     prisma.user.findMany({
       where: managerTeamId ? { teamId: managerTeamId } : undefined,
       orderBy: {
@@ -55,6 +56,7 @@ export default async function NewTaskPage() {
         name: true,
       },
     }),
+    getTaskClientOptions(),
   ]);
 
   return (
@@ -77,6 +79,7 @@ export default async function NewTaskPage() {
           submitLabel="Create Task"
           employees={employees}
           teams={teams}
+          clients={clients}
         />
       </div>
     </DashboardLayout>

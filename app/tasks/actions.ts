@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
+import { formatServiceLabel } from "@/lib/services";
 
 const statuses = new Set(["pending", "in_progress", "completed"]);
 const priorities = new Set(["low", "medium", "high"]);
@@ -72,6 +73,46 @@ function handlePrismaTaskError(error: unknown): never {
   throw error;
 }
 
+async function resolveClientMapping(
+  clientId: string | null,
+  clientWork: string | null
+) {
+  if (!clientId) {
+    // Work is meaningless without a client.
+    return { clientId: null, clientWork: null };
+  }
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: {
+      serviceMappings: {
+        select: { service: true, focus: true },
+      },
+    },
+  });
+
+  if (!client) {
+    throw new Error("Client not found.");
+  }
+
+  const available = client.serviceMappings.map(formatServiceLabel);
+
+  if (available.length === 0) {
+    // Nothing to map against yet; keep the client link, drop the work.
+    return { clientId, clientWork: null };
+  }
+
+  if (!clientWork) {
+    throw new Error("Select which work this task is for.");
+  }
+
+  if (!available.includes(clientWork)) {
+    throw new Error("Selected work is not a service for this client.");
+  }
+
+  return { clientId, clientWork };
+}
+
 async function validateTaskRelations(
   assignedToId: string | null,
   teamId: string | null,
@@ -118,6 +159,8 @@ export async function createTask(formData: FormData) {
   const description = getValue(formData, "description");
   const assignedToId = optionalValue(getValue(formData, "assignedToId"));
   const requestedTeamId = optionalValue(getValue(formData, "teamId"));
+  const requestedClientId = optionalValue(getValue(formData, "clientId"));
+  const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const managerTeamId =
@@ -133,6 +176,10 @@ export async function createTask(formData: FormData) {
   }
 
   await validateTaskRelations(assignedToId, teamId, managerTeamId);
+  const { clientId, clientWork } = await resolveClientMapping(
+    requestedClientId,
+    requestedClientWork
+  );
 
   try {
     const task = await prisma.task.create({
@@ -141,6 +188,8 @@ export async function createTask(formData: FormData) {
         description: description || null,
         assignedToId,
         teamId,
+        clientId,
+        clientWork,
         status,
         priority,
       },
@@ -178,6 +227,8 @@ export async function updateTask(formData: FormData) {
   const description = getValue(formData, "description");
   const assignedToId = optionalValue(getValue(formData, "assignedToId"));
   const requestedTeamId = optionalValue(getValue(formData, "teamId"));
+  const requestedClientId = optionalValue(getValue(formData, "clientId"));
+  const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const managerTeamId =
@@ -193,6 +244,10 @@ export async function updateTask(formData: FormData) {
   }
 
   await validateTaskRelations(assignedToId, teamId, managerTeamId);
+  const { clientId, clientWork } = await resolveClientMapping(
+    requestedClientId,
+    requestedClientWork
+  );
 
   try {
     const previous = await prisma.task.findUnique({
@@ -215,6 +270,8 @@ export async function updateTask(formData: FormData) {
         description: description || null,
         assignedToId,
         teamId,
+        clientId,
+        clientWork,
         status,
         priority,
       },
