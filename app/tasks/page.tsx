@@ -5,7 +5,12 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
-import { updateOwnTaskStatus } from "@/app/tasks/actions";
+import { logTaskTime, updateOwnTaskStatus } from "@/app/tasks/actions";
+import {
+  formatDuration,
+  summariseByUser,
+  totalMinutes,
+} from "@/lib/duration";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
@@ -16,6 +21,10 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   month: "short",
   day: "numeric",
 });
+
+function todayInputValue() {
+  return new Date().toLocaleDateString("en-CA");
+}
 
 const statusOptions = ["pending", "in_progress", "completed"];
 const priorityOptions = ["low", "medium", "high"];
@@ -53,6 +62,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const canDeleteTasks = sessionUser.role === "admin";
   const isMember = sessionUser.role === "member";
 
+  const today = todayInputValue();
   const filters = await searchParams;
   const page = getPage(filters.page);
   const where: Prisma.TaskWhereInput = {};
@@ -114,6 +124,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         client: {
           select: {
             name: true,
+          },
+        },
+        timeLogs: {
+          select: {
+            minutes: true,
+            user: { select: { name: true } },
           },
         },
       },
@@ -303,7 +319,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1120px] text-left text-sm">
+              <table className="w-full min-w-[1260px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Title</th>
@@ -314,6 +330,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                     <th className="px-4 py-3 font-semibold">Client / Work</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Priority</th>
+                    <th className="px-4 py-3 font-semibold">Time Spent</th>
                     <th className="px-4 py-3 font-semibold">Created On</th>
                     <th className="px-4 py-3 font-semibold">
                       <span className="sr-only">Row menu</span>
@@ -366,6 +383,27 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         </span>
                       </td>
                       <td className="px-4 py-4 text-slate-600">
+                        {task.timeLogs.length === 0 ? (
+                          <span className="text-xs text-slate-400">
+                            Nothing logged
+                          </span>
+                        ) : (
+                          <>
+                            <div className="font-medium text-slate-800">
+                              {formatDuration(totalMinutes(task.timeLogs))}
+                            </div>
+                            {summariseByUser(task.timeLogs).map((person) => (
+                              <div
+                                key={person.name}
+                                className="mt-1 text-xs text-slate-500"
+                              >
+                                {person.name} {formatDuration(person.minutes)}
+                              </div>
+                            ))}
+                          </>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
                         <div>{dateFormatter.format(task.createdAt)}</div>
                         {task.updatedAt.getTime() !== task.createdAt.getTime() ? (
                           <div className="mt-1 text-xs text-slate-500">
@@ -375,6 +413,58 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       </td>
                       <td className="px-4 py-4">
                         <ActionMenu>
+                          <form action={logTaskTime} className="grid gap-2 border-b border-slate-200 p-2">
+                            <input type="hidden" name="taskId" value={task.id} />
+                            <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
+                              Log time
+                            </span>
+                            <div className="flex items-center gap-2">
+                              <input
+                                name="hours"
+                                type="number"
+                                min="0"
+                                max="24"
+                                step="1"
+                                placeholder="0"
+                                aria-label="Hours spent"
+                                className="w-14 rounded-md border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <span className="text-xs text-slate-500">h</span>
+                              <input
+                                name="minutes"
+                                type="number"
+                                min="0"
+                                max="59"
+                                step="1"
+                                placeholder="0"
+                                aria-label="Minutes spent"
+                                className="w-14 rounded-md border border-slate-300 px-2 py-1 text-xs"
+                              />
+                              <span className="text-xs text-slate-500">m</span>
+                            </div>
+                            <input
+                              name="date"
+                              type="date"
+                              defaultValue={today}
+                              max={today}
+                              required
+                              aria-label="Date the work was done"
+                              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                            />
+                            <input
+                              name="note"
+                              type="text"
+                              placeholder="Note (optional)"
+                              aria-label="Note"
+                              className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+                            />
+                            <button
+                              type="submit"
+                              className="rounded-md bg-[#770FC2] px-2 py-1 text-xs font-medium text-white transition hover:bg-[#6B1BBD]"
+                            >
+                              Log time
+                            </button>
+                          </form>
                           <form action={updateOwnTaskStatus} className="grid gap-2 p-2">
                             <input type="hidden" name="id" value={task.id} />
                             <select

@@ -9,6 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import { formatServiceLabel } from "@/lib/services";
+import { formatDuration, parseDurationInput } from "@/lib/duration";
 
 const statuses = new Set(["pending", "in_progress", "completed"]);
 const priorities = new Set(["low", "medium", "high"]);
@@ -421,6 +422,129 @@ export async function updateOwnTaskStatus(formData: FormData) {
         });
       }
     }
+  } catch (error) {
+    handlePrismaTaskError(error);
+  }
+
+  revalidatePath("/tasks");
+  revalidatePath("/");
+}
+
+/** "YYYY-MM-DD" from the date input, as UTC midnight so the day never shifts. */
+function parseLogDate(raw: string) {
+  if (!raw) {
+    throw new Error("Select the date the work was done.");
+  }
+
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
+    throw new Error("Select a valid date.");
+  }
+
+  const date = new Date(`${raw}T00:00:00.000Z`);
+
+  if (Number.isNaN(date.getTime())) {
+    throw new Error("Select a valid date.");
+  }
+
+  // Compare against tomorrow UTC so "today" is valid in every timezone.
+  const cutoff = new Date();
+  cutoff.setUTCHours(0, 0, 0, 0);
+  cutoff.setUTCDate(cutoff.getUTCDate() + 1);
+
+  if (date > cutoff) {
+    throw new Error("Time cannot be logged for a future date.");
+  }
+
+  return date;
+}
+
+/**
+ * Anyone on the team that owns the task may log against it, not just the
+ * assignee. Tasks with no team fall back to the assignee, so a personal task
+ * is not left unloggable.
+ */
+async function canLogTaskTime(
+  userId: string,
+  role: string | undefined,
+  task: { teamId: string | null; assignedToId: string | null }
+) {
+  if (role === "admin") {
+    return true;
+  }
+
+  if (task.assignedToId === userId) {
+    return true;
+  }
+
+  if (!task.teamId) {
+    return false;
+  }
+
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { teamId: true },
+  });
+
+  return Boolean(user?.teamId) && user?.teamId === task.teamId;
+}
+
+export async function logTaskTime(formData: FormData) {
+  const session = await auth();
+  const sessionUser = session?.user as
+    | (NonNullable<typeof session>["user"] & {
+        id?: string;
+        role?: string;
+      })
+    | undefined;
+
+  if (!sessionUser?.id) {
+    redirect("/login");
+  }
+
+  const taskId = getValue(formData, "taskId");
+
+  if (!taskId) {
+    throw new Error("Task not found.");
+  }
+
+  const minutes = parseDurationInput(
+    getValue(formData, "hours"),
+    getValue(formData, "minutes")
+  );
+  const date = parseLogDate(getValue(formData, "date"));
+  const note = getValue(formData, "note");
+
+  const task = await prisma.task.findUnique({
+    where: { id: taskId },
+    select: { title: true, teamId: true, assignedToId: true },
+  });
+
+  if (!task) {
+    throw new Error("Task not found.");
+  }
+
+  if (!(await canLogTaskTime(sessionUser.id, sessionUser.role, task))) {
+    redirect("/tasks");
+  }
+
+  try {
+    await prisma.taskTimeLog.create({
+      data: {
+        taskId,
+        userId: sessionUser.id,
+        minutes,
+        date,
+        note: note || null,
+      },
+    });
+
+    await logActivity({
+      userId: sessionUser.id,
+      action: "logged",
+      entityType: "task",
+      entityId: taskId,
+      description: `Logged ${formatDuration(minutes)} on task ${task.title}`,
+    });
   } catch (error) {
     handlePrismaTaskError(error);
   }

@@ -28,6 +28,7 @@ model User {
   pushSubscriptions    PushSubscription[]
   researchDocs         ResearchDocument[]
   tasks                Task[]             @relation("AssignedTasks")
+  taskTimeLogs         TaskTimeLog[]
   toolUsages           ToolUsage[]
   team                 Team?              @relation(fields: [teamId], references: [id])
 
@@ -111,10 +112,33 @@ model Task {
   assignedTo   User?    @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
   team         Team?    @relation(fields: [teamId], references: [id])
   client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
+  timeLogs     TaskTimeLog[]
 
   @@index([assignedToId], map: "Task_assignedToId_fkey")
   @@index([teamId], map: "Task_teamId_fkey")
   @@index([clientId], map: "Task_clientId_fkey")
+}
+
+/// One stretch of work logged against a task. A task accumulates many of
+/// these, so the total time spent is the sum of its logs rather than a single
+/// overwritten field, and it stays clear who spent what.
+model TaskTimeLog {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  /// Whole minutes, so totals stay exact -- no float rounding drift.
+  minutes   Int
+  /// The day the work happened, which need not be the day it was logged.
+  date      DateTime
+  note      String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([taskId], map: "TaskTimeLog_taskId_fkey")
+  @@index([userId], map: "TaskTimeLog_userId_fkey")
+  @@index([date])
 }
 
 model DailyUpdate {
