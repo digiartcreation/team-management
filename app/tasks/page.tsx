@@ -418,7 +418,6 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                             taskTitle={task.title}
                             today={today}
                             status={task.status}
-                            hasLoggedTime={task.timeLogs.length > 0}
                           />
                           {canManageTasks ? (
                             <Link

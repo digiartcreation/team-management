@@ -9,7 +9,7 @@ import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import { DIGITAL_MARKETING, formatServiceLabel } from "@/lib/services";
-import { formatDuration, parseDurationInput } from "@/lib/duration";
+import { formatDuration } from "@/lib/duration";
 
 const statuses = new Set(["pending", "in_progress", "completed"]);
 const priorities = new Set(["low", "medium", "high"]);
@@ -589,10 +589,15 @@ export async function logTaskTime(
   let date: Date;
 
   try {
-    minutes = parseDurationInput(
-      getValue(formData, "hours"),
-      getValue(formData, "minutes")
-    );
+    minutes = Number(getValue(formData, "durationMinutes"));
+    if (
+      !Number.isInteger(minutes) ||
+      minutes < 30 ||
+      minutes > 8 * 60 ||
+      minutes % 15
+    ) {
+      throw new Error("Select a time between 30 minutes and 8 hours.");
+    }
     date = parseLogDate(getValue(formData, "date"));
   } catch (error) {
     return {

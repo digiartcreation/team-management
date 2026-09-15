@@ -19,6 +19,24 @@ const fieldClass =
 
 const labelClass = "text-xs font-medium uppercase tracking-normal text-slate-500";
 
+const timeSpentOptions = Array.from(
+  { length: 31 },
+  (_, index) => (index + 2) * 15
+);
+
+function formatTimeSpent(minutes: number) {
+  const hours = Math.floor(minutes / 60);
+  const remainingMinutes = minutes % 60;
+
+  if (hours === 0) {
+    return `${minutes} minutes`;
+  }
+
+  return remainingMinutes === 0
+    ? `${hours} hour${hours === 1 ? "" : "s"}`
+    : `${hours} hr ${remainingMinutes} minutes`;
+}
+
 export default function LogTimeDialog({
   taskId,
   taskTitle,
@@ -84,34 +102,16 @@ export default function LogTimeDialog({
 
         <fieldset className="grid gap-2">
           <legend className={labelClass}>Time spent</legend>
-          <div className="flex items-center gap-3">
-            <div className="flex items-center gap-2">
-              <input
-                name="hours"
-                type="number"
-                min="0"
-                max="24"
-                step="1"
-                placeholder="0"
-                aria-label="Hours spent"
-                className="w-20 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-[#770FC2] focus:ring-2 focus:ring-[#770FC2]/20"
-              />
-              <span className="text-sm text-slate-600">hours</span>
-            </div>
-            <div className="flex items-center gap-2">
-              <input
-                name="minutes"
-                type="number"
-                min="0"
-                max="59"
-                step="1"
-                placeholder="0"
-                aria-label="Minutes spent"
-                className="w-20 rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-[#770FC2] focus:ring-2 focus:ring-[#770FC2]/20"
-              />
-              <span className="text-sm text-slate-600">minutes</span>
-            </div>
-          </div>
+          <select name="durationMinutes" required className={fieldClass} defaultValue="">
+            <option value="" disabled>
+              Select time spent
+            </option>
+            {timeSpentOptions.map((minutes) => (
+              <option key={minutes} value={minutes}>
+                {formatTimeSpent(minutes)}
+              </option>
+            ))}
+          </select>
         </fieldset>
 
         <label className="grid gap-2">
