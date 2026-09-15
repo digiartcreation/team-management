@@ -37,11 +37,32 @@ export default function LogTimeDialog({
 
   return (
     <>
+      {/*
+        Styled as a button, not a plain menu row: it opens a dialog, which is
+        the same weight of action as Update status sitting beside it, and as
+        bare text it read as a label for that button rather than its own
+        control. Outlined rather than filled, so the two do not compete to be
+        the primary action.
+      */}
       <button
         type="button"
         onClick={() => dialogRef.current?.showModal()}
-        className="rounded px-3 py-2 text-left text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+        className="flex w-full items-center gap-2 rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-2 text-left text-sm font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF]"
       >
+        <svg
+          viewBox="0 0 16 16"
+          aria-hidden="true"
+          focusable="false"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          className="h-4 w-4 shrink-0"
+        >
+          <circle cx="8" cy="8" r="6" />
+          <path d="M8 4.6V8l2.4 1.4" />
+        </svg>
         Log time
       </button>
 
