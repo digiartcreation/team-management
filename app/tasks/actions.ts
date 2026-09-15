@@ -8,7 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
-import { formatServiceLabel } from "@/lib/services";
+import { DIGITAL_MARKETING, formatServiceLabel } from "@/lib/services";
 import { formatDuration, parseDurationInput } from "@/lib/duration";
 
 const statuses = new Set(["pending", "in_progress", "completed"]);
@@ -21,6 +21,27 @@ function getValue(formData: FormData, key: string) {
 
 function optionalValue(value: string) {
   return value.length > 0 ? value : null;
+}
+
+function resolveDigitalMarketingAmount(
+  clientWork: string | null,
+  value: string
+) {
+  if (!clientWork?.startsWith(DIGITAL_MARKETING)) {
+    return null;
+  }
+
+  if (!value) {
+    throw new Error("Enter an amount for Digital Marketing work.");
+  }
+
+  const amount = new Prisma.Decimal(value);
+
+  if (!amount.isFinite() || amount.isNegative()) {
+    throw new Error("Digital Marketing amount must be a valid non-negative amount.");
+  }
+
+  return amount;
 }
 
 async function requireTaskEditor() {
@@ -162,6 +183,7 @@ export async function createTask(formData: FormData) {
   const requestedTeamId = optionalValue(getValue(formData, "teamId"));
   const requestedClientId = optionalValue(getValue(formData, "clientId"));
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
+  const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const managerTeamId =
@@ -181,6 +203,10 @@ export async function createTask(formData: FormData) {
     requestedClientId,
     requestedClientWork
   );
+  const digitalMarketingAmount = resolveDigitalMarketingAmount(
+    clientWork,
+    requestedDigitalMarketingAmount
+  );
 
   try {
     const task = await prisma.task.create({
@@ -191,6 +217,7 @@ export async function createTask(formData: FormData) {
         teamId,
         clientId,
         clientWork,
+        digitalMarketingAmount,
         status,
         priority,
       },
@@ -230,6 +257,7 @@ export async function updateTask(formData: FormData) {
   const requestedTeamId = optionalValue(getValue(formData, "teamId"));
   const requestedClientId = optionalValue(getValue(formData, "clientId"));
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
+  const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const managerTeamId =
@@ -248,6 +276,10 @@ export async function updateTask(formData: FormData) {
   const { clientId, clientWork } = await resolveClientMapping(
     requestedClientId,
     requestedClientWork
+  );
+  const digitalMarketingAmount = resolveDigitalMarketingAmount(
+    clientWork,
+    requestedDigitalMarketingAmount
   );
 
   try {
@@ -273,6 +305,7 @@ export async function updateTask(formData: FormData) {
         teamId,
         clientId,
         clientWork,
+        digitalMarketingAmount,
         status,
         priority,
       },
@@ -331,6 +364,46 @@ export async function deleteTask(id: string) {
   revalidatePath("/");
 }
 
+/**
+ * Who may move a task's status. Admins anywhere, managers within their own
+ * team, everyone else only on a task assigned to them.
+ */
+async function canUpdateTaskStatus(
+  userId: string,
+  role: string | undefined,
+  task: { teamId: string | null; assignedToId: string | null }
+) {
+  if (role === "admin") {
+    return true;
+  }
+
+  if (role === "manager") {
+    return task.teamId === (await getManagerTeamId(userId));
+  }
+
+  return task.assignedToId === userId;
+}
+
+export const COMPLETION_NEEDS_TIME =
+  "Log the time spent before marking this task completed.";
+
+/**
+ * A task cannot be completed with nothing logged against it -- completed work
+ * is what gets billed, so its hours have to exist. Only the move INTO completed
+ * is gated: a task already completed (including one completed before this rule)
+ * can still have its status re-saved without being held hostage to it.
+ */
+function hasTimeForCompletion(
+  status: string,
+  task: { status: string; _count: { timeLogs: number } }
+) {
+  if (status !== "completed" || task.status === "completed") {
+    return true;
+  }
+
+  return task._count.timeLogs > 0;
+}
+
 export async function updateOwnTaskStatus(formData: FormData) {
   const session = await auth();
   const sessionUser = session?.user as
@@ -356,6 +429,8 @@ export async function updateOwnTaskStatus(formData: FormData) {
     select: {
       assignedToId: true,
       teamId: true,
+      status: true,
+      _count: { select: { timeLogs: true } },
     },
   });
 
@@ -363,19 +438,12 @@ export async function updateOwnTaskStatus(formData: FormData) {
     throw new Error("Task not found.");
   }
 
-  let canUpdateStatus = false;
-
-  if (sessionUser.role === "admin") {
-    canUpdateStatus = true;
-  } else if (sessionUser.role === "manager") {
-    const managerTeamId = await getManagerTeamId(sessionUser.id);
-    canUpdateStatus = task.teamId === managerTeamId;
-  } else {
-    canUpdateStatus = task.assignedToId === sessionUser.id;
+  if (!(await canUpdateTaskStatus(sessionUser.id, sessionUser.role, task))) {
+    redirect("/tasks");
   }
 
-  if (!canUpdateStatus) {
-    redirect("/tasks");
+  if (!hasTimeForCompletion(status, task)) {
+    throw new Error(COMPLETION_NEEDS_TIME);
   }
 
   try {

@@ -53,6 +53,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
         teamId: true,
         clientId: true,
         clientWork: true,
+        digitalMarketingAmount: true,
         status: true,
         priority: true,
       },
@@ -108,7 +109,10 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
           employees={employees}
           teams={teams}
           clients={clients}
-          task={task}
+          task={{
+            ...task,
+            digitalMarketingAmount: task.digitalMarketingAmount?.toNumber() ?? null,
+          }}
         />
       </div>
     </DashboardLayout>

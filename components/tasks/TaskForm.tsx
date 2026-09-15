@@ -24,6 +24,7 @@ type TaskFormProps = {
     teamId: string | null;
     clientId: string | null;
     clientWork: string | null;
+    digitalMarketingAmount: number | null;
     status: string;
     priority: string;
   };
@@ -120,6 +121,7 @@ export default function TaskForm({
           clients={clients}
           selectedClientId={task?.clientId ?? null}
           selectedWork={task?.clientWork ?? null}
+          digitalMarketingAmount={task?.digitalMarketingAmount ?? null}
         />
 
         <div className="grid gap-5 md:grid-cols-2">

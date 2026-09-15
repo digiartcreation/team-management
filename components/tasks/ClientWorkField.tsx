@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { DIGITAL_MARKETING } from "@/lib/services";
 
 export type TaskClientOption = {
   id: string;
@@ -14,6 +15,7 @@ type ClientWorkFieldProps = {
   clients: TaskClientOption[];
   selectedClientId: string | null;
   selectedWork: string | null;
+  digitalMarketingAmount?: number | null;
 };
 
 const selectClassName =
@@ -23,9 +25,15 @@ export default function ClientWorkField({
   clients,
   selectedClientId,
   selectedWork,
+  digitalMarketingAmount,
 }: ClientWorkFieldProps) {
   const [clientId, setClientId] = useState(selectedClientId ?? "");
   const [work, setWork] = useState(selectedWork ?? "");
+  const [amount, setAmount] = useState(
+    digitalMarketingAmount === null || digitalMarketingAmount === undefined
+      ? ""
+      : String(digitalMarketingAmount)
+  );
 
   const selectedClient = clients.find((client) => client.id === clientId);
   const works = selectedClient?.works ?? [];
@@ -35,6 +43,7 @@ export default function ClientWorkField({
   // silently drop the mapping.
   const workOptions =
     work && !works.includes(work) ? [...works, work] : works;
+  const isDigitalMarketing = work.startsWith(DIGITAL_MARKETING);
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -47,6 +56,7 @@ export default function ClientWorkField({
             setClientId(event.target.value);
             // Work belongs to the client, so a new client invalidates it.
             setWork("");
+            setAmount("");
           }}
           className={selectClassName}
         >
@@ -65,7 +75,13 @@ export default function ClientWorkField({
         <select
           name="clientWork"
           value={work}
-          onChange={(event) => setWork(event.target.value)}
+          onChange={(event) => {
+            const nextWork = event.target.value;
+            setWork(nextWork);
+            if (!nextWork.startsWith(DIGITAL_MARKETING)) {
+              setAmount("");
+            }
+          }}
           disabled={!clientId || workOptions.length === 0}
           required={Boolean(clientId) && workOptions.length > 0}
           className={selectClassName}
@@ -89,6 +105,24 @@ export default function ClientWorkField({
           </span>
         ) : null}
       </label>
+
+      {isDigitalMarketing ? (
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">Amount (₹)</span>
+          <input
+            name="digitalMarketingAmount"
+            type="number"
+            min="0"
+            step="0.01"
+            inputMode="decimal"
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
+            required
+            placeholder="Enter amount"
+            className={selectClassName}
+          />
+        </label>
+      ) : null}
     </div>
   );
 }
