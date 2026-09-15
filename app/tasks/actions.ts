@@ -384,7 +384,7 @@ async function canUpdateTaskStatus(
   return task.assignedToId === userId;
 }
 
-export const COMPLETION_NEEDS_TIME =
+const COMPLETION_NEEDS_TIME =
   "Log the time spent before marking this task completed.";
 
 /**
