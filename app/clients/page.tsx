@@ -81,6 +81,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
             paymentType: true,
             percentage: true,
             packageAmount: true,
+            perUnitAmount: true,
             billingCycle: true,
           },
         },
@@ -210,7 +211,8 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                                     {formatServiceLabel(mapping)}
                                   </span>
                                   {mapping.percentage === null &&
-                                  mapping.packageAmount === null ? (
+                                  mapping.packageAmount === null &&
+                                  mapping.perUnitAmount === null ? (
                                     <span className="text-xs text-slate-400">
                                       payment not set
                                     </span>

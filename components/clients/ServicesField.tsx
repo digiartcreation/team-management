@@ -5,9 +5,12 @@ import {
   BILLING_CYCLE_OPTIONS,
   DIGITAL_MARKETING,
   DIGITAL_MARKETING_OPTIONS,
-  PAYMENT_TYPE_OPTIONS,
+  PACKAGE,
   PERCENTAGE,
+  PER_COUNT,
   SERVICE_OPTIONS,
+  paymentTypesForService,
+  resolvePaymentType,
   serviceKey,
   type ServiceMapping,
 } from "@/lib/services";
@@ -23,6 +26,7 @@ type Row = {
   paymentType: string;
   percentage: string;
   packageAmount: string;
+  perUnitAmount: string;
   billingCycle: string;
 };
 
@@ -45,9 +49,10 @@ function buildInitialRows(mappings: ServiceMapping[]) {
     rows[service] = {
       checked: Boolean(mapping),
       focus: mapping?.focus ?? "",
-      paymentType: mapping?.paymentType ?? PERCENTAGE,
+      paymentType: resolvePaymentType(service, mapping?.paymentType),
       percentage: numberToInput(mapping?.percentage),
       packageAmount: numberToInput(mapping?.packageAmount),
+      perUnitAmount: numberToInput(mapping?.perUnitAmount),
       billingCycle: mapping?.billingCycle ?? BILLING_CYCLE_OPTIONS[0],
     };
 
@@ -74,14 +79,15 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
       </legend>
       <p className="text-sm text-slate-500">
         Tick each service this client is engaged for, then set how that service
-        is paid. Percentage and package can differ per service.
+        is paid. Percentage applies to Digital Marketing only, and Video Editing
+        is billed per count or as a package.
       </p>
 
       <div className="grid gap-3">
         {SERVICE_OPTIONS.map((service) => {
           const row = rows[service];
           const key = serviceKey(service);
-          const isPercentage = row.paymentType === PERCENTAGE;
+          const paymentTypes = paymentTypesForService(service);
 
           return (
             <div
@@ -132,26 +138,42 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
                     </label>
                   ) : null}
 
-                  <label className="grid gap-2">
-                    <span className={labelClass}>Payment type</span>
-                    <select
-                      name={"paymentType-" + key}
-                      value={row.paymentType}
-                      onChange={(event) =>
-                        update(service, { paymentType: event.target.value })
-                      }
-                      required
-                      className={controlClass}
-                    >
-                      {PAYMENT_TYPE_OPTIONS.map((option) => (
-                        <option key={option} value={option}>
-                          {option}
-                        </option>
-                      ))}
-                    </select>
-                  </label>
+                  {paymentTypes.length > 1 ? (
+                    <label className="grid gap-2">
+                      <span className={labelClass}>Payment type</span>
+                      <select
+                        name={"paymentType-" + key}
+                        value={row.paymentType}
+                        onChange={(event) =>
+                          update(service, { paymentType: event.target.value })
+                        }
+                        required
+                        className={controlClass}
+                      >
+                        {paymentTypes.map((option) => (
+                          <option key={option} value={option}>
+                            {option}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                  ) : (
+                    // Package-only service: nothing to choose, so state the
+                    // single type and still submit it with the form.
+                    <div className="grid gap-2">
+                      <span className={labelClass}>Payment type</span>
+                      <p className="px-1 py-2 text-sm text-slate-700">
+                        {row.paymentType}
+                      </p>
+                      <input
+                        name={"paymentType-" + key}
+                        type="hidden"
+                        value={row.paymentType}
+                      />
+                    </div>
+                  )}
 
-                  {isPercentage ? (
+                  {row.paymentType === PERCENTAGE ? (
                     <label className="grid gap-2">
                       <span className={labelClass}>Percentage (%)</span>
                       <input
@@ -170,7 +192,31 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
                         className={controlClass}
                       />
                     </label>
-                  ) : (
+                  ) : null}
+
+                  {row.paymentType === PER_COUNT ? (
+                    <label className="grid gap-2">
+                      <span className={labelClass}>
+                        Rate per count (&#8377;)
+                      </span>
+                      <input
+                        name={"perUnitAmount-" + key}
+                        type="number"
+                        inputMode="numeric"
+                        min="1"
+                        step="1"
+                        placeholder="Eg: 2000"
+                        value={row.perUnitAmount}
+                        onChange={(event) =>
+                          update(service, { perUnitAmount: event.target.value })
+                        }
+                        required
+                        className={controlClass}
+                      />
+                    </label>
+                  ) : null}
+
+                  {row.paymentType === PACKAGE ? (
                     <>
                       <label className="grid gap-2">
                         <span className={labelClass}>
@@ -215,7 +261,7 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
                         </select>
                       </label>
                     </>
-                  )}
+                  ) : null}
                 </div>
               ) : null}
             </div>

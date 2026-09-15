@@ -70,8 +70,10 @@ model Client {
 }
 
 /// One service a client is engaged for, plus how that service is billed.
-/// Payment type is per row, so a client can be percentage-based on Video
-/// Editing and package-based on Digital Marketing at the same time.
+/// Payment type is per row, so a client can be per-count on Video Editing and
+/// percentage-based on Digital Marketing at the same time. Which types a
+/// service allows is decided by paymentTypesForService in lib/services.ts:
+/// percentage is Digital Marketing only, per count is Video Editing only.
 model ClientService {
   id            String   @id @default(cuid())
   clientId      String
@@ -79,12 +81,15 @@ model ClientService {
   service       String
   /// Focus area, currently only used by Digital Marketing (e.g. "Google Ads").
   focus         String?
-  /// "Percentage" or "Package".
+  /// "Percentage", "Package" or "Per count".
   paymentType   String
   /// Set when paymentType is "Percentage". Percent, not a fraction: 20 = 20%.
+  /// Rows predating the Digital-Marketing-only rule may hold one on any service.
   percentage    Decimal? @db.Decimal(5, 2)
   /// Set when paymentType is "Package". Amount in INR.
   packageAmount Decimal? @db.Decimal(12, 2)
+  /// Set when paymentType is "Per count". Rate in INR for one delivered item.
+  perUnitAmount Decimal? @db.Decimal(12, 2)
   /// Set when paymentType is "Package": "Monthly" or "One-time".
   billingCycle  String?
   createdAt     DateTime @default(now())

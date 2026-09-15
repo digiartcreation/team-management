@@ -3,10 +3,12 @@ import {
   DIGITAL_MARKETING,
   DIGITAL_MARKETING_OPTIONS,
   PACKAGE,
-  PAYMENT_TYPE_OPTIONS,
   PERCENTAGE,
+  PER_COUNT,
   SERVICE_OPTIONS,
   parseServices,
+  paymentTypesForService,
+  resolvePaymentType,
   serviceKey,
   splitService,
   type ServiceMapping,
@@ -19,6 +21,7 @@ type ClientServiceRow = {
   paymentType: string;
   percentage: unknown;
   packageAmount: unknown;
+  perUnitAmount: unknown;
   billingCycle: string | null;
 };
 
@@ -43,6 +46,7 @@ export function toServiceMapping(row: ClientServiceRow): ServiceMapping {
     paymentType: row.paymentType,
     percentage: decimalToNumber(row.percentage),
     packageAmount: decimalToNumber(row.packageAmount),
+    perUnitAmount: decimalToNumber(row.perUnitAmount),
     billingCycle: row.billingCycle,
   };
 }
@@ -63,9 +67,10 @@ export function seedMappingsFromLegacy(services: string | null) {
     .map<ServiceMapping>((entry) => ({
       service: entry.name,
       focus: entry.name === DIGITAL_MARKETING ? entry.focus : null,
-      paymentType: PERCENTAGE,
+      paymentType: resolvePaymentType(entry.name),
       percentage: null,
       packageAmount: null,
+      perUnitAmount: null,
       billingCycle: null,
     }));
 }
@@ -102,8 +107,10 @@ export function parseServiceMappings(formData: FormData): ServiceMapping[] {
     const key = serviceKey(service);
     const paymentType = getField(formData, `paymentType-${key}`);
 
-    if (!PAYMENT_TYPE_OPTIONS.includes(paymentType)) {
-      throw new Error(`Select a payment type for ${service}.`);
+    // Percentage is Digital Marketing only and per count is Video Editing only,
+    // so the allowed set is per service rather than global.
+    if (!paymentTypesForService(service).includes(paymentType)) {
+      throw new Error(`Select a valid payment type for ${service}.`);
     }
 
     let focus: string | null = null;
@@ -135,6 +142,31 @@ export function parseServiceMappings(formData: FormData): ServiceMapping[] {
         paymentType,
         percentage,
         packageAmount: null,
+        perUnitAmount: null,
+        billingCycle: null,
+      };
+    }
+
+    if (paymentType === PER_COUNT) {
+      const perUnitAmount = parseAmount(
+        getField(formData, `perUnitAmount-${key}`),
+        "rate per count",
+        service
+      );
+
+      if (perUnitAmount <= 0) {
+        throw new Error(
+          `Rate per count for ${service} must be more than 0.`
+        );
+      }
+
+      return {
+        service,
+        focus,
+        paymentType,
+        percentage: null,
+        packageAmount: null,
+        perUnitAmount,
         billingCycle: null,
       };
     }
@@ -161,6 +193,7 @@ export function parseServiceMappings(formData: FormData): ServiceMapping[] {
       paymentType: PACKAGE,
       percentage: null,
       packageAmount,
+      perUnitAmount: null,
       billingCycle,
     };
   });

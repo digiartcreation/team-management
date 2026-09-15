@@ -22,12 +22,44 @@ export const DIGITAL_MARKETING_OPTIONS = [
   "Other",
 ];
 
-export const PAYMENT_TYPE_OPTIONS = ["Percentage", "Package"];
+export const VIDEO_EDITING = "Video Editing";
 
 export const PERCENTAGE = "Percentage";
 export const PACKAGE = "Package";
+export const PER_COUNT = "Per count";
+
+export const PAYMENT_TYPE_OPTIONS = [PERCENTAGE, PACKAGE, PER_COUNT];
 
 export const BILLING_CYCLE_OPTIONS = ["Monthly", "One-time"];
+
+/**
+ * Payment types a service may be billed on. Percentage is Digital Marketing
+ * only; Video Editing is billed per delivered item or as a package; every other
+ * service is package-only. The first entry is the default for a new mapping.
+ */
+export function paymentTypesForService(service: string) {
+  if (service === DIGITAL_MARKETING) {
+    return [PERCENTAGE, PACKAGE];
+  }
+
+  if (service === VIDEO_EDITING) {
+    return [PER_COUNT, PACKAGE];
+  }
+
+  return [PACKAGE];
+}
+
+/**
+ * Payment type to show for a service, keeping a saved value only while the
+ * service still allows it. Rows written before percentage was restricted can
+ * hold a percentage on a service that is now package-only, and those must not
+ * seed the form with an unselectable option.
+ */
+export function resolvePaymentType(service: string, saved?: string | null) {
+  const allowed = paymentTypesForService(service);
+
+  return saved && allowed.includes(saved) ? saved : allowed[0];
+}
 
 /**
  * Legacy Client.services parsing, kept only to seed the client form from
@@ -75,6 +107,7 @@ export type ServiceMapping = {
   paymentType: string;
   percentage: number | null;
   packageAmount: number | null;
+  perUnitAmount: number | null;
   billingCycle: string | null;
 };
 
@@ -98,12 +131,19 @@ export function formatPaymentTerms(mapping: {
   paymentType: string;
   percentage: number | null;
   packageAmount: number | null;
+  perUnitAmount: number | null;
   billingCycle: string | null;
 }) {
   if (mapping.paymentType === PERCENTAGE) {
     return mapping.percentage === null
       ? "Percentage"
       : `${formatPercentage(mapping.percentage)} (percentage)`;
+  }
+
+  if (mapping.paymentType === PER_COUNT) {
+    return mapping.perUnitAmount === null
+      ? "Per count"
+      : `${formatInr(mapping.perUnitAmount)} (per count)`;
   }
 
   if (mapping.paymentType === PACKAGE) {

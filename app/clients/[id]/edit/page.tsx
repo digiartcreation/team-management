@@ -52,6 +52,7 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
           paymentType: true,
           percentage: true,
           packageAmount: true,
+          perUnitAmount: true,
           billingCycle: true,
         },
       },
