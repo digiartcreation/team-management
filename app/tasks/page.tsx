@@ -5,8 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
-import LogTimeDialog from "@/components/tasks/LogTimeDialog";
-import { updateOwnTaskStatus } from "@/app/tasks/actions";
+import TaskStatusControl from "@/components/tasks/TaskStatusControl";
 import {
   formatDuration,
   summariseByUser,
@@ -414,38 +413,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       </td>
                       <td className="px-4 py-4">
                         <ActionMenu>
-                          <LogTimeDialog
+                          <TaskStatusControl
                             taskId={task.id}
                             taskTitle={task.title}
                             today={today}
+                            status={task.status}
+                            hasLoggedTime={task.timeLogs.length > 0}
                           />
-                          {/*
-                            No padding of its own, and full-width controls: the
-                            menu's other rows are px-3 py-2 text-sm, so an
-                            inset block at text-xs left this one misaligned
-                            with everything above and below it.
-                          */}
-                          <form action={updateOwnTaskStatus} className="grid gap-2">
-                            <input type="hidden" name="id" value={task.id} />
-                            <select
-                              name="status"
-                              defaultValue={task.status}
-                              aria-label="Task status"
-                              className="w-full rounded-md border border-slate-300 px-3 py-2 text-sm"
-                            >
-                              {statusOptions.map((status) => (
-                                <option key={status} value={status}>
-                                  {formatLabel(status)}
-                                </option>
-                              ))}
-                            </select>
-                            <button
-                              type="submit"
-                              className="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-                            >
-                              Update status
-                            </button>
-                          </form>
                           {canManageTasks ? (
                             <Link
                               href={`/tasks/${task.id}/edit`}

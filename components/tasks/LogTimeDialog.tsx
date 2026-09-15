@@ -8,6 +8,10 @@ type LogTimeDialogProps = {
   taskTitle: string;
   /** Today as "YYYY-MM-DD": the default entry date, and the latest allowed. */
   today: string;
+  open: boolean;
+  onClose: () => void;
+  onSaved: () => void;
+  completing: boolean;
 };
 
 const fieldClass =
@@ -19,6 +23,10 @@ export default function LogTimeDialog({
   taskId,
   taskTitle,
   today,
+  open,
+  onClose,
+  onSaved,
+  completing,
 }: LogTimeDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -27,40 +35,31 @@ export default function LogTimeDialog({
     FormData
   >(logTaskTime, null);
 
-  // Close and clear once the entry saves, so the next open starts fresh.
+  useEffect(() => {
+    const dialog = dialogRef.current;
+
+    if (!dialog) {
+      return;
+    }
+
+    if (open && !dialog.open) {
+      dialog.showModal();
+    } else if (!open && dialog.open) {
+      dialog.close();
+    }
+  }, [open]);
+
   useEffect(() => {
     if (state && "ok" in state) {
       formRef.current?.reset();
-      dialogRef.current?.close();
+      onSaved();
     }
-  }, [state]);
+  }, [state, onSaved]);
 
   return (
-    <>
-      <button
-        type="button"
-        onClick={() => dialogRef.current?.showModal()}
-        className="flex w-full items-center gap-2 rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-2 text-left text-sm font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF]"
-      >
-        <svg
-          viewBox="0 0 16 16"
-          aria-hidden="true"
-          focusable="false"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.5"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          className="h-4 w-4 shrink-0"
-        >
-          <circle cx="8" cy="8" r="6" />
-          <path d="M8 4.6V8l2.4 1.4" />
-        </svg>
-        Log time
-      </button>
-
-      <dialog
+    <dialog
         ref={dialogRef}
+        onClose={onClose}
         aria-labelledby={`log-time-heading-${taskId}`}
         className="m-auto w-[calc(100vw-2rem)] max-w-md rounded-lg border border-slate-200 bg-white p-0 text-left shadow-xl backdrop:bg-slate-950/40"
       >
@@ -72,9 +71,15 @@ export default function LogTimeDialog({
             id={`log-time-heading-${taskId}`}
             className="text-lg font-semibold text-slate-950"
           >
-            Log time
+            {completing ? "Log time to complete" : "Log time"}
           </h2>
           <p className="mt-1 break-words text-sm text-slate-500">{taskTitle}</p>
+          {completing ? (
+            <p className="mt-2 text-sm text-slate-600">
+              Nothing has been logged against this task yet. Saving this entry
+              marks it completed.
+            </p>
+          ) : null}
         </div>
 
         <fieldset className="grid gap-2">
@@ -143,7 +148,7 @@ export default function LogTimeDialog({
         <div className="flex justify-end gap-3">
           <button
             type="button"
-            onClick={() => dialogRef.current?.close()}
+            onClick={onClose}
             className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
           >
             Cancel
@@ -153,11 +158,14 @@ export default function LogTimeDialog({
             disabled={isPending}
             className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD] disabled:opacity-60"
           >
-            {isPending ? "Saving..." : "Save entry"}
+            {isPending
+              ? "Saving..."
+              : completing
+                ? "Save and complete"
+                : "Save entry"}
           </button>
         </div>
       </form>
-      </dialog>
-    </>
+    </dialog>
   );
 }
