@@ -412,7 +412,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         ) : null}
                       </td>
                       <td className="px-4 py-4">
-                        <ActionMenu>
+                        <ActionMenu trigger="Update">
                           <TaskStatusControl
                             taskId={task.id}
                             taskTitle={task.title}
