@@ -1,10 +1,13 @@
 "use client";
 
 import {
+  createContext,
   ReactNode,
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
+  useMemo,
   useRef,
   useState,
 } from "react";
@@ -26,6 +29,18 @@ type Position = {
   top?: number;
   bottom?: number;
 };
+
+const ActionMenuContext = createContext<{ close: () => void } | null>(null);
+
+/**
+ * Lets an item inside the menu dismiss it once its work is done -- saving a
+ * time entry, updating a status -- instead of leaving the panel sitting open
+ * over the row it just changed. Returns null outside a menu, so a component
+ * used in both places can call it unconditionally.
+ */
+export function useActionMenu() {
+  return useContext(ActionMenuContext);
+}
 
 const triggerBase =
   "flex h-8 cursor-pointer items-center rounded-md border bg-white transition [&::-webkit-details-marker]:hidden";
@@ -127,6 +142,8 @@ export default function ActionMenu({
     };
   }, [open, updatePosition]);
 
+  const menu = useMemo(() => ({ close: () => setOpen(false) }), []);
+
   const accent = open
     ? "border-[#A05DD0] bg-[#F3E8FF] text-[#770FC2]"
     : "border-[#E5E7EB] hover:border-[#A05DD0] hover:bg-[#F3E8FF] hover:text-[#770FC2]";
@@ -198,7 +215,11 @@ export default function ActionMenu({
               }}
               className="z-50 min-w-44 max-w-[calc(100vw-1rem)] rounded-md border border-[#E5E7EB] bg-white p-1 text-left shadow-lg"
             >
-              <div className="grid gap-1">{children}</div>
+              <div className="grid gap-1">
+                <ActionMenuContext.Provider value={menu}>
+                  {children}
+                </ActionMenuContext.Provider>
+              </div>
             </div>,
             document.body
           )

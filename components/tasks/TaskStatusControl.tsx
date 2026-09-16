@@ -2,6 +2,7 @@
 
 import { useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
+import { useActionMenu } from "@/components/ui/ActionMenu";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
 
 type TaskStatusControlProps = {
@@ -12,6 +13,13 @@ type TaskStatusControlProps = {
 };
 
 const statusOptions = ["pending", "in_progress", "completed"];
+
+function formDataFor(taskId: string, status: string) {
+  const formData = new FormData();
+  formData.set("id", taskId);
+  formData.set("status", status);
+  return formData;
+}
 
 function formatLabel(value: string) {
   return value
@@ -28,30 +36,46 @@ export default function TaskStatusControl({
   const [dialogOpen, setDialogOpen] = useState(false);
   const [completing, setCompleting] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState(status);
-  const [, startTransition] = useTransition();
+  const [isPending, startTransition] = useTransition();
+  const menu = useActionMenu();
 
   function openTimeDialog(forCompletion: boolean) {
     setCompleting(forCompletion);
     setDialogOpen(true);
   }
 
+  // Called rather than handed to the form's action so the menu can be closed
+  // once the update has actually landed, instead of vanishing while it is still
+  // in flight.
+  function updateStatus(next: string) {
+    startTransition(async () => {
+      await updateOwnTaskStatus(formDataFor(taskId, next));
+      menu?.close();
+    });
+  }
+
+  function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    updateStatus(selectedStatus);
+  }
+
   function handleTimeSaved() {
     setDialogOpen(false);
 
     if (completing) {
-      const formData = new FormData();
-      formData.set("id", taskId);
-      formData.set("status", "completed");
-      startTransition(() => {
-        void updateOwnTaskStatus(formData);
-      });
+      setCompleting(false);
+      updateStatus("completed");
+      return;
     }
+
+    // A plain entry changes nothing about the status, so there is no update to
+    // wait on before getting the panel out of the way.
+    menu?.close();
   }
 
   return (
     <>
-      <form action={updateOwnTaskStatus} className="grid gap-2">
-        <input type="hidden" name="id" value={taskId} />
+      <form onSubmit={handleSubmit} className="grid gap-2">
         <select
           name="status"
           value={selectedStatus}
@@ -76,9 +100,10 @@ export default function TaskStatusControl({
         ) : (
           <button
             type="submit"
-            className="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            disabled={isPending}
+            className="w-full rounded-md bg-slate-950 px-3 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:opacity-60"
           >
-            Update status
+            {isPending ? "Updating..." : "Update status"}
           </button>
         )}
       </form>
