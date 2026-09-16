@@ -15,6 +15,7 @@ import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { formatInr } from "@/lib/services";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -367,6 +368,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                 {task.clientWork}
                               </div>
                             ) : null}
+                            {task.digitalMarketingAmount === null ? null : (
+                              <div className="mt-1 text-xs font-medium text-[#770FC2]">
+                                {formatInr(
+                                  Number(task.digitalMarketingAmount)
+                                )}
+                              </div>
+                            )}
                           </>
                         ) : (
                           "Internal"

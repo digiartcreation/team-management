@@ -35,7 +35,16 @@ function resolveDigitalMarketingAmount(
     throw new Error("Enter an amount for Digital Marketing work.");
   }
 
-  const amount = new Prisma.Decimal(value);
+  // Decimal throws on anything it cannot parse, so the guard below never gets
+  // to run on "abc". The browser's number input stops that, but a posted form
+  // does not, and the raw throw reaches the error boundary instead of the form.
+  let amount: Prisma.Decimal;
+
+  try {
+    amount = new Prisma.Decimal(value);
+  } catch {
+    throw new Error("Digital Marketing amount must be a valid non-negative amount.");
+  }
 
   if (!amount.isFinite() || amount.isNegative()) {
     throw new Error("Digital Marketing amount must be a valid non-negative amount.");
