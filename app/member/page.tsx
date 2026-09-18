@@ -48,13 +48,8 @@ export default async function MemberDashboardPage() {
     },
   });
 
-  const [totalTasks, pendingTasks, inProgressTasks, completedTasks, recentTasks] =
+  const [backlogTasks, inProgressTasks, completedTasks, recentTasks] =
     await Promise.all([
-      prisma.task.count({
-        where: {
-          assignedToId: sessionUser.id,
-        },
-      }),
       prisma.task.count({
         where: {
           assignedToId: sessionUser.id,
@@ -124,21 +119,16 @@ export default async function MemberDashboardPage() {
           </section>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Assigned Team"
             value={member?.team ? 1 : 0}
             description={member?.team?.name ?? "No team assigned"}
           />
           <StatCard
-            label="Assigned Tasks"
-            value={totalTasks}
-            description="Tasks assigned to you"
-          />
-          <StatCard
-            label="Pending"
-            value={pendingTasks}
-            description="Tasks waiting"
+            label="Backlog"
+            value={backlogTasks}
+            description="Tasks not started yet"
           />
           <StatCard
             label="In Progress"
