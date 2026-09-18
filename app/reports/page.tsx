@@ -8,19 +8,34 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import StatCard from "@/components/dashboard/StatCard";
 import { formatDuration, totalMinutes } from "@/lib/duration";
 import {
+  DEFAULT_REPORT_VIEW,
+  REPORT_VIEWS,
+  REPORT_VIEW_DEFINITIONS,
+  UNMAPPED_SERVICE_LABEL,
+  buildReport,
+  countDistinctClients,
+  countDistinctServices,
   countDistinctTasks,
-  groupTimeByClient,
   groupTimeByPerson,
+  isReportView,
+  serviceNameOf,
 } from "@/lib/reports";
 
-type ReportsPageProps = {
-  searchParams: Promise<{
-    from?: string;
-    to?: string;
-    clientId?: string;
-    userId?: string;
-  }>;
+type ReportFilters = {
+  from?: string;
+  to?: string;
+  clientId?: string;
+  userId?: string;
+  service?: string;
+  view?: string;
 };
+
+type ReportsPageProps = {
+  searchParams: Promise<ReportFilters>;
+};
+
+/** Marks the "no service mapped" choice in the service filter. */
+const UNMAPPED_SERVICE = "__unmapped__";
 
 /** Accepts only the "YYYY-MM-DD" a date input produces. */
 function parseDateInput(raw: string | undefined) {
@@ -35,6 +50,21 @@ function parseDateInput(raw: string | undefined) {
 
 function endOfDay(raw: string) {
   return new Date(`${raw}T23:59:59.999Z`);
+}
+
+/** Keeps the current filters on a link, dropping the ones left blank. */
+function reportHref(filters: ReportFilters) {
+  const search = new URLSearchParams();
+
+  for (const [key, value] of Object.entries(filters)) {
+    if (value) {
+      search.set(key, value);
+    }
+  }
+
+  const query = search.toString();
+
+  return query ? `/reports?${query}` : "/reports";
 }
 
 const inputClass = "rounded-md border border-slate-300 px-3 py-2 text-sm";
@@ -58,8 +88,32 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   }
 
   const filters = await searchParams;
+  const view = isReportView(filters.view) ? filters.view : DEFAULT_REPORT_VIEW;
+  const definition = REPORT_VIEW_DEFINITIONS[view];
   const from = parseDateInput(filters.from);
   const to = parseDateInput(filters.to);
+
+  // Every service a task has actually been mapped to. It both fills the filter
+  // and turns the chosen service back into the exact stored values, since
+  // "Digital Marketing" has to match "Digital Marketing (SEO)" as well.
+  const mappedWork = await prisma.task.findMany({
+    where: { clientWork: { not: null } },
+    select: { clientWork: true },
+    distinct: ["clientWork"],
+    orderBy: { clientWork: "asc" },
+  });
+
+  const workValues = mappedWork
+    .map((task) => task.clientWork)
+    .filter((work): work is string => Boolean(work));
+
+  const serviceOptions = [
+    ...new Set(
+      workValues
+        .map((work) => serviceNameOf(work))
+        .filter((service): service is string => Boolean(service))
+    ),
+  ].sort((a, b) => a.localeCompare(b));
 
   const where: Prisma.TaskTimeLogWhereInput = {};
 
@@ -71,11 +125,24 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     };
   }
 
+  const taskFilter: Prisma.TaskWhereInput = {};
+
   if (filters.clientId) {
-    where.task =
-      filters.clientId === "__internal__"
-        ? { clientId: null }
-        : { clientId: filters.clientId };
+    taskFilter.clientId =
+      filters.clientId === "__internal__" ? null : filters.clientId;
+  }
+
+  if (filters.service === UNMAPPED_SERVICE) {
+    taskFilter.clientWork = null;
+  } else if (filters.service) {
+    // An unknown service leaves an empty list, which matches nothing.
+    taskFilter.clientWork = {
+      in: workValues.filter((work) => serviceNameOf(work) === filters.service),
+    };
+  }
+
+  if (Object.keys(taskFilter).length > 0) {
+    where.task = taskFilter;
   }
 
   if (filters.userId) {
@@ -108,9 +175,13 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     }),
   ]);
 
-  const byClient = groupTimeByClient(logs);
+  const groups = buildReport(logs, view);
   const byPerson = groupTimeByPerson(logs);
   const total = totalMinutes(logs);
+
+  // First column, the detail columns, an optional person column, then time.
+  const columnCount =
+    2 + definition.detailHeadings.length + (definition.showPeople ? 1 : 0);
 
   return (
     <DashboardLayout>
@@ -120,15 +191,28 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             Reports
           </p>
           <h1 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">
-            Time Spent by Client
+            {definition.heading}
           </h1>
-          <p className="mt-2 text-sm text-slate-500">
-            Hours logged against each client, broken down by task and by the
-            person who did the work.
-          </p>
+          <p className="mt-2 text-sm text-slate-500">{definition.description}</p>
         </header>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <nav className="flex flex-wrap gap-2">
+          {REPORT_VIEWS.map((option) => (
+            <Link
+              key={option}
+              href={reportHref({ ...filters, view: option })}
+              className={`rounded-md px-4 py-2 text-sm font-medium transition duration-200 ${
+                option === view
+                  ? "bg-[#6B1BBD] text-white shadow-sm"
+                  : "border border-slate-300 text-slate-700 hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+              }`}
+            >
+              {REPORT_VIEW_DEFINITIONS[option].tab}
+            </Link>
+          ))}
+        </nav>
+
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
           <StatCard
             label="Total time"
             value={formatDuration(total)}
@@ -136,8 +220,13 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           />
           <StatCard
             label="Clients"
-            value={byClient.filter((client) => client.clientId).length}
+            value={countDistinctClients(logs)}
             description="With time logged"
+          />
+          <StatCard
+            label="Services"
+            value={countDistinctServices(logs)}
+            description="Worked on in range"
           />
           <StatCard
             label="Tasks"
@@ -145,13 +234,16 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             description="Worked on in range"
           />
           <StatCard
-            label="People"
+            label="Employees"
             value={byPerson.length}
             description="Who logged time"
           />
         </div>
 
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
+          {/* Keeps the chosen report when the filters are applied. */}
+          <input type="hidden" name="view" value={view} />
+
           <label className="grid gap-2">
             <span className={labelClass}>From</span>
             <input
@@ -190,6 +282,23 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           </label>
 
           <label className="grid gap-2">
+            <span className={labelClass}>Service</span>
+            <select
+              name="service"
+              defaultValue={filters.service ?? ""}
+              className={inputClass}
+            >
+              <option value="">All services</option>
+              <option value={UNMAPPED_SERVICE}>{UNMAPPED_SERVICE_LABEL}</option>
+              {serviceOptions.map((service) => (
+                <option key={service} value={service}>
+                  {service}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2">
             <span className={labelClass}>Employee</span>
             <select
               name="userId"
@@ -207,7 +316,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
           <div className="flex gap-3 md:col-span-4 md:justify-end">
             <Link
-              href="/reports"
+              href={reportHref({ view })}
               className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Reset
@@ -222,7 +331,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
         </form>
 
         <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          {byClient.length === 0 ? (
+          {groups.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
                 No time logged.
@@ -234,33 +343,43 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
+              <table
+                className={`w-full text-left text-sm ${
+                  columnCount > 4 ? "min-w-[980px]" : "min-w-[860px]"
+                }`}
+              >
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
                   <tr>
-                    <th className="px-4 py-3 font-semibold">Client / Task</th>
-                    <th className="px-4 py-3 font-semibold">Work</th>
-                    <th className="px-4 py-3 font-semibold">Person</th>
-                    <th className="px-4 py-3 text-right font-semibold">
-                      Time
+                    <th className="px-4 py-3 font-semibold">
+                      {definition.groupHeading}
                     </th>
+                    {definition.detailHeadings.map((heading) => (
+                      <th key={heading} className="px-4 py-3 font-semibold">
+                        {heading}
+                      </th>
+                    ))}
+                    {definition.showPeople ? (
+                      <th className="px-4 py-3 font-semibold">Person</th>
+                    ) : null}
+                    <th className="px-4 py-3 text-right font-semibold">Time</th>
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {byClient.map((client) => (
-                    <Fragment key={client.clientId ?? "__internal__"}>
+                  {groups.map((group) => (
+                    <Fragment key={group.key}>
                       <tr className="bg-[#F8F7FB]">
                         <td
                           className="px-4 py-3 font-semibold text-[#770FC2]"
-                          colSpan={3}
+                          colSpan={columnCount - 1}
                         >
-                          {client.clientName}
+                          {group.label}
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-[#770FC2]">
-                          {formatDuration(client.minutes)}
+                          {formatDuration(group.minutes)}
                         </td>
                       </tr>
 
-                      {client.tasks.map((task) => (
+                      {group.tasks.map((task) => (
                         <tr
                           key={task.taskId}
                           className="align-top hover:bg-slate-50"
@@ -268,23 +387,30 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                           <td className="px-4 py-4 pl-8 font-medium text-slate-950">
                             {task.title}
                           </td>
-                          <td className="px-4 py-4 text-slate-600">
-                            {task.work ?? (
-                              <span className="text-xs text-slate-400">
-                                Not mapped
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-4 py-4 text-slate-600">
-                            {task.people.map((person) => (
-                              <div key={person.userId}>{person.name}</div>
-                            ))}
-                          </td>
+                          {task.details.map((detail, index) => (
+                            <td
+                              key={definition.detailHeadings[index]}
+                              className="px-4 py-4 text-slate-600"
+                            >
+                              {detail ?? (
+                                <span className="text-xs text-slate-400">
+                                  Not mapped
+                                </span>
+                              )}
+                            </td>
+                          ))}
+                          {definition.showPeople ? (
+                            <td className="px-4 py-4 text-slate-600">
+                              {task.people.map((person) => (
+                                <div key={person.userId}>{person.name}</div>
+                              ))}
+                            </td>
+                          ) : null}
                           <td className="px-4 py-4 text-right text-slate-600">
                             <div className="font-medium text-slate-800">
                               {formatDuration(task.minutes)}
                             </div>
-                            {task.people.length > 1
+                            {definition.showPeople && task.people.length > 1
                               ? task.people.map((person) => (
                                   <div
                                     key={person.userId}
@@ -305,7 +431,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           )}
         </section>
 
-        {byPerson.length > 0 ? (
+        {/* On the employee report the groups above already are the per-person totals. */}
+        {view !== "employee" && byPerson.length > 0 ? (
           <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
             <div className="border-b border-slate-200 px-4 py-3">
               <h2 className="text-sm font-semibold text-slate-950">

@@ -1,3 +1,5 @@
+import { splitService } from "@/lib/services";
+
 export type TimeLogRow = {
   minutes: number;
   user: { id: string; name: string };
@@ -15,23 +17,105 @@ export type PersonTotal = {
   minutes: number;
 };
 
+/** One task inside a group, carrying the detail columns its view asks for. */
 export type TaskTotal = {
   taskId: string;
   title: string;
-  work: string | null;
+  /** Secondary column values, in the same order as the view's detailHeadings. */
+  details: (string | null)[];
   minutes: number;
   people: PersonTotal[];
 };
 
-export type ClientTotal = {
-  /** null for tasks with no client, grouped under "Internal". */
-  clientId: string | null;
-  clientName: string;
+/** A client, an employee or a service, with the tasks its time went to. */
+export type ReportGroup = {
+  key: string;
+  label: string;
   minutes: number;
   tasks: TaskTotal[];
 };
 
+export const REPORT_VIEWS = ["client", "employee", "service"] as const;
+
+export type ReportView = (typeof REPORT_VIEWS)[number];
+
+export const DEFAULT_REPORT_VIEW: ReportView = "client";
+
 export const INTERNAL_LABEL = "Internal (no client)";
+export const UNMAPPED_SERVICE_LABEL = "No service mapped";
+
+type ViewDefinition = {
+  /** Tab label. */
+  tab: string;
+  /** Page heading and blurb, so the report says what it is showing. */
+  heading: string;
+  description: string;
+  /** Heading of the first column, which carries both group and task rows. */
+  groupHeading: string;
+  /** Headings for the secondary columns, left to right. */
+  detailHeadings: string[];
+  /**
+   * Whether who logged the time deserves its own column. On the employee
+   * report it never does -- every row under a group is that one person.
+   */
+  showPeople: boolean;
+  groupKey: (log: TimeLogRow) => string;
+  groupLabel: (log: TimeLogRow) => string;
+  details: (log: TimeLogRow) => (string | null)[];
+};
+
+/** Service without its focus area: "Digital Marketing (SEO)" -> "Digital Marketing". */
+export function serviceNameOf(clientWork: string | null) {
+  return clientWork ? splitService(clientWork).name : null;
+}
+
+function clientLabel(log: TimeLogRow) {
+  return log.task.client?.name ?? INTERNAL_LABEL;
+}
+
+export const REPORT_VIEW_DEFINITIONS: Record<ReportView, ViewDefinition> = {
+  client: {
+    tab: "Client wise",
+    heading: "Time Spent by Client",
+    description:
+      "Hours logged against each client, broken down by task and by the person who did the work.",
+    groupHeading: "Client / Task",
+    detailHeadings: ["Work"],
+    showPeople: true,
+    groupKey: (log) => log.task.client?.id ?? "__internal__",
+    groupLabel: clientLabel,
+    details: (log) => [log.task.clientWork],
+  },
+  employee: {
+    tab: "Employee wise",
+    heading: "Time Spent by Employee",
+    description:
+      "Hours each employee logged, broken down by the task and the client the time went to.",
+    groupHeading: "Employee / Task",
+    detailHeadings: ["Client", "Work"],
+    showPeople: false,
+    groupKey: (log) => log.user.id,
+    groupLabel: (log) => log.user.name,
+    details: (log) => [clientLabel(log), log.task.clientWork],
+  },
+  service: {
+    tab: "Service wise",
+    heading: "Time Spent by Service",
+    description:
+      "Hours logged against each service, broken down by task, client and the person who did the work.",
+    groupHeading: "Service / Task",
+    detailHeadings: ["Client", "Work"],
+    showPeople: true,
+    groupKey: (log) => serviceNameOf(log.task.clientWork) ?? "__unmapped__",
+    groupLabel: (log) =>
+      serviceNameOf(log.task.clientWork) ?? UNMAPPED_SERVICE_LABEL,
+    details: (log) => [clientLabel(log), log.task.clientWork],
+  },
+};
+
+export function isReportView(value: string | undefined): value is ReportView {
+  return REPORT_VIEWS.includes(value as ReportView);
+}
 
 /** Largest total first, then alphabetical, so the ordering is never arbitrary. */
 function byMinutesThenName<T extends { minutes: number }>(
@@ -42,22 +126,29 @@ function byMinutesThenName<T extends { minutes: number }>(
 }
 
 /**
- * Folds flat time-log rows into client -> task -> person totals, which is how
- * the report reads: how many hours went to each client, on which task, by whom.
+ * Folds flat time-log rows into group -> task -> person totals. The group is
+ * whichever dimension the chosen view reports on, which is how each report
+ * reads: how many hours went to this client / this employee / this service, on
+ * which task, and by whom.
  */
-export function groupTimeByClient(logs: TimeLogRow[]): ClientTotal[] {
-  const clients = new Map<
+export function buildReport(
+  logs: TimeLogRow[],
+  view: ReportView
+): ReportGroup[] {
+  const definition = REPORT_VIEW_DEFINITIONS[view];
+
+  const groups = new Map<
     string,
     {
-      clientId: string | null;
-      clientName: string;
+      key: string;
+      label: string;
       minutes: number;
       tasks: Map<
         string,
         {
           taskId: string;
           title: string;
-          work: string | null;
+          details: (string | null)[];
           minutes: number;
           people: Map<string, PersonTotal>;
         }
@@ -66,33 +157,33 @@ export function groupTimeByClient(logs: TimeLogRow[]): ClientTotal[] {
   >();
 
   for (const log of logs) {
-    const clientKey = log.task.client?.id ?? "__internal__";
+    const key = definition.groupKey(log);
 
-    let client = clients.get(clientKey);
+    let group = groups.get(key);
 
-    if (!client) {
-      client = {
-        clientId: log.task.client?.id ?? null,
-        clientName: log.task.client?.name ?? INTERNAL_LABEL,
+    if (!group) {
+      group = {
+        key,
+        label: definition.groupLabel(log),
         minutes: 0,
         tasks: new Map(),
       };
-      clients.set(clientKey, client);
+      groups.set(key, group);
     }
 
-    client.minutes += log.minutes;
+    group.minutes += log.minutes;
 
-    let task = client.tasks.get(log.task.id);
+    let task = group.tasks.get(log.task.id);
 
     if (!task) {
       task = {
         taskId: log.task.id,
         title: log.task.title,
-        work: log.task.clientWork,
+        details: definition.details(log),
         minutes: 0,
         people: new Map(),
       };
-      client.tasks.set(log.task.id, task);
+      group.tasks.set(log.task.id, task);
     }
 
     task.minutes += log.minutes;
@@ -110,16 +201,16 @@ export function groupTimeByClient(logs: TimeLogRow[]): ClientTotal[] {
     }
   }
 
-  return [...clients.values()]
-    .map((client) => ({
-      clientId: client.clientId,
-      clientName: client.clientName,
-      minutes: client.minutes,
-      tasks: [...client.tasks.values()]
+  return [...groups.values()]
+    .map((group) => ({
+      key: group.key,
+      label: group.label,
+      minutes: group.minutes,
+      tasks: [...group.tasks.values()]
         .map((task) => ({
           taskId: task.taskId,
           title: task.title,
-          work: task.work,
+          details: task.details,
           minutes: task.minutes,
           people: [...task.people.values()].sort(
             byMinutesThenName<PersonTotal>((person) => person.name)
@@ -127,10 +218,10 @@ export function groupTimeByClient(logs: TimeLogRow[]): ClientTotal[] {
         }))
         .sort(byMinutesThenName<TaskTotal>((task) => task.title)),
     }))
-    .sort(byMinutesThenName<ClientTotal>((client) => client.clientName));
+    .sort(byMinutesThenName<ReportGroup>((group) => group.label));
 }
 
-/** Overall per-person totals across every client, for the summary table. */
+/** Overall per-person totals across every group, for the summary table. */
 export function groupTimeByPerson(logs: TimeLogRow[]): PersonTotal[] {
   const people = new Map<string, PersonTotal>();
 
@@ -155,4 +246,18 @@ export function groupTimeByPerson(logs: TimeLogRow[]): PersonTotal[] {
 
 export function countDistinctTasks(logs: TimeLogRow[]) {
   return new Set(logs.map((log) => log.task.id)).size;
+}
+
+export function countDistinctClients(logs: TimeLogRow[]) {
+  return new Set(
+    logs.filter((log) => log.task.client).map((log) => log.task.client!.id)
+  ).size;
+}
+
+export function countDistinctServices(logs: TimeLogRow[]) {
+  return new Set(
+    logs
+      .map((log) => serviceNameOf(log.task.clientWork))
+      .filter((service): service is string => Boolean(service))
+  ).size;
 }
