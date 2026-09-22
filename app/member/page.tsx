@@ -1,16 +1,10 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
+import TaskBoard from "@/components/dashboard/TaskBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { formatTaskStatus } from "@/lib/taskStatus";
-
-const dateFormatter = new Intl.DateTimeFormat("en", {
-  year: "numeric",
-  month: "short",
-  day: "numeric",
-});
+import { loadTaskBoard } from "@/lib/taskBoard";
 
 function formatRole(role?: string | null) {
   return role === "member" ? "employee" : role;
@@ -45,53 +39,23 @@ export default async function MemberDashboardPage() {
     },
   });
 
+  // Spelled out rather than left as sessionUser.id: an undefined id is a
+  // filter Prisma drops, which would put every task in the workspace on one
+  // employee's board. No such user exists, so this matches nothing instead.
+  const ownTasks = { assignedToId: sessionUser.id ?? "__no_user__" };
+
   const [
     backlogTasks,
     inProgressTasks,
     completedTasks,
     reopenedTasks,
-    recentTasks,
+    board,
   ] = await Promise.all([
-    prisma.task.count({
-      where: {
-        assignedToId: sessionUser.id,
-        status: "pending",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        assignedToId: sessionUser.id,
-        status: "in_progress",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        assignedToId: sessionUser.id,
-        status: "completed",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        assignedToId: sessionUser.id,
-        status: "reopened",
-      },
-    }),
-    prisma.task.findMany({
-      where: {
-        assignedToId: sessionUser.id,
-      },
-      orderBy: {
-        createdAt: "desc",
-      },
-      take: 5,
-      include: {
-        team: {
-          select: {
-            name: true,
-          },
-        },
-      },
-    }),
+    prisma.task.count({ where: { ...ownTasks, status: "pending" } }),
+    prisma.task.count({ where: { ...ownTasks, status: "in_progress" } }),
+    prisma.task.count({ where: { ...ownTasks, status: "completed" } }),
+    prisma.task.count({ where: { ...ownTasks, status: "reopened" } }),
+    loadTaskBoard(ownTasks),
   ]);
 
   return (
@@ -155,59 +119,11 @@ export default async function MemberDashboardPage() {
           />
         </section>
 
-        <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
-          <div className="flex items-center justify-between gap-4">
-            <h2 className="text-lg font-semibold text-slate-950">
-              Recent Assigned Tasks
-            </h2>
-            <Link
-              href="/tasks"
-              className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
-            >
-              View all
-            </Link>
-          </div>
-          {recentTasks.length === 0 ? (
-            <p className="mt-6 rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-500">
-              No tasks are assigned to you yet.
-            </p>
-          ) : (
-            <div className="mt-4 overflow-x-auto">
-              <table className="w-full min-w-[680px] text-left text-sm">
-                <thead className="border-b border-slate-200 text-xs uppercase tracking-normal text-slate-500">
-                  <tr>
-                    <th className="py-3 pr-4 font-semibold">Title</th>
-                    <th className="py-3 pr-4 font-semibold">Team</th>
-                    <th className="py-3 pr-4 font-semibold">Status</th>
-                    <th className="py-3 pr-4 font-semibold">Priority</th>
-                    <th className="py-3 pr-4 font-semibold">Created</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {recentTasks.map((task) => (
-                    <tr key={task.id}>
-                      <td className="py-3 pr-4 font-medium text-slate-950">
-                        {task.title}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {task.team?.name ?? "No team"}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {formatTaskStatus(task.status)}
-                      </td>
-                      <td className="py-3 pr-4 capitalize text-slate-600">
-                        {task.priority}
-                      </td>
-                      <td className="py-3 pr-4 text-slate-600">
-                        {dateFormatter.format(task.createdAt)}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+        <TaskBoard
+          heading="My Task Board"
+          description="Your tasks by stage. Read-only here -- move them from the Tasks page."
+          columns={board}
+        />
       </div>
     </DashboardLayout>
   );

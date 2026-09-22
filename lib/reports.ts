@@ -1,9 +1,12 @@
 import { splitService } from "@/lib/services";
 
 export type TimeLogRow = {
+  id: string;
   minutes: number;
   /** 0 for the original run, 1 for work after the first reopen, and so on. */
   reopenCycle: number;
+  /** What the work was. Mandatory on a reopen cycle, optional before that. */
+  note: string | null;
   user: { id: string; name: string };
   task: {
     id: string;
@@ -51,6 +54,14 @@ export type ReportGroup = {
  * One reopened task, as the reopen summary reports it: what the first pass
  * cost, what each return added, and the total the two come to.
  */
+/** One entry of rework, as it was written down when the time was logged. */
+export type ReopenNote = {
+  id: string;
+  minutes: number;
+  note: string | null;
+  personName: string;
+};
+
 export type ReopenTotal = {
   taskId: string;
   title: string;
@@ -59,8 +70,8 @@ export type ReopenTotal = {
   originalMinutes: number;
   reopenMinutes: number;
   minutes: number;
-  /** Hours per return, cycle 1 first. */
-  cycles: { cycle: number; minutes: number }[];
+  /** Hours per return, cycle 1 first, with what each entry said it was for. */
+  cycles: { cycle: number; minutes: number; notes: ReopenNote[] }[];
 };
 
 export const REPORT_VIEWS = ["client", "employee", "service"] as const;
@@ -274,7 +285,9 @@ export function buildReport(
 export function buildReopenSummary(logs: TimeLogRow[]): ReopenTotal[] {
   const tasks = new Map<
     string,
-    ReopenTotal & { cycleTotals: Map<number, number> }
+    ReopenTotal & {
+      cycleTotals: Map<number, { minutes: number; notes: ReopenNote[] }>;
+    }
   >();
 
   for (const log of logs) {
@@ -303,10 +316,21 @@ export function buildReopenSummary(logs: TimeLogRow[]): ReopenTotal[] {
 
     if (log.reopenCycle > 0) {
       task.reopenMinutes += log.minutes;
-      task.cycleTotals.set(
-        log.reopenCycle,
-        (task.cycleTotals.get(log.reopenCycle) ?? 0) + log.minutes
-      );
+
+      let cycle = task.cycleTotals.get(log.reopenCycle);
+
+      if (!cycle) {
+        cycle = { minutes: 0, notes: [] };
+        task.cycleTotals.set(log.reopenCycle, cycle);
+      }
+
+      cycle.minutes += log.minutes;
+      cycle.notes.push({
+        id: log.id,
+        minutes: log.minutes,
+        note: log.note,
+        personName: log.user.name,
+      });
     } else {
       task.originalMinutes += log.minutes;
     }
@@ -316,7 +340,7 @@ export function buildReopenSummary(logs: TimeLogRow[]): ReopenTotal[] {
     .map(({ cycleTotals, ...task }) => ({
       ...task,
       cycles: [...cycleTotals.entries()]
-        .map(([cycle, minutes]) => ({ cycle, minutes }))
+        .map(([cycle, totals]) => ({ cycle, ...totals }))
         .sort((a, b) => a.cycle - b.cycle),
     }))
     .sort(

@@ -2,7 +2,9 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
+import TaskBoard from "@/components/dashboard/TaskBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { loadTaskBoard } from "@/lib/taskBoard";
 import { createBroadcastNotification } from "@/app/notifications/actions";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 
@@ -21,6 +23,7 @@ export default async function Home() {
     inProgressTasks,
     completedTasks,
     reopenedTasks,
+    board,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.team.count(),
@@ -45,6 +48,8 @@ export default async function Home() {
         status: "reopened",
       },
     }),
+    // No filter: an admin sees every team's work on the board.
+    loadTaskBoard({}),
   ]);
 
   const sessionUser = session.user as typeof session.user & {
@@ -121,6 +126,12 @@ export default async function Home() {
             description="Completed tasks sent back for rework"
           />
         </section>
+
+        <TaskBoard
+          heading="Task Board"
+          description="Every team's tasks by stage. Read-only here -- move them from the Tasks page."
+          columns={board}
+        />
 
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div>

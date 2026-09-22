@@ -156,8 +156,10 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     prisma.taskTimeLog.findMany({
       where,
       select: {
+        id: true,
         minutes: true,
         reopenCycle: true,
+        note: true,
         user: { select: { id: true, name: true } },
         task: {
           select: {
@@ -185,6 +187,28 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const total = totalMinutes(logs);
   const reopenTotal = totalReopenMinutes(logs);
   const reopenedTasks = buildReopenSummary(logs);
+
+  // The reason lives on the reopen record rather than on any time log, so it
+  // takes a second query -- only for the tasks the summary actually lists.
+  const reopenReasons = await prisma.taskReopen.findMany({
+    where: {
+      taskId: { in: reopenedTasks.map((task) => task.taskId) },
+      reason: { not: null },
+    },
+    select: {
+      taskId: true,
+      cycle: true,
+      reason: true,
+      user: { select: { name: true } },
+    },
+  });
+
+  const reasonFor = new Map(
+    reopenReasons.map((row) => [
+      `${row.taskId}:${row.cycle}`,
+      { reason: row.reason, by: row.user.name },
+    ])
+  );
 
   // First column, the detail columns, an optional person column, then time.
   const columnCount =
@@ -503,6 +527,40 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                     <tr key={task.taskId} className="align-top hover:bg-slate-50">
                       <td className="px-4 py-4 font-medium text-slate-950">
                         {task.title}
+                        {task.cycles.length > 0 ? (
+                          <div className="mt-2 grid gap-2 border-l-2 border-[#A05DD0]/40 pl-3 font-normal">
+                            {task.cycles.map((cycle) => {
+                              const sentBack = reasonFor.get(
+                                `${task.taskId}:${cycle.cycle}`
+                              );
+
+                              return (
+                              <div key={cycle.cycle} className="grid gap-0.5">
+                                <p className="text-xs font-semibold text-slate-700">
+                                  Reopen {cycle.cycle} --{" "}
+                                  {formatDuration(cycle.minutes)}
+                                  {sentBack ? ` -- by ${sentBack.by}` : ""}
+                                </p>
+                                {sentBack?.reason ? (
+                                  <p className="whitespace-pre-line break-words text-xs italic text-slate-500">
+                                    Reason: {sentBack.reason}
+                                  </p>
+                                ) : null}
+                                {cycle.notes.map((entry) => (
+                                  <p
+                                    key={entry.id}
+                                    className="whitespace-pre-line break-words text-xs text-slate-500"
+                                  >
+                                    {entry.personName} --{" "}
+                                    {formatDuration(entry.minutes)}
+                                    {entry.note ? `: ${entry.note}` : ""}
+                                  </p>
+                                ))}
+                              </div>
+                              );
+                            })}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4 text-slate-600">{task.client}</td>
                       <td className="px-4 py-4 text-right text-slate-700">
@@ -511,18 +569,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                       <td className="px-4 py-4 text-right text-slate-700">
                         {formatDuration(task.originalMinutes)}
                       </td>
-                      <td className="px-4 py-4 text-right text-[#770FC2]">
-                        <div className="font-medium">
-                          {formatDuration(task.reopenMinutes)}
-                        </div>
-                        {task.cycles.map((cycle) => (
-                          <div
-                            key={cycle.cycle}
-                            className="text-xs text-slate-500"
-                          >
-                            Reopen {cycle.cycle} {formatDuration(cycle.minutes)}
-                          </div>
-                        ))}
+                      <td className="px-4 py-4 text-right font-medium text-[#770FC2]">
+                        {formatDuration(task.reopenMinutes)}
                       </td>
                       <td className="px-4 py-4 text-right font-medium text-slate-800">
                         {formatDuration(task.minutes)}

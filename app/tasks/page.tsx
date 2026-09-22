@@ -22,6 +22,7 @@ import {
   formatTaskStatus,
   isTaskStatus,
 } from "@/lib/taskStatus";
+import { buildReopenHistory, countReopenNotes } from "@/lib/reopenHistory";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -128,8 +129,19 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         },
         timeLogs: {
           select: {
+            id: true,
             minutes: true,
+            date: true,
+            note: true,
             reopenCycle: true,
+            user: { select: { name: true } },
+          },
+        },
+        reopens: {
+          select: {
+            cycle: true,
+            reason: true,
+            createdAt: true,
             user: { select: { name: true } },
           },
         },
@@ -344,6 +356,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                     // told apart, so a task that came back twice does not read
                     // as if it took that long first time.
                     const time = splitReopenMinutes(task.timeLogs);
+                    const history = buildReopenHistory(
+                      task.reopens,
+                      task.timeLogs
+                    );
 
                     return (
                     <tr key={task.id} className="hover:bg-slate-50">
@@ -355,6 +371,46 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           <div className="mt-1 whitespace-pre-line break-words text-slate-500">
                             {task.description}
                           </div>
+                        ) : null}
+                        {history.length > 0 ? (
+                          <details className="mt-2">
+                            <summary className="cursor-pointer list-none text-xs font-medium text-[#770FC2] hover:underline">
+                              Reopen notes ({countReopenNotes(history)})
+                            </summary>
+                            <div className="mt-2 grid gap-3 border-l-2 border-[#A05DD0]/40 pl-3">
+                              {history.map((cycle) => (
+                                <div key={cycle.cycle} className="grid gap-1">
+                                  <p className="text-xs font-semibold text-slate-700">
+                                    Reopen {cycle.cycle}
+                                    {cycle.minutes > 0
+                                      ? ` -- ${formatDuration(cycle.minutes)}`
+                                      : " -- nothing logged yet"}
+                                    {cycle.reopenedBy
+                                      ? ` -- by ${cycle.reopenedBy}`
+                                      : ""}
+                                  </p>
+                                  {cycle.reason ? (
+                                    <p className="whitespace-pre-line break-words text-xs italic text-slate-500">
+                                      Reason: {cycle.reason}
+                                    </p>
+                                  ) : null}
+                                  {cycle.entries.map((entry) => (
+                                    <p
+                                      key={entry.id}
+                                      className="whitespace-pre-line break-words text-xs text-slate-600"
+                                    >
+                                      {dateFormatter.format(entry.date)} --{" "}
+                                      {formatDuration(entry.minutes)}
+                                      {entry.userName
+                                        ? ` -- ${entry.userName}`
+                                        : ""}
+                                      {entry.note ? `: ${entry.note}` : ""}
+                                    </p>
+                                  ))}
+                                </div>
+                              ))}
+                            </div>
+                          </details>
                         ) : null}
                       </td>
                       <td className="px-4 py-4 text-slate-600">
