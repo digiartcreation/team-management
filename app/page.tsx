@@ -17,9 +17,10 @@ export default async function Home() {
     totalUsers,
     totalTeams,
     totalTasks,
-    pendingTasks,
+    backlogTasks,
     inProgressTasks,
     completedTasks,
+    reopenedTasks,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.team.count(),
@@ -37,6 +38,11 @@ export default async function Home() {
     prisma.task.count({
       where: {
         status: "completed",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        status: "reopened",
       },
     }),
   ]);
@@ -95,19 +101,24 @@ export default async function Home() {
             description="All tracked work items"
           />
           <StatCard
-            label="Pending Tasks"
-            value={pendingTasks}
+            label="Backlog"
+            value={backlogTasks}
             description="Tasks waiting for action"
           />
           <StatCard
-            label="In Progress Tasks"
+            label="In Progress"
             value={inProgressTasks}
             description="Tasks currently being worked on"
           />
           <StatCard
-            label="Completed Tasks"
+            label="Completed"
             value={completedTasks}
             description="Tasks finished by the team"
+          />
+          <StatCard
+            label="Reopened"
+            value={reopenedTasks}
+            description="Completed tasks sent back for rework"
           />
         </section>
 

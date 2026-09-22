@@ -2,11 +2,14 @@ import { splitService } from "@/lib/services";
 
 export type TimeLogRow = {
   minutes: number;
+  /** 0 for the original run, 1 for work after the first reopen, and so on. */
+  reopenCycle: number;
   user: { id: string; name: string };
   task: {
     id: string;
     title: string;
     clientWork: string | null;
+    reopenCount: number;
     client: { id: string; name: string } | null;
   };
 };
@@ -24,6 +27,14 @@ export type TaskTotal = {
   /** Secondary column values, in the same order as the view's detailHeadings. */
   details: (string | null)[];
   minutes: number;
+  /**
+   * The share of those minutes logged after a reopen. It is part of minutes,
+   * not on top of it: rework is still time the task cost, only time that says
+   * the work had to be done twice.
+   */
+  reopenMinutes: number;
+  /** How many times the task has been sent back, 0 for most of them. */
+  reopenCount: number;
   people: PersonTotal[];
 };
 
@@ -32,7 +43,24 @@ export type ReportGroup = {
   key: string;
   label: string;
   minutes: number;
+  reopenMinutes: number;
   tasks: TaskTotal[];
+};
+
+/**
+ * One reopened task, as the reopen summary reports it: what the first pass
+ * cost, what each return added, and the total the two come to.
+ */
+export type ReopenTotal = {
+  taskId: string;
+  title: string;
+  client: string;
+  reopenCount: number;
+  originalMinutes: number;
+  reopenMinutes: number;
+  minutes: number;
+  /** Hours per return, cycle 1 first. */
+  cycles: { cycle: number; minutes: number }[];
 };
 
 export const REPORT_VIEWS = ["client", "employee", "service"] as const;
@@ -143,6 +171,7 @@ export function buildReport(
       key: string;
       label: string;
       minutes: number;
+      reopenMinutes: number;
       tasks: Map<
         string,
         {
@@ -150,6 +179,8 @@ export function buildReport(
           title: string;
           details: (string | null)[];
           minutes: number;
+          reopenMinutes: number;
+          reopenCount: number;
           people: Map<string, PersonTotal>;
         }
       >;
@@ -166,6 +197,7 @@ export function buildReport(
         key,
         label: definition.groupLabel(log),
         minutes: 0,
+        reopenMinutes: 0,
         tasks: new Map(),
       };
       groups.set(key, group);
@@ -181,12 +213,19 @@ export function buildReport(
         title: log.task.title,
         details: definition.details(log),
         minutes: 0,
+        reopenMinutes: 0,
+        reopenCount: log.task.reopenCount,
         people: new Map(),
       };
       group.tasks.set(log.task.id, task);
     }
 
     task.minutes += log.minutes;
+
+    if (log.reopenCycle > 0) {
+      group.reopenMinutes += log.minutes;
+      task.reopenMinutes += log.minutes;
+    }
 
     const person = task.people.get(log.user.id);
 
@@ -206,12 +245,15 @@ export function buildReport(
       key: group.key,
       label: group.label,
       minutes: group.minutes,
+      reopenMinutes: group.reopenMinutes,
       tasks: [...group.tasks.values()]
         .map((task) => ({
           taskId: task.taskId,
           title: task.title,
           details: task.details,
           minutes: task.minutes,
+          reopenMinutes: task.reopenMinutes,
+          reopenCount: task.reopenCount,
           people: [...task.people.values()].sort(
             byMinutesThenName<PersonTotal>((person) => person.name)
           ),
@@ -219,6 +261,83 @@ export function buildReport(
         .sort(byMinutesThenName<TaskTotal>((task) => task.title)),
     }))
     .sort(byMinutesThenName<ReportGroup>((group) => group.label));
+}
+
+/**
+ * The reopen report: every task with time in range that has been sent back at
+ * least once, with the original pass and each return priced separately and then
+ * added up. It is built from the same filtered logs as the rest of the page, so
+ * a task whose reopen hours fall outside the range still appears on the
+ * strength of its original hours, showing no reopen time for the period -- the
+ * honest answer rather than a silent omission.
+ */
+export function buildReopenSummary(logs: TimeLogRow[]): ReopenTotal[] {
+  const tasks = new Map<
+    string,
+    ReopenTotal & { cycleTotals: Map<number, number> }
+  >();
+
+  for (const log of logs) {
+    if (log.task.reopenCount === 0) {
+      continue;
+    }
+
+    let task = tasks.get(log.task.id);
+
+    if (!task) {
+      task = {
+        taskId: log.task.id,
+        title: log.task.title,
+        client: clientLabel(log),
+        reopenCount: log.task.reopenCount,
+        originalMinutes: 0,
+        reopenMinutes: 0,
+        minutes: 0,
+        cycles: [],
+        cycleTotals: new Map(),
+      };
+      tasks.set(log.task.id, task);
+    }
+
+    task.minutes += log.minutes;
+
+    if (log.reopenCycle > 0) {
+      task.reopenMinutes += log.minutes;
+      task.cycleTotals.set(
+        log.reopenCycle,
+        (task.cycleTotals.get(log.reopenCycle) ?? 0) + log.minutes
+      );
+    } else {
+      task.originalMinutes += log.minutes;
+    }
+  }
+
+  return [...tasks.values()]
+    .map(({ cycleTotals, ...task }) => ({
+      ...task,
+      cycles: [...cycleTotals.entries()]
+        .map(([cycle, minutes]) => ({ cycle, minutes }))
+        .sort((a, b) => a.cycle - b.cycle),
+    }))
+    .sort(
+      (a, b) =>
+        b.reopenMinutes - a.reopenMinutes ||
+        b.reopenCount - a.reopenCount ||
+        a.title.localeCompare(b.title)
+    );
+}
+
+/** Hours in range that went into rework rather than the first pass. */
+export function totalReopenMinutes(logs: TimeLogRow[]) {
+  return logs
+    .filter((log) => log.reopenCycle > 0)
+    .reduce((sum, log) => sum + log.minutes, 0);
+}
+
+export function countReopenedTasks(logs: TimeLogRow[]) {
+  return new Set(
+    logs.filter((log) => log.task.reopenCount > 0).map((log) => log.task.id)
+  ).size;
 }
 
 /** Overall per-person totals across every group, for the summary table. */

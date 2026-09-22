@@ -77,3 +77,47 @@ export function summariseByUser(
 export function totalMinutes(logs: { minutes: number }[]) {
   return logs.reduce((sum, log) => sum + log.minutes, 0);
 }
+
+/** A log entry only needs its cycle number to be split into runs. */
+export type ReopenCycleLog = { minutes: number; reopenCycle: number };
+
+/**
+ * Splits a task's logged time into the original run and everything logged after
+ * it was reopened. Reopen time is not taken out of the total -- it is still
+ * time spent on the task -- it is only told apart, which is the whole point of
+ * tracking reopens: what the task cost first time, and what the rework added.
+ */
+export function splitReopenMinutes(logs: ReopenCycleLog[]) {
+  let original = 0;
+  let reopen = 0;
+
+  for (const log of logs) {
+    if (log.reopenCycle > 0) {
+      reopen += log.minutes;
+    } else {
+      original += log.minutes;
+    }
+  }
+
+  return { original, reopen, total: original + reopen };
+}
+
+/**
+ * Per-cycle subtotals for the reopen breakdown, cycle 1 first. The original run
+ * (cycle 0) is left out: this answers "how long did each return take", and the
+ * first pass is not a return. Cycles nobody logged against are skipped rather
+ * than shown as zero.
+ */
+export function minutesByReopenCycle(logs: ReopenCycleLog[]) {
+  const totals = new Map<number, number>();
+
+  for (const log of logs) {
+    if (log.reopenCycle > 0) {
+      totals.set(log.reopenCycle, (totals.get(log.reopenCycle) ?? 0) + log.minutes);
+    }
+  }
+
+  return [...totals.entries()]
+    .map(([cycle, minutes]) => ({ cycle, minutes }))
+    .sort((a, b) => a.cycle - b.cycle);
+}

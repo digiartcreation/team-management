@@ -12,13 +12,16 @@ import {
   REPORT_VIEWS,
   REPORT_VIEW_DEFINITIONS,
   UNMAPPED_SERVICE_LABEL,
+  buildReopenSummary,
   buildReport,
   countDistinctClients,
   countDistinctServices,
   countDistinctTasks,
+  countReopenedTasks,
   groupTimeByPerson,
   isReportView,
   serviceNameOf,
+  totalReopenMinutes,
 } from "@/lib/reports";
 
 type ReportFilters = {
@@ -154,12 +157,14 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
       where,
       select: {
         minutes: true,
+        reopenCycle: true,
         user: { select: { id: true, name: true } },
         task: {
           select: {
             id: true,
             title: true,
             clientWork: true,
+            reopenCount: true,
             client: { select: { id: true, name: true } },
           },
         },
@@ -178,6 +183,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const groups = buildReport(logs, view);
   const byPerson = groupTimeByPerson(logs);
   const total = totalMinutes(logs);
+  const reopenTotal = totalReopenMinutes(logs);
+  const reopenedTasks = buildReopenSummary(logs);
 
   // First column, the detail columns, an optional person column, then time.
   const columnCount =
@@ -212,11 +219,21 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           ))}
         </nav>
 
-        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5">
+        <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
           <StatCard
             label="Total time"
             value={formatDuration(total)}
             description="Across every task in range"
+          />
+          <StatCard
+            label="Reopen time"
+            value={formatDuration(reopenTotal)}
+            description="Part of the total, spent on rework"
+          />
+          <StatCard
+            label="Reopened tasks"
+            value={countReopenedTasks(logs)}
+            description="Sent back at least once"
           />
           <StatCard
             label="Clients"
@@ -373,6 +390,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                           colSpan={columnCount - 1}
                         >
                           {group.label}
+                          {group.reopenMinutes > 0 ? (
+                            <span className="ml-2 text-xs font-medium text-slate-500">
+                              incl. {formatDuration(group.reopenMinutes)} reopen
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-4 py-3 text-right font-semibold text-[#770FC2]">
                           {formatDuration(group.minutes)}
@@ -386,6 +408,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                         >
                           <td className="px-4 py-4 pl-8 font-medium text-slate-950">
                             {task.title}
+                            {task.reopenCount > 0 ? (
+                              <div className="mt-1 text-xs font-medium text-[#770FC2]">
+                                Reopened {task.reopenCount}{" "}
+                                {task.reopenCount === 1 ? "time" : "times"}
+                              </div>
+                            ) : null}
                           </td>
                           {task.details.map((detail, index) => (
                             <td
@@ -410,6 +438,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                             <div className="font-medium text-slate-800">
                               {formatDuration(task.minutes)}
                             </div>
+                            {task.reopenMinutes > 0 ? (
+                              <div className="text-xs text-[#770FC2]">
+                                {formatDuration(task.reopenMinutes)} reopen
+                              </div>
+                            ) : null}
                             {definition.showPeople && task.people.length > 1
                               ? task.people.map((person) => (
                                   <div
@@ -430,6 +463,77 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
             </div>
           )}
         </section>
+
+        {/* The reopen flow in full: how often each task came back, what each
+            return cost, and what that makes the task in total. Shown on every
+            view, since rework is a property of the task rather than of the
+            dimension being reported on. */}
+        {reopenedTasks.length > 0 ? (
+          <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <div className="border-b border-slate-200 px-4 py-3">
+              <h2 className="text-sm font-semibold text-slate-950">
+                Reopened tasks
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Reopen hours are part of the total above, not extra to it, and
+                cover the filtered range only -- a task whose rework falls
+                outside it shows the reopen count but no reopen hours.
+              </p>
+            </div>
+            <div className="overflow-x-auto">
+              <table className="w-full min-w-[860px] text-left text-sm">
+                <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
+                  <tr>
+                    <th className="px-4 py-3 font-semibold">Task</th>
+                    <th className="px-4 py-3 font-semibold">Client</th>
+                    <th className="px-4 py-3 text-right font-semibold">
+                      Reopens
+                    </th>
+                    <th className="px-4 py-3 text-right font-semibold">
+                      Original
+                    </th>
+                    <th className="px-4 py-3 text-right font-semibold">
+                      Reopen
+                    </th>
+                    <th className="px-4 py-3 text-right font-semibold">Total</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-200">
+                  {reopenedTasks.map((task) => (
+                    <tr key={task.taskId} className="align-top hover:bg-slate-50">
+                      <td className="px-4 py-4 font-medium text-slate-950">
+                        {task.title}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">{task.client}</td>
+                      <td className="px-4 py-4 text-right text-slate-700">
+                        {task.reopenCount}
+                      </td>
+                      <td className="px-4 py-4 text-right text-slate-700">
+                        {formatDuration(task.originalMinutes)}
+                      </td>
+                      <td className="px-4 py-4 text-right text-[#770FC2]">
+                        <div className="font-medium">
+                          {formatDuration(task.reopenMinutes)}
+                        </div>
+                        {task.cycles.map((cycle) => (
+                          <div
+                            key={cycle.cycle}
+                            className="text-xs text-slate-500"
+                          >
+                            Reopen {cycle.cycle} {formatDuration(cycle.minutes)}
+                          </div>
+                        ))}
+                      </td>
+                      <td className="px-4 py-4 text-right font-medium text-slate-800">
+                        {formatDuration(task.minutes)}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </section>
+        ) : null}
 
         {/* On the employee report the groups above already are the per-person totals. */}
         {view !== "employee" && byPerson.length > 0 ? (

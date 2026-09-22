@@ -10,9 +10,39 @@ import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import { DIGITAL_MARKETING, formatServiceLabel } from "@/lib/services";
 import { formatDuration } from "@/lib/duration";
+import {
+  canReopenFrom,
+  formatTaskStatus,
+  isOnReopenCycle,
+  isTaskStatus,
+} from "@/lib/taskStatus";
 
-const statuses = new Set(["pending", "in_progress", "completed"]);
 const priorities = new Set(["low", "medium", "high"]);
+
+const REOPEN_NEEDS_COMPLETED = "Only a completed task can be reopened.";
+
+/**
+ * What a status change means for the reopen bookkeeping. Sending a completed
+ * task back starts a new cycle: the counter on the task goes up and a
+ * TaskReopen row records who did it and why. Every other move leaves both
+ * alone -- including re-saving a task that is already reopened, which is not a
+ * second reopen.
+ */
+function resolveReopenCycle(
+  previousStatus: string,
+  nextStatus: string,
+  reopenCount: number
+) {
+  if (nextStatus !== "reopened" || previousStatus === "reopened") {
+    return null;
+  }
+
+  if (!canReopenFrom(previousStatus)) {
+    throw new Error(REOPEN_NEEDS_COMPLETED);
+  }
+
+  return reopenCount + 1;
+}
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -203,8 +233,12 @@ export async function createTask(formData: FormData) {
     throw new Error("Task title is required.");
   }
 
-  if (!statuses.has(status) || !priorities.has(priority)) {
+  if (!isTaskStatus(status) || !priorities.has(priority)) {
     throw new Error("Invalid task status or priority.");
+  }
+
+  if (status === "reopened") {
+    throw new Error("A new task cannot start out reopened.");
   }
 
   await validateTaskRelations(assignedToId, teamId, managerTeamId);
@@ -277,7 +311,7 @@ export async function updateTask(formData: FormData) {
     throw new Error("Task title is required.");
   }
 
-  if (!statuses.has(status) || !priorities.has(priority)) {
+  if (!isTaskStatus(status) || !priorities.has(priority)) {
     throw new Error("Invalid task status or priority.");
   }
 
@@ -294,7 +328,12 @@ export async function updateTask(formData: FormData) {
   try {
     const previous = await prisma.task.findUnique({
       where: { id },
-      select: { assignedToId: true, status: true, teamId: true },
+      select: {
+        assignedToId: true,
+        status: true,
+        teamId: true,
+        reopenCount: true,
+      },
     });
 
     if (!previous) {
@@ -305,7 +344,13 @@ export async function updateTask(formData: FormData) {
       throw new Error("Managers can only edit tasks for their own team.");
     }
 
-    await prisma.task.update({
+    const reopenCycle = resolveReopenCycle(
+      previous.status,
+      status,
+      previous.reopenCount
+    );
+
+    const update = prisma.task.update({
       where: { id },
       data: {
         title,
@@ -317,14 +362,36 @@ export async function updateTask(formData: FormData) {
         digitalMarketingAmount,
         status,
         priority,
+        ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
       },
     });
+
+    // The counter and the reopen row have to agree, so they are written
+    // together. The task form has nowhere to ask for a reason, hence none.
+    if (reopenCycle) {
+      await prisma.$transaction([
+        update,
+        prisma.taskReopen.create({
+          data: {
+            taskId: id,
+            userId: sessionUser.id,
+            cycle: reopenCycle,
+            reason: null,
+          },
+        }),
+      ]);
+    } else {
+      await update;
+    }
+
     await logActivity({
       userId: sessionUser.id,
-      action: "updated",
+      action: reopenCycle ? "reopened" : "updated",
       entityType: "task",
       entityId: id,
-      description: `Updated task ${title}`,
+      description: reopenCycle
+        ? `Reopened task ${title} (reopen ${reopenCycle})`
+        : `Updated task ${title}`,
     });
     if (assignedToId && assignedToId !== previous?.assignedToId) {
       await createNotification({
@@ -340,6 +407,13 @@ export async function updateTask(formData: FormData) {
         title: "Task completed",
         message: `Task completed: ${title}`,
         type: "TASK_COMPLETED",
+      });
+    } else if (assignedToId && reopenCycle) {
+      await createNotification({
+        userId: assignedToId,
+        title: "Task reopened",
+        message: `Task reopened for more work: ${title}`,
+        type: "TASK_UPDATED",
       });
     } else if (assignedToId && previous?.status !== status) {
       await createNotification({
@@ -396,21 +470,40 @@ async function canUpdateTaskStatus(
 const COMPLETION_NEEDS_TIME =
   "Log the time spent before marking this task completed.";
 
+const REOPEN_COMPLETION_NEEDS_TIME =
+  "Log the time spent on this reopen before completing the task again.";
+
 /**
- * A task cannot be completed with nothing logged against it -- completed work
- * is what gets billed, so its hours have to exist. Only the move INTO completed
- * is gated: a task already completed (including one completed before this rule)
- * can still have its status re-saved without being held hostage to it.
+ * A task cannot be completed with nothing logged against the run it is on --
+ * completed work is what gets billed, so its hours have to exist. After a
+ * reopen that means hours on the new cycle: the original run is already
+ * accounted for and cannot stand in for the rework.
+ *
+ * Only the move INTO completed is gated: a task already completed (including
+ * one completed before this rule) can still have its status re-saved without
+ * being held hostage to it. Returns the message to raise, or null when the move
+ * is allowed.
  */
-function hasTimeForCompletion(
+async function completionTimeError(
+  taskId: string,
   status: string,
-  task: { status: string; _count: { timeLogs: number } }
+  task: { status: string; reopenCount: number }
 ) {
   if (status !== "completed" || task.status === "completed") {
-    return true;
+    return null;
   }
 
-  return task._count.timeLogs > 0;
+  const logged = await prisma.taskTimeLog.count({
+    where: { taskId, reopenCycle: task.reopenCount },
+  });
+
+  if (logged > 0) {
+    return null;
+  }
+
+  return isOnReopenCycle(task.reopenCount)
+    ? REOPEN_COMPLETION_NEEDS_TIME
+    : COMPLETION_NEEDS_TIME;
 }
 
 export async function updateOwnTaskStatus(formData: FormData) {
@@ -428,8 +521,9 @@ export async function updateOwnTaskStatus(formData: FormData) {
 
   const id = getValue(formData, "id");
   const status = getValue(formData, "status");
+  const reopenReason = getValue(formData, "reopenReason");
 
-  if (!id || !statuses.has(status)) {
+  if (!id || !isTaskStatus(status)) {
     throw new Error("Invalid task status.");
   }
 
@@ -438,8 +532,9 @@ export async function updateOwnTaskStatus(formData: FormData) {
     select: {
       assignedToId: true,
       teamId: true,
+      title: true,
       status: true,
-      _count: { select: { timeLogs: true } },
+      reopenCount: true,
     },
   });
 
@@ -451,25 +546,49 @@ export async function updateOwnTaskStatus(formData: FormData) {
     redirect("/tasks");
   }
 
-  if (!hasTimeForCompletion(status, task)) {
-    throw new Error(COMPLETION_NEEDS_TIME);
+  const blockedCompletion = await completionTimeError(id, status, task);
+
+  if (blockedCompletion) {
+    throw new Error(blockedCompletion);
   }
 
+  const reopenCycle = resolveReopenCycle(task.status, status, task.reopenCount);
+
   try {
-    const previous = await prisma.task.findUnique({
+    const update = prisma.task.update({
       where: { id },
-      select: { assignedToId: true, title: true, status: true },
+      data: {
+        status,
+        ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
+      },
     });
-    await prisma.task.update({
-      where: { id },
-      data: { status },
-    });
+
+    // The counter and the reopen row have to agree, so they are written
+    // together: a cycle with no record of why it opened is worse than no cycle.
+    if (reopenCycle) {
+      await prisma.$transaction([
+        update,
+        prisma.taskReopen.create({
+          data: {
+            taskId: id,
+            userId: sessionUser.id,
+            cycle: reopenCycle,
+            reason: reopenReason || null,
+          },
+        }),
+      ]);
+    } else {
+      await update;
+    }
+
     await logActivity({
       userId: sessionUser.id,
-      action: "updated",
+      action: reopenCycle ? "reopened" : "updated",
       entityType: "task",
       entityId: id,
-      description: `Updated task status for ${previous?.title ?? "task"}`,
+      description: reopenCycle
+        ? `Reopened task ${task.title} (reopen ${reopenCycle})`
+        : `Updated task status for ${task.title}`,
     });
     if (sessionUser.role === "member") {
       const user = await prisma.user.findUnique({
@@ -478,23 +597,35 @@ export async function updateOwnTaskStatus(formData: FormData) {
       });
       await notifyAdminsAndTeamManagers({
         actorUserId: sessionUser.id,
-        title: status === "completed" ? "Task completed" : "Task status updated",
-        message: `${user?.name ?? "An employee"} marked task "${previous?.title ?? "task"}" as ${status.replace("_", " ")}.`,
+        title:
+          status === "completed"
+            ? "Task completed"
+            : reopenCycle
+              ? "Task reopened"
+              : "Task status updated",
+        message: `${user?.name ?? "An employee"} marked task "${task.title}" as ${formatTaskStatus(status)}.`,
         type: "TASK_UPDATED",
       });
-    } else if (previous?.assignedToId && previous.assignedToId !== sessionUser.id) {
-      if (status === "completed" && previous.status !== "completed") {
+    } else if (task.assignedToId && task.assignedToId !== sessionUser.id) {
+      if (status === "completed" && task.status !== "completed") {
         await createNotification({
-          userId: previous.assignedToId,
+          userId: task.assignedToId,
           title: "Task completed",
-          message: `Task completed: ${previous.title}`,
+          message: `Task completed: ${task.title}`,
           type: "TASK_COMPLETED",
         });
-      } else if (previous.status !== status) {
+      } else if (reopenCycle) {
         await createNotification({
-          userId: previous.assignedToId,
+          userId: task.assignedToId,
+          title: "Task reopened",
+          message: `Task reopened for more work: ${task.title}`,
+          type: "TASK_UPDATED",
+        });
+      } else if (task.status !== status) {
+        await createNotification({
+          userId: task.assignedToId,
           title: "Task updated",
-          message: `Task status changed: ${previous.title}`,
+          message: `Task status changed: ${task.title}`,
           type: "TASK_UPDATED",
         });
       }
@@ -618,7 +749,12 @@ export async function logTaskTime(
 
   const task = await prisma.task.findUnique({
     where: { id: taskId },
-    select: { title: true, teamId: true, assignedToId: true },
+    select: {
+      title: true,
+      teamId: true,
+      assignedToId: true,
+      reopenCount: true,
+    },
   });
 
   if (!task) {
@@ -629,6 +765,12 @@ export async function logTaskTime(
     return { error: "You cannot log time on this task." };
   }
 
+  // Once a task has been sent back, the note stops being optional: rework that
+  // does not say what it was for is unaccountable hours on the reopen report.
+  if (isOnReopenCycle(task.reopenCount) && !note) {
+    return { error: "Add a note describing the reopened work." };
+  }
+
   try {
     await prisma.taskTimeLog.create({
       data: {
@@ -636,6 +778,9 @@ export async function logTaskTime(
         userId: sessionUser.id,
         minutes,
         date,
+        // Stamped with the cycle the task is on now, which is what keeps reopen
+        // hours separable from the original run for good.
+        reopenCycle: task.reopenCount,
         note: note || null,
       },
     });
@@ -645,7 +790,9 @@ export async function logTaskTime(
       action: "logged",
       entityType: "task",
       entityId: taskId,
-      description: `Logged ${formatDuration(minutes)} on task ${task.title}`,
+      description: isOnReopenCycle(task.reopenCount)
+        ? `Logged ${formatDuration(minutes)} on task ${task.title} (reopen ${task.reopenCount})`
+        : `Logged ${formatDuration(minutes)} on task ${task.title}`,
     });
   } catch {
     return { error: "Could not save the time entry. Please try again." };

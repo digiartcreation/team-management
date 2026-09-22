@@ -2,12 +2,18 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { logTaskTime, type LogTimeState } from "@/app/tasks/actions";
+import { isOnReopenCycle } from "@/lib/taskStatus";
 
 type LogTimeDialogProps = {
   taskId: string;
   taskTitle: string;
   /** Today as "YYYY-MM-DD": the default entry date, and the latest allowed. */
   today: string;
+  /**
+   * How many times the task has been reopened. Above zero the entry belongs to
+   * a reopen cycle, which is what makes the note mandatory.
+   */
+  reopenCount: number;
   open: boolean;
   onClose: () => void;
   onSaved: () => void;
@@ -41,6 +47,7 @@ export default function LogTimeDialog({
   taskId,
   taskTitle,
   today,
+  reopenCount,
   open,
   onClose,
   onSaved,
@@ -52,6 +59,9 @@ export default function LogTimeDialog({
     LogTimeState,
     FormData
   >(logTaskTime, null);
+  // Rework has to say what it was for, so on a reopened task the note is no
+  // longer the optional afterthought it is on the original run.
+  const onReopen = isOnReopenCycle(reopenCount);
 
   useEffect(() => {
     const dialog = dialogRef.current;
@@ -89,10 +99,23 @@ export default function LogTimeDialog({
             id={`log-time-heading-${taskId}`}
             className="text-lg font-semibold text-slate-950"
           >
-            {completing ? "Log time to complete" : "Log time"}
+            {onReopen
+              ? completing
+                ? "Log reopen time to complete"
+                : "Log reopen time"
+              : completing
+                ? "Log time to complete"
+                : "Log time"}
           </h2>
           <p className="mt-1 break-words text-sm text-slate-500">{taskTitle}</p>
-          {completing ? (
+          {onReopen ? (
+            <p className="mt-2 rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-2 text-sm text-[#770FC2]">
+              This task has been reopened {reopenCount}{" "}
+              {reopenCount === 1 ? "time" : "times"}. Time saved here counts
+              towards reopen {reopenCount} and is reported apart from the
+              original run.
+            </p>
+          ) : completing ? (
             <p className="mt-2 text-sm text-slate-600">
               Nothing has been logged against this task yet. Saving this entry
               marks it completed.
@@ -115,7 +138,7 @@ export default function LogTimeDialog({
         </fieldset>
 
         <label className="grid gap-2">
-          <span className={labelClass}>Date of work</span>
+          <span className={labelClass}>Date Of Work Completion</span>
           <input
             name="date"
             type="date"
@@ -127,13 +150,26 @@ export default function LogTimeDialog({
         </label>
 
         <label className="grid gap-2">
-          <span className={labelClass}>Note (optional)</span>
+          <span className={labelClass}>
+            {onReopen ? "Note (required)" : "Note (optional)"}
+          </span>
           <input
             name="note"
             type="text"
-            placeholder="Eg: first cut and colour pass"
+            required={onReopen}
+            placeholder={
+              onReopen
+                ? "Eg: re-export after client feedback"
+                : "Eg: first cut and colour pass"
+            }
             className={fieldClass}
           />
+          {onReopen ? (
+            <span className="text-xs text-slate-500">
+              Say what the rework was for. Reopened hours are reported on their
+              own, so they cannot go in unexplained.
+            </span>
+          ) : null}
         </label>
 
         {state && "error" in state ? (

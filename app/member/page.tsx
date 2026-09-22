@@ -4,16 +4,13 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { formatTaskStatus } from "@/lib/taskStatus";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
   month: "short",
   day: "numeric",
 });
-
-function formatLabel(value: string) {
-  return value.replace("_", " ");
-}
 
 function formatRole(role?: string | null) {
   return role === "member" ? "employee" : role;
@@ -48,43 +45,54 @@ export default async function MemberDashboardPage() {
     },
   });
 
-  const [backlogTasks, inProgressTasks, completedTasks, recentTasks] =
-    await Promise.all([
-      prisma.task.count({
-        where: {
-          assignedToId: sessionUser.id,
-          status: "pending",
-        },
-      }),
-      prisma.task.count({
-        where: {
-          assignedToId: sessionUser.id,
-          status: "in_progress",
-        },
-      }),
-      prisma.task.count({
-        where: {
-          assignedToId: sessionUser.id,
-          status: "completed",
-        },
-      }),
-      prisma.task.findMany({
-        where: {
-          assignedToId: sessionUser.id,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 5,
-        include: {
-          team: {
-            select: {
-              name: true,
-            },
+  const [
+    backlogTasks,
+    inProgressTasks,
+    completedTasks,
+    reopenedTasks,
+    recentTasks,
+  ] = await Promise.all([
+    prisma.task.count({
+      where: {
+        assignedToId: sessionUser.id,
+        status: "pending",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        assignedToId: sessionUser.id,
+        status: "in_progress",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        assignedToId: sessionUser.id,
+        status: "completed",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        assignedToId: sessionUser.id,
+        status: "reopened",
+      },
+    }),
+    prisma.task.findMany({
+      where: {
+        assignedToId: sessionUser.id,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 5,
+      include: {
+        team: {
+          select: {
+            name: true,
           },
         },
-      }),
-    ]);
+      },
+    }),
+  ]);
 
   return (
     <DashboardLayout>
@@ -119,7 +127,7 @@ export default async function MemberDashboardPage() {
           </section>
         ) : null}
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard
             label="Assigned Team"
             value={member?.team ? 1 : 0}
@@ -139,6 +147,11 @@ export default async function MemberDashboardPage() {
             label="Completed"
             value={completedTasks}
             description="Tasks finished"
+          />
+          <StatCard
+            label="Reopened"
+            value={reopenedTasks}
+            description="Sent back for rework"
           />
         </section>
 
@@ -179,8 +192,8 @@ export default async function MemberDashboardPage() {
                       <td className="py-3 pr-4 text-slate-600">
                         {task.team?.name ?? "No team"}
                       </td>
-                      <td className="py-3 pr-4 capitalize text-slate-600">
-                        {formatLabel(task.status)}
+                      <td className="py-3 pr-4 text-slate-600">
+                        {formatTaskStatus(task.status)}
                       </td>
                       <td className="py-3 pr-4 capitalize text-slate-600">
                         {task.priority}

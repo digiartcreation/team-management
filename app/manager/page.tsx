@@ -4,16 +4,13 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { formatTaskStatus } from "@/lib/taskStatus";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
   month: "short",
   day: "numeric",
 });
-
-function formatLabel(value: string) {
-  return value.replace("_", " ");
-}
 
 function formatRole(role?: string | null) {
   return role === "member" ? "employee" : role;
@@ -80,43 +77,54 @@ export default async function ManagerDashboardPage() {
     );
   }
 
-  const [pendingTasks, inProgressTasks, completedTasks, recentTasks] =
-    await Promise.all([
-      prisma.task.count({
-        where: {
-          teamId: manager.teamId,
-          status: "pending",
-        },
-      }),
-      prisma.task.count({
-        where: {
-          teamId: manager.teamId,
-          status: "in_progress",
-        },
-      }),
-      prisma.task.count({
-        where: {
-          teamId: manager.teamId,
-          status: "completed",
-        },
-      }),
-      prisma.task.findMany({
-        where: {
-          teamId: manager.teamId,
-        },
-        orderBy: {
-          createdAt: "desc",
-        },
-        take: 5,
-        include: {
-          assignedTo: {
-            select: {
-              name: true,
-            },
+  const [
+    backlogTasks,
+    inProgressTasks,
+    completedTasks,
+    reopenedTasks,
+    recentTasks,
+  ] = await Promise.all([
+    prisma.task.count({
+      where: {
+        teamId: manager.teamId,
+        status: "pending",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        teamId: manager.teamId,
+        status: "in_progress",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        teamId: manager.teamId,
+        status: "completed",
+      },
+    }),
+    prisma.task.count({
+      where: {
+        teamId: manager.teamId,
+        status: "reopened",
+      },
+    }),
+    prisma.task.findMany({
+      where: {
+        teamId: manager.teamId,
+      },
+      orderBy: {
+        createdAt: "desc",
+      },
+      take: 5,
+      include: {
+        assignedTo: {
+          select: {
+            name: true,
           },
         },
-      }),
-    ]);
+      },
+    }),
+  ]);
 
   return (
     <DashboardLayout>
@@ -143,7 +151,7 @@ export default async function ManagerDashboardPage() {
           </div>
         </header>
 
-        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
+        <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
             label="Assigned Team"
             value={1}
@@ -160,14 +168,24 @@ export default async function ManagerDashboardPage() {
             description="Tasks linked to your team"
           />
           <StatCard
-            label="Pending"
-            value={pendingTasks}
-            description="Team tasks waiting"
+            label="Backlog"
+            value={backlogTasks}
+            description="Team tasks not started yet"
           />
           <StatCard
             label="In Progress"
             value={inProgressTasks}
-            description={`${completedTasks} completed`}
+            description="Team tasks underway"
+          />
+          <StatCard
+            label="Completed"
+            value={completedTasks}
+            description="Team tasks finished"
+          />
+          <StatCard
+            label="Reopened"
+            value={reopenedTasks}
+            description="Sent back for rework"
           />
         </section>
 
@@ -208,8 +226,8 @@ export default async function ManagerDashboardPage() {
                       <td className="py-3 pr-4 text-slate-600">
                         {task.assignedTo?.name ?? "Unassigned"}
                       </td>
-                      <td className="py-3 pr-4 capitalize text-slate-600">
-                        {formatLabel(task.status)}
+                      <td className="py-3 pr-4 text-slate-600">
+                        {formatTaskStatus(task.status)}
                       </td>
                       <td className="py-3 pr-4 capitalize text-slate-600">
                         {task.priority}

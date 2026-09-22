@@ -8,14 +8,20 @@ import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
 import TaskStatusControl from "@/components/tasks/TaskStatusControl";
 import {
   formatDuration,
+  minutesByReopenCycle,
+  splitReopenMinutes,
   summariseByUser,
-  totalMinutes,
 } from "@/lib/duration";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
 import { formatInr } from "@/lib/services";
+import {
+  TASK_STATUS_OPTIONS,
+  formatTaskStatus,
+  isTaskStatus,
+} from "@/lib/taskStatus";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -27,7 +33,6 @@ function todayInputValue() {
   return new Date().toLocaleDateString("en-CA");
 }
 
-const statusOptions = ["pending", "in_progress", "completed"];
 const priorityOptions = ["low", "medium", "high"];
 
 type TasksPageProps = {
@@ -40,12 +45,6 @@ type TasksPageProps = {
     page?: string;
   }>;
 };
-
-function formatLabel(value: string) {
-  return value
-    .replace("_", " ")
-    .replace(/\b\w/g, (letter) => letter.toUpperCase());
-}
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
   const session = await auth();
@@ -84,7 +83,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     where.teamId = managerTeamId;
   }
 
-  if (filters.status && statusOptions.includes(filters.status)) {
+  if (isTaskStatus(filters.status)) {
     where.status = filters.status;
   }
 
@@ -130,6 +129,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
         timeLogs: {
           select: {
             minutes: true,
+            reopenCycle: true,
             user: { select: { name: true } },
           },
         },
@@ -206,9 +206,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="">All statuses</option>
-              {statusOptions.map((status) => (
-                <option key={status} value={status}>
-                  {formatLabel(status)}
+              {TASK_STATUS_OPTIONS.map((status) => (
+                <option key={status.value} value={status.value}>
+                  {status.label}
                 </option>
               ))}
             </select>
@@ -339,7 +339,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {tasks.map((task) => (
+                  {tasks.map((task) => {
+                    // Reopen hours still count towards the total; they are only
+                    // told apart, so a task that came back twice does not read
+                    // as if it took that long first time.
+                    const time = splitReopenMinutes(task.timeLogs);
+
+                    return (
                     <tr key={task.id} className="hover:bg-slate-50">
                       <td className="px-4 py-4">
                         <div className="font-medium text-slate-950">
@@ -381,9 +387,21 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         )}
                       </td>
                       <td className="px-4 py-4">
-                        <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium text-slate-700">
-                          {formatLabel(task.status)}
+                        <span
+                          className={`rounded-full px-2.5 py-1 text-xs font-medium ${
+                            task.status === "reopened"
+                              ? "bg-[#F3E8FF] text-[#770FC2]"
+                              : "bg-slate-100 text-slate-700"
+                          }`}
+                        >
+                          {formatTaskStatus(task.status)}
                         </span>
+                        {task.reopenCount > 0 ? (
+                          <div className="mt-1 text-xs text-slate-500">
+                            Reopened {task.reopenCount}{" "}
+                            {task.reopenCount === 1 ? "time" : "times"}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4">
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium capitalize text-slate-700">
@@ -398,8 +416,26 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         ) : (
                           <>
                             <div className="font-medium text-slate-800">
-                              {formatDuration(totalMinutes(task.timeLogs))}
+                              {formatDuration(time.total)}
                             </div>
+                            {time.reopen > 0 ? (
+                              <>
+                                <div className="mt-1 text-xs text-slate-500">
+                                  Original {formatDuration(time.original)}
+                                </div>
+                                {minutesByReopenCycle(task.timeLogs).map(
+                                  (cycle) => (
+                                    <div
+                                      key={cycle.cycle}
+                                      className="text-xs text-[#770FC2]"
+                                    >
+                                      Reopen {cycle.cycle}{" "}
+                                      {formatDuration(cycle.minutes)}
+                                    </div>
+                                  )
+                                )}
+                              </>
+                            ) : null}
                             {summariseByUser(task.timeLogs).map((person) => (
                               <div
                                 key={person.name}
@@ -426,6 +462,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                             taskTitle={task.title}
                             today={today}
                             status={task.status}
+                            reopenCount={task.reopenCount}
                           />
                           {canManageTasks ? (
                             <Link
@@ -441,7 +478,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                         </ActionMenu>
                       </td>
                     </tr>
-                  ))}
+                    );
+                  })}
                 </tbody>
               </table>
             </div>

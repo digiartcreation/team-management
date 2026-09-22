@@ -2,6 +2,7 @@ import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ClientWorkField, {
   type TaskClientOption,
 } from "@/components/tasks/ClientWorkField";
+import { TASK_STATUS_OPTIONS, canReopenFrom } from "@/lib/taskStatus";
 
 type TaskFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -30,12 +31,6 @@ type TaskFormProps = {
   };
 };
 
-const statuses = [
-  { value: "pending", label: "Pending" },
-  { value: "in_progress", label: "In Progress" },
-  { value: "completed", label: "Completed" },
-];
-
 const priorities = [
   { value: "low", label: "Low" },
   { value: "medium", label: "Medium" },
@@ -50,6 +45,16 @@ export default function TaskForm({
   clients,
   task,
 }: TaskFormProps) {
+  // Reopening is a return trip, so the option only exists on a task that was
+  // called finished -- or on one already sitting in Reopened, whose own status
+  // has to stay selectable.
+  const statuses = TASK_STATUS_OPTIONS.filter(
+    (status) =>
+      status.value !== "reopened" ||
+      canReopenFrom(task?.status ?? "") ||
+      task?.status === "reopened"
+  );
+
   return (
     <form
       action={action}

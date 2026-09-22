@@ -29,6 +29,7 @@ model User {
   researchDocs         ResearchDocument[]
   tasks                Task[]             @relation("AssignedTasks")
   taskTimeLogs         TaskTimeLog[]
+  taskReopens          TaskReopen[]
   toolUsages           ToolUsage[]
   team                 Team?              @relation(fields: [teamId], references: [id])
 
@@ -114,12 +115,17 @@ model Task {
   clientWork   String?
   /// Amount in INR for a Digital Marketing task. Other work types leave this blank.
   digitalMarketingAmount Decimal? @db.Decimal(12, 2)
+  /// How many times this task has been reopened after being completed. It is
+  /// also the cycle that new time logs are stamped with, so 0 means the task is
+  /// still on its original run.
+  reopenCount  Int      @default(0)
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   assignedTo   User?    @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
   team         Team?    @relation(fields: [teamId], references: [id])
   client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
   timeLogs     TaskTimeLog[]
+  reopens      TaskReopen[]
 
   @@index([assignedToId], map: "Task_assignedToId_fkey")
   @@index([teamId], map: "Task_teamId_fkey")
@@ -137,6 +143,12 @@ model TaskTimeLog {
   minutes   Int
   /// The day the work happened, which need not be the day it was logged.
   date      DateTime
+  /// Which run of the task this time belongs to: 0 for the original work, 1 for
+  /// work done after the first reopen, and so on. Reopen hours total on their
+  /// own from this without dropping out of the task's grand total.
+  reopenCycle Int     @default(0)
+  /// Free text on the original run. Required once reopenCycle is above 0 --
+  /// rework has to say what it was for.
   note      String?  @db.Text
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
@@ -146,6 +158,28 @@ model TaskTimeLog {
   @@index([taskId], map: "TaskTimeLog_taskId_fkey")
   @@index([userId], map: "TaskTimeLog_userId_fkey")
   @@index([date])
+}
+
+/// One reopening of a completed task. Kept as rows rather than a bare counter
+/// so the reports can say when each reopen happened and who sent the task back,
+/// and so the cycle numbers line up with TaskTimeLog.reopenCycle.
+model TaskReopen {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  /// 1 for the first reopen, 2 for the second. Matches the reopenCycle stamped
+  /// on every time log recorded while that cycle was open.
+  cycle     Int
+  /// Why the task was sent back. Optional, because a status edit from the task
+  /// form has nowhere to ask for one.
+  reason    String?  @db.Text
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, cycle])
+  @@index([taskId], map: "TaskReopen_taskId_fkey")
+  @@index([userId], map: "TaskReopen_userId_fkey")
 }
 
 model DailyUpdate {
