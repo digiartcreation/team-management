@@ -287,6 +287,8 @@ export async function createTask(formData: FormData) {
 
   revalidatePath("/tasks");
   revalidatePath("/");
+  revalidatePath("/manager");
+  revalidatePath("/member");
   redirect("/tasks");
 }
 
@@ -429,6 +431,8 @@ export async function updateTask(formData: FormData) {
 
   revalidatePath("/tasks");
   revalidatePath("/");
+  revalidatePath("/manager");
+  revalidatePath("/member");
   redirect("/tasks");
 }
 
@@ -636,6 +640,8 @@ export async function updateOwnTaskStatus(formData: FormData) {
 
   revalidatePath("/tasks");
   revalidatePath("/");
+  revalidatePath("/manager");
+  revalidatePath("/member");
 }
 
 /** "YYYY-MM-DD" from the date input, as UTC midnight so the day never shifts. */

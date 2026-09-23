@@ -121,7 +121,7 @@ export default async function MemberDashboardPage() {
 
         <TaskBoard
           heading="My Task Board"
-          description="Your tasks by stage. Read-only here -- move them from the Tasks page."
+          description="Your tasks by stage. Drag a card to a new column to move its status."
           columns={board}
         />
       </div>

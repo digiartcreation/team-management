@@ -1,5 +1,11 @@
+"use client";
+
 import Link from "next/link";
+import { useRouter } from "next/navigation";
+import { useState, useTransition } from "react";
 import { formatDuration } from "@/lib/duration";
+import { canReopenFrom } from "@/lib/taskStatus";
+import { updateOwnTaskStatus } from "@/app/tasks/actions";
 import type { BoardCard, BoardColumn, BoardStatus } from "@/lib/taskBoard";
 
 type TaskBoardProps = {
@@ -8,6 +14,9 @@ type TaskBoardProps = {
   description: string;
   columns: BoardColumn[];
 };
+
+/** The card currently being dragged, and the column it started in. */
+type DragCard = { id: string; title: string; status: BoardStatus };
 
 /** The dot beside a column heading, and the tint of its cards' left edge. */
 const COLUMN_ACCENT: Record<BoardStatus, { dot: string; edge: string }> = {
@@ -104,10 +113,27 @@ function Badge({
   );
 }
 
-function Card({ card, edge }: { card: BoardCard; edge: string }) {
+function Card({
+  card,
+  edge,
+  moving,
+  onDragStart,
+  onDragEnd,
+}: {
+  card: BoardCard;
+  edge: string;
+  moving: boolean;
+  onDragStart: (event: React.DragEvent<HTMLElement>) => void;
+  onDragEnd: () => void;
+}) {
   return (
     <article
-      className={`rounded-md border border-slate-200 border-l-4 bg-white p-3 shadow-sm ${edge}`}
+      draggable={!moving}
+      onDragStart={onDragStart}
+      onDragEnd={onDragEnd}
+      className={`rounded-md border border-slate-200 border-l-4 bg-white p-3 shadow-sm transition ${edge} ${
+        moving ? "opacity-50" : "cursor-grab active:cursor-grabbing"
+      }`}
     >
       <h3 className="break-words text-sm font-medium leading-snug text-slate-950">
         {card.title}
@@ -156,11 +182,108 @@ function Card({ card, edge }: { card: BoardCard; edge: string }) {
   );
 }
 
+function statusFormData(id: string, status: BoardStatus, reopenReason?: string) {
+  const formData = new FormData();
+  formData.set("id", id);
+  formData.set("status", status);
+
+  if (reopenReason) {
+    formData.set("reopenReason", reopenReason);
+  }
+
+  return formData;
+}
+
 export default function TaskBoard({
   heading,
   description,
   columns,
 }: TaskBoardProps) {
+  const router = useRouter();
+  const [, startTransition] = useTransition();
+  const [dragCard, setDragCard] = useState<DragCard | null>(null);
+  const [movingCardId, setMovingCardId] = useState<string | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [reopenPrompt, setReopenPrompt] = useState<DragCard | null>(null);
+  const [reopenReason, setReopenReason] = useState("");
+
+  function submitStatus(id: string, status: BoardStatus, reopenReason?: string) {
+    setError(null);
+    setMovingCardId(id);
+
+    startTransition(async () => {
+      try {
+        await updateOwnTaskStatus(statusFormData(id, status, reopenReason));
+        router.refresh();
+      } catch (submitError) {
+        setError(
+          submitError instanceof Error
+            ? submitError.message
+            : "Could not update the task's status."
+        );
+      } finally {
+        setMovingCardId(null);
+      }
+    });
+  }
+
+  function canDropOn(target: BoardStatus, source: BoardStatus) {
+    if (source === target) {
+      return false;
+    }
+
+    return target !== "reopened" || canReopenFrom(source) || source === "reopened";
+  }
+
+  function handleDragStart(card: BoardCard, status: BoardStatus) {
+    return (event: React.DragEvent<HTMLElement>) => {
+      event.dataTransfer.effectAllowed = "move";
+      event.dataTransfer.setData("text/plain", card.id);
+      setError(null);
+      setDragCard({ id: card.id, title: card.title, status });
+    };
+  }
+
+  function handleDragOver(target: BoardStatus) {
+    return (event: React.DragEvent<HTMLDivElement>) => {
+      if (!dragCard || !canDropOn(target, dragCard.status)) {
+        return;
+      }
+
+      event.preventDefault();
+      event.dataTransfer.dropEffect = "move";
+    };
+  }
+
+  function handleDrop(target: BoardStatus) {
+    return (event: React.DragEvent<HTMLDivElement>) => {
+      event.preventDefault();
+      const source = dragCard;
+      setDragCard(null);
+
+      if (!source || !canDropOn(target, source.status)) {
+        return;
+      }
+
+      if (target === "reopened") {
+        setReopenReason("");
+        setReopenPrompt(source);
+        return;
+      }
+
+      submitStatus(source.id, target);
+    };
+  }
+
+  function confirmReopen() {
+    if (!reopenPrompt) {
+      return;
+    }
+
+    submitStatus(reopenPrompt.id, "reopened", reopenReason.trim() || undefined);
+    setReopenPrompt(null);
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -176,14 +299,39 @@ export default function TaskBoard({
         </Link>
       </div>
 
+      {error ? (
+        <p
+          role="alert"
+          className="mt-4 flex items-start justify-between gap-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700"
+        >
+          <span>{error}</span>
+          <button
+            type="button"
+            onClick={() => setError(null)}
+            className="shrink-0 font-medium text-red-700 hover:text-red-900"
+          >
+            Dismiss
+          </button>
+        </p>
+      ) : null}
+
       <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
         {columns.map((column) => {
           const accent = COLUMN_ACCENT[column.status];
+          const isValidTarget = Boolean(
+            dragCard && canDropOn(column.status, dragCard.status)
+          );
 
           return (
             <div
               key={column.status}
-              className="rounded-lg border border-slate-200 bg-slate-50/70 p-3"
+              onDragOver={handleDragOver(column.status)}
+              onDrop={handleDrop(column.status)}
+              className={`rounded-lg border p-3 transition ${
+                isValidTarget
+                  ? "border-[#A05DD0] bg-[#F8F7FB] ring-2 ring-[#A05DD0]/40"
+                  : "border-slate-200 bg-slate-50/70"
+              }`}
             >
               <div className="flex items-center justify-between gap-2">
                 <span className="flex min-w-0 items-center gap-2">
@@ -207,7 +355,14 @@ export default function TaskBoard({
                   </p>
                 ) : (
                   column.cards.map((card) => (
-                    <Card key={card.id} card={card} edge={accent.edge} />
+                    <Card
+                      key={card.id}
+                      card={card}
+                      edge={accent.edge}
+                      moving={movingCardId === card.id}
+                      onDragStart={handleDragStart(card, column.status)}
+                      onDragEnd={() => setDragCard(null)}
+                    />
                   ))
                 )}
               </div>
@@ -221,6 +376,57 @@ export default function TaskBoard({
           );
         })}
       </div>
+
+      {reopenPrompt ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="reopen-prompt-heading"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
+            <h2
+              id="reopen-prompt-heading"
+              className="text-lg font-semibold text-slate-950"
+            >
+              Reopen task
+            </h2>
+            <p className="mt-1 break-words text-sm text-slate-500">
+              {reopenPrompt.title}
+            </p>
+
+            <label className="mt-4 grid gap-1">
+              <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
+                Reason (optional)
+              </span>
+              <textarea
+                value={reopenReason}
+                onChange={(event) => setReopenReason(event.target.value)}
+                rows={2}
+                placeholder="Eg: client asked for a different thumbnail"
+                className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm"
+              />
+            </label>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setReopenPrompt(null)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={confirmReopen}
+                className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
+              >
+                Reopen task
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </section>
   );
 }

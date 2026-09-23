@@ -129,7 +129,7 @@ export default async function Home() {
 
         <TaskBoard
           heading="Task Board"
-          description="Every team's tasks by stage. Read-only here -- move them from the Tasks page."
+          description="Every team's tasks by stage. Drag a card to a new column to move its status."
           columns={board}
         />
 
