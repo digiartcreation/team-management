@@ -6,8 +6,14 @@ import TaskBoard from "@/components/dashboard/TaskBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { loadTaskBoard } from "@/lib/taskBoard";
 
+// Only used by the welcome header, which is commented out for now.
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
 function formatRole(role?: string | null) {
   return role === "member" ? "employee" : role;
+}
+
+function todayInputValue() {
+  return new Date().toLocaleDateString("en-CA");
 }
 
 export default async function MemberDashboardPage() {
@@ -61,6 +67,7 @@ export default async function MemberDashboardPage() {
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
+        {/* Welcome header hidden so the task board leads the page.
         <header className="brand-hero flex flex-col gap-4 rounded-lg border border-slate-200 bg-white p-6 shadow-sm md:flex-row md:items-center md:justify-between">
           <div>
             <p className="text-sm font-medium uppercase tracking-normal text-slate-500">
@@ -82,6 +89,14 @@ export default async function MemberDashboardPage() {
             </p>
           </div>
         </header>
+        */}
+
+        <TaskBoard
+          heading="My Task Board"
+          description="Your tasks by stage. Drag a card to a new column to move its status."
+          columns={board}
+          today={todayInputValue()}
+        />
 
         {!member?.team ? (
           <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
@@ -118,12 +133,6 @@ export default async function MemberDashboardPage() {
             description="Sent back for rework"
           />
         </section>
-
-        <TaskBoard
-          heading="My Task Board"
-          description="Your tasks by stage. Drag a card to a new column to move its status."
-          columns={board}
-        />
       </div>
     </DashboardLayout>
   );

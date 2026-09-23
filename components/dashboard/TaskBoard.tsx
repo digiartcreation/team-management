@@ -2,7 +2,8 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useCallback, useRef, useState, useTransition } from "react";
+import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import { formatDuration } from "@/lib/duration";
 import { canReopenFrom } from "@/lib/taskStatus";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
@@ -13,10 +14,23 @@ type TaskBoardProps = {
   /** One line saying whose tasks these are, since the board itself cannot. */
   description: string;
   columns: BoardColumn[];
+  /** Today as "YYYY-MM-DD", for the log time dialog. */
+  today: string;
 };
 
 /** The card currently being dragged, and the column it started in. */
-type DragCard = { id: string; title: string; status: BoardStatus };
+type DragCard = {
+  id: string;
+  title: string;
+  status: BoardStatus;
+  reopenCount: number;
+};
+
+/**
+ * The task the log time dialog is open for. `completing` means the entry was
+ * asked for by a drop on Completed, and saving it moves the card there.
+ */
+type TimePrompt = DragCard & { completing: boolean };
 
 /** The dot beside a column heading, and the tint of its cards' left edge. */
 const COLUMN_ACCENT: Record<BoardStatus, { dot: string; edge: string }> = {
@@ -119,12 +133,15 @@ function Card({
   moving,
   onDragStart,
   onDragEnd,
+  onLogTime,
 }: {
   card: BoardCard;
   edge: string;
   moving: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
+  /** Present on cards that take time without a status change. */
+  onLogTime?: () => void;
 }) {
   return (
     <article
@@ -178,6 +195,17 @@ function Card({
           </Badge>
         ) : null}
       </div>
+
+      {onLogTime ? (
+        <button
+          type="button"
+          onClick={onLogTime}
+          disabled={moving}
+          className="mt-3 w-full rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-1.5 text-xs font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF] disabled:opacity-60"
+        >
+          Log time
+        </button>
+      ) : null}
     </article>
   );
 }
@@ -198,6 +226,7 @@ export default function TaskBoard({
   heading,
   description,
   columns,
+  today,
 }: TaskBoardProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -206,6 +235,10 @@ export default function TaskBoard({
   const [error, setError] = useState<string | null>(null);
   const [reopenPrompt, setReopenPrompt] = useState<DragCard | null>(null);
   const [reopenReason, setReopenReason] = useState("");
+  const [timePrompt, setTimePrompt] = useState<TimePrompt | null>(null);
+  // Read by the save handler, which has to stay stable for the dialog's effect.
+  const timePromptRef = useRef<TimePrompt | null>(null);
+  timePromptRef.current = timePrompt;
 
   function submitStatus(id: string, status: BoardStatus, reopenReason?: string) {
     setError(null);
@@ -240,7 +273,12 @@ export default function TaskBoard({
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", card.id);
       setError(null);
-      setDragCard({ id: card.id, title: card.title, status });
+      setDragCard({
+        id: card.id,
+        title: card.title,
+        status,
+        reopenCount: card.reopenCount,
+      });
     };
   }
 
@@ -271,6 +309,13 @@ export default function TaskBoard({
         return;
       }
 
+      // Same rule as the Tasks page: a task is only called finished with an
+      // entry saying how long it took.
+      if (target === "completed") {
+        setTimePrompt({ ...source, completing: true });
+        return;
+      }
+
       submitStatus(source.id, target);
     };
   }
@@ -283,6 +328,19 @@ export default function TaskBoard({
     submitStatus(reopenPrompt.id, "reopened", reopenReason.trim() || undefined);
     setReopenPrompt(null);
   }
+
+  const handleTimeSaved = useCallback(() => {
+    const prompt = timePromptRef.current;
+    setTimePrompt(null);
+
+    if (prompt?.completing) {
+      submitStatus(prompt.id, "completed");
+    } else {
+      router.refresh();
+    }
+    // submitStatus only touches state setters and the router.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [router]);
 
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
@@ -362,6 +420,19 @@ export default function TaskBoard({
                       moving={movingCardId === card.id}
                       onDragStart={handleDragStart(card, column.status)}
                       onDragEnd={() => setDragCard(null)}
+                      onLogTime={
+                        column.status === "completed" ||
+                        column.status === "reopened"
+                          ? () =>
+                              setTimePrompt({
+                                id: card.id,
+                                title: card.title,
+                                status: column.status,
+                                reopenCount: card.reopenCount,
+                                completing: false,
+                              })
+                          : undefined
+                      }
                     />
                   ))
                 )}
@@ -426,6 +497,20 @@ export default function TaskBoard({
             </div>
           </div>
         </div>
+      ) : null}
+
+      {timePrompt ? (
+        <LogTimeDialog
+          key={`${timePrompt.id}-${timePrompt.completing}`}
+          taskId={timePrompt.id}
+          taskTitle={timePrompt.title}
+          today={today}
+          reopenCount={timePrompt.reopenCount}
+          open
+          onClose={() => setTimePrompt(null)}
+          onSaved={handleTimeSaved}
+          completing={timePrompt.completing}
+        />
       ) : null}
     </section>
   );
