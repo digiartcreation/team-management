@@ -35,17 +35,6 @@ async function getSessionUser() {
   return sessionUser as typeof sessionUser & { id: string };
 }
 
-function handleAttendanceError(error: unknown): never {
-  if (
-    error instanceof Prisma.PrismaClientKnownRequestError &&
-    error.code === "P2002"
-  ) {
-    throw new Error("Attendance is already recorded for today.");
-  }
-
-  throw error;
-}
-
 async function notifyAdmins(message: string) {
   const admins = await prisma.user.findMany({
     where: { role: "admin" },
@@ -64,35 +53,98 @@ async function notifyAdmins(message: string) {
   );
 }
 
+/** Today's day row with its sessions, oldest first. */
+async function findToday(userId: string, date: Date) {
+  return prisma.attendanceRecord.findUnique({
+    where: { userId_date: { userId, date } },
+    select: {
+      id: true,
+      actualCheckInTime: true,
+      sessions: {
+        orderBy: { checkInTime: "asc" },
+        select: { id: true, checkOutTime: true },
+      },
+    },
+  });
+}
+
+/**
+ * Starts a work session. The first one of the day creates the day's row and
+ * sets the status and lateness from it; every later one -- back from lunch, back
+ * from a client visit -- only opens another session, since lateness is about
+ * when the day began.
+ */
 export async function checkIn() {
   const sessionUser = await getSessionUser();
   const now = new Date();
   const date = startOfToday();
-  const lateDurationMinutes = Math.max(
-    0,
-    minutesFromDate(now) - minutesFromTime(scheduledStartTime)
-  );
+  const existing = await findToday(sessionUser.id, date);
 
-  try {
-    const attendance = await prisma.attendanceRecord.create({
-      data: {
-        userId: sessionUser.id,
-        date,
-        scheduledStartTime,
-        scheduledEndTime,
-        actualCheckInTime: now,
-        status: lateDurationMinutes > 0 ? "Late" : "Present",
-        lateDurationMinutes: lateDurationMinutes || null,
-      },
-      select: { id: true },
-    });
-    await logActivity({
-      userId: sessionUser.id,
-      action: "created",
-      entityType: "attendance",
-      entityId: attendance.id,
-      description: "Recorded attendance check-in",
-    });
+  if (existing?.sessions.some((session) => !session.checkOutTime)) {
+    throw new Error("You are already checked in. Check out first.");
+  }
+
+  let attendanceId: string;
+  const firstOfDay = !existing;
+
+  if (existing) {
+    attendanceId = existing.id;
+    await prisma.$transaction([
+      prisma.attendanceSession.create({
+        data: { attendanceId, checkInTime: now },
+      }),
+      // Checked in again, so the day has no final check-out yet.
+      prisma.attendanceRecord.update({
+        where: { id: attendanceId },
+        data: { actualCheckOutTime: null, earlyDepartureMinutes: null },
+      }),
+    ]);
+  } else {
+    const lateDurationMinutes = Math.max(
+      0,
+      minutesFromDate(now) - minutesFromTime(scheduledStartTime)
+    );
+
+    try {
+      const attendance = await prisma.attendanceRecord.create({
+        data: {
+          userId: sessionUser.id,
+          date,
+          scheduledStartTime,
+          scheduledEndTime,
+          actualCheckInTime: now,
+          status: lateDurationMinutes > 0 ? "Late" : "Present",
+          lateDurationMinutes: lateDurationMinutes || null,
+          sessions: { create: { checkInTime: now } },
+        },
+        select: { id: true },
+      });
+      attendanceId = attendance.id;
+    } catch (error) {
+      // Two check-ins raced to create the day; the other one won.
+      if (
+        error instanceof Prisma.PrismaClientKnownRequestError &&
+        error.code === "P2002"
+      ) {
+        throw new Error("Attendance was just recorded. Refresh the page.");
+      }
+
+      throw error;
+    }
+  }
+
+  await logActivity({
+    userId: sessionUser.id,
+    action: firstOfDay ? "created" : "updated",
+    entityType: "attendance",
+    entityId: attendanceId,
+    description: firstOfDay
+      ? "Recorded attendance check-in"
+      : "Checked in again",
+  });
+
+  // Admins hear about the start of the day, not about every break.
+  if (firstOfDay) {
     const user = await prisma.user.findUnique({
       where: { id: sessionUser.id },
       select: { name: true },
@@ -100,57 +152,57 @@ export async function checkIn() {
     await notifyAdmins(
       `New attendance check-in recorded for ${user?.name ?? "a team member"}.`
     );
-  } catch (error) {
-    handleAttendanceError(error);
   }
 
   revalidatePath("/attendance");
 }
 
+/**
+ * Closes the open session. The day's check-out and early-departure minutes
+ * always follow the latest one, so they settle on the last check-out of the day.
+ */
 export async function checkOut() {
   const sessionUser = await getSessionUser();
   const now = new Date();
   const date = startOfToday();
-  const earlyDepartureMinutes = Math.max(
-    0,
-    minutesFromTime(scheduledEndTime) - minutesFromDate(now)
-  );
-
-  const existing = await prisma.attendanceRecord.findUnique({
-    where: { userId_date: { userId: sessionUser.id, date } },
-    select: { id: true, actualCheckOutTime: true },
-  });
+  const existing = await findToday(sessionUser.id, date);
 
   if (!existing) {
     throw new Error("Check in before recording check-out.");
   }
 
-  if (existing.actualCheckOutTime) {
-    throw new Error("Check-out is already recorded for today.");
+  const open = existing.sessions.find((session) => !session.checkOutTime);
+
+  if (!open) {
+    throw new Error("You are not checked in right now.");
   }
 
-  const attendance = await prisma.attendanceRecord.update({
-    where: { id: existing.id },
-    data: {
-      actualCheckOutTime: now,
-      earlyDepartureMinutes: earlyDepartureMinutes || null,
-    },
-    select: { id: true },
-  });
+  const earlyDepartureMinutes = Math.max(
+    0,
+    minutesFromTime(scheduledEndTime) - minutesFromDate(now)
+  );
+
+  await prisma.$transaction([
+    prisma.attendanceSession.update({
+      where: { id: open.id },
+      data: { checkOutTime: now },
+    }),
+    prisma.attendanceRecord.update({
+      where: { id: existing.id },
+      data: {
+        actualCheckOutTime: now,
+        earlyDepartureMinutes: earlyDepartureMinutes || null,
+      },
+    }),
+  ]);
+
   await logActivity({
     userId: sessionUser.id,
     action: "updated",
     entityType: "attendance",
-    entityId: attendance.id,
+    entityId: existing.id,
     description: "Recorded attendance check-out",
   });
-  const user = await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: { name: true },
-  });
-  await notifyAdmins(
-    `Attendance check-out recorded for ${user?.name ?? "a team member"}.`
-  );
 
   revalidatePath("/attendance");
 }
