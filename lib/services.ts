@@ -6,6 +6,7 @@ export const SERVICE_OPTIONS = [
   "Social Media Management",
   "Client Management",
   "Graphic Design",
+  "Poster Design",
   "Other",
 ];
 
@@ -24,9 +25,19 @@ export const DIGITAL_MARKETING_OPTIONS = [
 
 export const VIDEO_EDITING = "Video Editing";
 
+/**
+ * Every client is under client management, so it is always mapped and carries
+ * no payment of its own -- it is stored with the INCLUDED payment type.
+ */
+export const CLIENT_MANAGEMENT = "Client Management";
+
+export const POSTER_DESIGN = "Poster Design";
+
 export const PERCENTAGE = "Percentage";
 export const PACKAGE = "Package";
 export const PER_COUNT = "Per count";
+/** No amount to record: the service is part of every engagement. */
+export const INCLUDED = "Included";
 
 export const PAYMENT_TYPE_OPTIONS = [PERCENTAGE, PACKAGE, PER_COUNT];
 
@@ -34,10 +45,20 @@ export const BILLING_CYCLE_OPTIONS = ["Monthly", "One-time"];
 
 /**
  * Payment types a service may be billed on. Percentage is Digital Marketing
- * only; Video Editing is billed per delivered item or as a package; every other
- * service is package-only. The first entry is the default for a new mapping.
+ * only; Video Editing is billed per delivered item or as a package; Poster
+ * Design is per count only; Client Management is always included and never
+ * billed; every other service is package-only. The first entry is the default
+ * for a new mapping.
  */
 export function paymentTypesForService(service: string) {
+  if (service === CLIENT_MANAGEMENT) {
+    return [INCLUDED];
+  }
+
+  if (service === POSTER_DESIGN) {
+    return [PER_COUNT];
+  }
+
   if (service === DIGITAL_MARKETING) {
     return [PERCENTAGE, PACKAGE];
   }
@@ -134,6 +155,10 @@ export function formatPaymentTerms(mapping: {
   perUnitAmount: number | null;
   billingCycle: string | null;
 }) {
+  if (mapping.paymentType === INCLUDED) {
+    return "Included";
+  }
+
   if (mapping.paymentType === PERCENTAGE) {
     return mapping.percentage === null
       ? "Percentage"

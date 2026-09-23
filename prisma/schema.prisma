@@ -82,7 +82,8 @@ model ClientService {
   service       String
   /// Focus area, currently only used by Digital Marketing (e.g. "Google Ads").
   focus         String?
-  /// "Percentage", "Package" or "Per count".
+  /// "Percentage", "Package", "Per count", or "Included" (Client Management,
+  /// which carries no payment).
   paymentType   String
   /// Set when paymentType is "Percentage". Percent, not a fraction: 20 = 20%.
   /// Rows predating the Digital-Marketing-only rule may hold one on any service.

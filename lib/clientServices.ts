@@ -1,6 +1,8 @@
 import {
   BILLING_CYCLE_OPTIONS,
+  CLIENT_MANAGEMENT,
   DIGITAL_MARKETING,
+  INCLUDED,
   DIGITAL_MARKETING_OPTIONS,
   PACKAGE,
   PERCENTAGE,
@@ -100,10 +102,23 @@ export function parseServiceMappings(formData: FormData): ServiceMapping[] {
     .filter((value): value is string => typeof value === "string")
     .filter((service) => SERVICE_OPTIONS.includes(service));
 
-  // De-duplicate: ClientService is unique on (clientId, service).
-  const services = [...new Set(selected)];
+  // De-duplicate: ClientService is unique on (clientId, service). Client
+  // Management is added whether or not the form sent it -- it is never optional.
+  const services = [...new Set([CLIENT_MANAGEMENT, ...selected])];
 
   return services.map((service) => {
+    if (service === CLIENT_MANAGEMENT) {
+      return {
+        service,
+        focus: null,
+        paymentType: INCLUDED,
+        percentage: null,
+        packageAmount: null,
+        perUnitAmount: null,
+        billingCycle: null,
+      };
+    }
+
     const key = serviceKey(service);
     const paymentType = getField(formData, `paymentType-${key}`);
 

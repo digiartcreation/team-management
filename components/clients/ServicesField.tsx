@@ -3,6 +3,7 @@
 import { useState } from "react";
 import {
   BILLING_CYCLE_OPTIONS,
+  CLIENT_MANAGEMENT,
   DIGITAL_MARKETING,
   DIGITAL_MARKETING_OPTIONS,
   PACKAGE,
@@ -47,7 +48,8 @@ function buildInitialRows(mappings: ServiceMapping[]) {
     const mapping = saved.get(service);
 
     rows[service] = {
-      checked: Boolean(mapping),
+      // Client Management is on for every client, saved or not.
+      checked: service === CLIENT_MANAGEMENT || Boolean(mapping),
       focus: mapping?.focus ?? "",
       paymentType: resolvePaymentType(service, mapping?.paymentType),
       percentage: numberToInput(mapping?.percentage),
@@ -79,8 +81,9 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
       </legend>
       <p className="text-sm text-slate-500">
         Tick each service this client is engaged for, then set how that service
-        is paid. Percentage applies to Digital Marketing only, and Video Editing
-        is billed per count or as a package.
+        is paid. Client Management is always included. Percentage applies to
+        Digital Marketing only, Video Editing is billed per count or as a
+        package, and Poster Design is billed per count.
       </p>
 
       <div className="grid gap-3">
@@ -88,6 +91,7 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
           const row = rows[service];
           const key = serviceKey(service);
           const paymentTypes = paymentTypesForService(service);
+          const alwaysOn = service === CLIENT_MANAGEMENT;
 
           return (
             <div
@@ -98,21 +102,33 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
                   : "grid gap-3 rounded-md border border-slate-200 p-3 transition"
               }
             >
-              <label className="flex items-center gap-3 text-sm">
+              <label
+                className={`flex items-center gap-3 text-sm ${alwaysOn ? "cursor-not-allowed" : ""}`}
+              >
+                {/* Client Management stays ticked: not disabled, which would grey
+                    it out and drop it from the form, but locked on. */}
                 <input
                   name="services"
                   type="checkbox"
                   value={service}
                   checked={row.checked}
+                  aria-readonly={alwaysOn || undefined}
                   onChange={(event) =>
-                    update(service, { checked: event.target.checked })
+                    alwaysOn
+                      ? undefined
+                      : update(service, { checked: event.target.checked })
                   }
-                  className="h-4 w-4 rounded border-slate-300"
+                  className={`h-4 w-4 rounded border-slate-300 ${alwaysOn ? "pointer-events-none" : ""}`}
                 />
                 <span className="font-medium text-slate-800">{service}</span>
+                {alwaysOn ? (
+                  <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-[#770FC2] ring-1 ring-[#A05DD0]/40">
+                    Always included
+                  </span>
+                ) : null}
               </label>
 
-              {row.checked ? (
+              {row.checked && !alwaysOn ? (
                 <div className="grid gap-3 sm:grid-cols-2">
                   {service === DIGITAL_MARKETING ? (
                     <label className="grid gap-2 sm:col-span-2">
