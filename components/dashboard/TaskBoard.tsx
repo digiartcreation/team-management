@@ -7,13 +7,23 @@ import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import { formatDuration } from "@/lib/duration";
 import { canMoveTo, type TaskStatus } from "@/lib/taskStatus";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
-import type { BoardCard, BoardColumn, BoardStatus } from "@/lib/taskBoard";
+import type {
+  BoardCard,
+  BoardColumn,
+  BoardGroup,
+  BoardStatus,
+} from "@/lib/taskBoard";
 
 type TaskBoardProps = {
   heading: string;
   /** One line saying whose tasks these are, since the board itself cannot. */
   description: string;
-  columns: BoardColumn[];
+  /**
+   * One board's columns. Pass `groups` instead to show a separate board per
+   * person, as the admin dashboard does.
+   */
+  columns?: BoardColumn[];
+  groups?: BoardGroup[];
   /** Today as "YYYY-MM-DD", for the log time dialog. */
   today: string;
   /** The dashboard the board sits on, so an added task comes back to it. */
@@ -26,7 +36,16 @@ type DragCard = {
   title: string;
   status: BoardStatus;
   reopenCount: number;
+  /**
+   * The board the card belongs to. A card only drops within its own board:
+   * dragging onto someone else's would read as reassigning it, which a status
+   * move does not do.
+   */
+  group: string;
 };
+
+/** The key a single, ungrouped board uses. */
+const SINGLE_BOARD = "board";
 
 /**
  * The task the log time dialog is open for. `completing` means the entry was
@@ -232,6 +251,7 @@ export default function TaskBoard({
   heading,
   description,
   columns,
+  groups,
   today,
   dashboardPath,
 }: TaskBoardProps) {
@@ -269,11 +289,15 @@ export default function TaskBoard({
   }
 
   // Same rules as the status picker: finished work only goes to Reopened.
-  function canDropOn(target: BoardStatus, source: BoardStatus) {
-    return source !== target && canMoveTo(source, target);
+  function canDropOn(target: BoardStatus, group: string, source: DragCard) {
+    return (
+      source.group === group &&
+      source.status !== target &&
+      canMoveTo(source.status, target)
+    );
   }
 
-  function handleDragStart(card: BoardCard, status: BoardStatus) {
+  function handleDragStart(card: BoardCard, status: BoardStatus, group: string) {
     return (event: React.DragEvent<HTMLElement>) => {
       event.dataTransfer.effectAllowed = "move";
       event.dataTransfer.setData("text/plain", card.id);
@@ -283,13 +307,14 @@ export default function TaskBoard({
         title: card.title,
         status,
         reopenCount: card.reopenCount,
+        group,
       });
     };
   }
 
-  function handleDragOver(target: BoardStatus) {
+  function handleDragOver(target: BoardStatus, group: string) {
     return (event: React.DragEvent<HTMLDivElement>) => {
-      if (!dragCard || !canDropOn(target, dragCard.status)) {
+      if (!dragCard || !canDropOn(target, group, dragCard)) {
         return;
       }
 
@@ -298,13 +323,13 @@ export default function TaskBoard({
     };
   }
 
-  function handleDrop(target: BoardStatus) {
+  function handleDrop(target: BoardStatus, group: string) {
     return (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       const source = dragCard;
       setDragCard(null);
 
-      if (!source || !canDropOn(target, source.status)) {
+      if (!source || !canDropOn(target, group, source)) {
         return;
       }
 
@@ -356,6 +381,88 @@ export default function TaskBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [router]);
 
+  function renderColumns(group: string, boardColumns: BoardColumn[]) {
+    return (
+        <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+          {boardColumns.map((column) => {
+            const accent = COLUMN_ACCENT[column.status];
+            const isValidTarget = Boolean(
+              dragCard && canDropOn(column.status, group, dragCard)
+            );
+
+            return (
+              <div
+                key={column.status}
+                onDragOver={handleDragOver(column.status, group)}
+                onDrop={handleDrop(column.status, group)}
+                className={`rounded-lg border p-3 transition ${
+                  isValidTarget
+                    ? "border-[#A05DD0] bg-[#F8F7FB] ring-2 ring-[#A05DD0]/40"
+                    : "border-slate-200 bg-slate-50/70"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="flex min-w-0 items-center gap-2">
+                    <span
+                      aria-hidden
+                      className={`h-2 w-2 shrink-0 rounded-full ${accent.dot}`}
+                    />
+                    <span className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
+                      {column.label}
+                    </span>
+                  </span>
+                  <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs font-medium text-slate-500 shadow-sm">
+                    {column.total}
+                  </span>
+                </div>
+
+                {/* Grows with its cards, so every card in the column is in view. */}
+                <div className="mt-3 flex flex-col gap-3">
+                  {column.cards.length === 0 ? (
+                    <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400">
+                      Nothing here
+                    </p>
+                  ) : (
+                    column.cards.map((card) => (
+                      <Card
+                        key={card.id}
+                        card={card}
+                        edge={accent.edge}
+                        moving={movingCardId === card.id}
+                        onDragStart={handleDragStart(card, column.status, group)}
+                        onDragEnd={() => setDragCard(null)}
+                        action={
+                          column.status === "completed"
+                            ? {
+                                label: "Close",
+                                onClick: () =>
+                                  setClosePrompt({
+                                    id: card.id,
+                                    title: card.title,
+                                    status: column.status,
+                                    reopenCount: card.reopenCount,
+                                    group,
+                                  }),
+                              }
+                            : undefined
+                        }
+                      />
+                    ))
+                  )}
+                </div>
+
+                {column.total > column.cards.length ? (
+                  <p className="mt-3 text-center text-xs text-slate-400">
+                    Showing {column.cards.length} of {column.total}
+                  </p>
+                ) : null}
+              </div>
+            );
+          })}
+        </div>
+    );
+  }
+
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-4 shadow-sm sm:p-6">
       <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
@@ -395,82 +502,47 @@ export default function TaskBoard({
         </p>
       ) : null}
 
-      <div className="mt-4 grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        {columns.map((column) => {
-          const accent = COLUMN_ACCENT[column.status];
-          const isValidTarget = Boolean(
-            dragCard && canDropOn(column.status, dragCard.status)
-          );
-
-          return (
-            <div
-              key={column.status}
-              onDragOver={handleDragOver(column.status)}
-              onDrop={handleDrop(column.status)}
-              className={`rounded-lg border p-3 transition ${
-                isValidTarget
-                  ? "border-[#A05DD0] bg-[#F8F7FB] ring-2 ring-[#A05DD0]/40"
-                  : "border-slate-200 bg-slate-50/70"
-              }`}
-            >
-              <div className="flex items-center justify-between gap-2">
-                <span className="flex min-w-0 items-center gap-2">
+      {groups ? (
+        <div className="mt-4 flex flex-col gap-4">
+          {groups.length === 0 ? (
+            <p className="rounded-md border border-dashed border-slate-300 p-6 text-center text-sm text-slate-400">
+              No employees yet.
+            </p>
+          ) : (
+            groups.map((group) => (
+              // Empty boards start folded, so the people with work lead.
+              <details
+                key={group.key}
+                open={group.taskCount > 0}
+                className="group rounded-lg border border-slate-200 bg-white"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <Avatar name={group.name} />
+                    <span className="truncate text-sm font-semibold text-slate-900">
+                      {group.name ?? "Unassigned"}
+                    </span>
+                    <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
+                      {group.taskCount} {group.taskCount === 1 ? "task" : "tasks"}
+                    </span>
+                  </span>
                   <span
                     aria-hidden
-                    className={`h-2 w-2 shrink-0 rounded-full ${accent.dot}`}
-                  />
-                  <span className="truncate text-xs font-semibold uppercase tracking-wide text-slate-600">
-                    {column.label}
+                    className="shrink-0 -rotate-90 text-xs text-slate-400 transition group-open:rotate-0"
+                  >
+                    &#9660;
                   </span>
-                </span>
-                <span className="shrink-0 rounded bg-white px-1.5 py-0.5 text-xs font-medium text-slate-500 shadow-sm">
-                  {column.total}
-                </span>
-              </div>
-
-              {/* Grows with its cards, so every card in the column is in view. */}
-              <div className="mt-3 flex flex-col gap-3">
-                {column.cards.length === 0 ? (
-                  <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400">
-                    Nothing here
-                  </p>
-                ) : (
-                  column.cards.map((card) => (
-                    <Card
-                      key={card.id}
-                      card={card}
-                      edge={accent.edge}
-                      moving={movingCardId === card.id}
-                      onDragStart={handleDragStart(card, column.status)}
-                      onDragEnd={() => setDragCard(null)}
-                      action={
-                        column.status === "completed"
-                          ? {
-                              label: "Close",
-                              onClick: () =>
-                                setClosePrompt({
-                                  id: card.id,
-                                  title: card.title,
-                                  status: column.status,
-                                  reopenCount: card.reopenCount,
-                                }),
-                            }
-                          : undefined
-                      }
-                    />
-                  ))
-                )}
-              </div>
-
-              {column.total > column.cards.length ? (
-                <p className="mt-3 text-center text-xs text-slate-400">
-                  Showing {column.cards.length} of {column.total}
-                </p>
-              ) : null}
-            </div>
-          );
-        })}
-      </div>
+                </summary>
+                <div className="border-t border-slate-100 p-3">
+                  {renderColumns(group.key, group.columns)}
+                </div>
+              </details>
+            ))
+          )}
+        </div>
+      ) : (
+        <div className="mt-4">{renderColumns(SINGLE_BOARD, columns ?? [])}</div>
+      )}
 
       {reopenPrompt ? (
         <div

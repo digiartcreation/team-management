@@ -70,24 +70,7 @@ export async function loadTaskBoard(
         // Most recently touched first, so a column opens on what moved last.
         orderBy: { updatedAt: "desc" },
         take: COLUMN_CARD_LIMIT,
-        select: {
-          id: true,
-          title: true,
-          priority: true,
-          clientWork: true,
-          reopenCount: true,
-          client: { select: { name: true } },
-          assignedTo: { select: { name: true } },
-          timeLogs: {
-            select: {
-              minutes: true,
-              reopenCycle: true,
-              note: true,
-              date: true,
-            },
-            orderBy: { date: "desc" },
-          },
-        },
+        select: BOARD_CARD_SELECT,
       })
     ),
   ]);
@@ -100,26 +83,139 @@ export async function loadTaskBoard(
     status,
     label: formatTaskStatus(status),
     total: totals.get(status) ?? 0,
-    cards: columns[index].map((task) => {
-      const time = splitReopenMinutes(task.timeLogs);
-      // Logs arrive newest first, so the first rework note is the latest word
-      // on why the task came back.
-      const latestReopenNote =
-        task.timeLogs.find((log) => log.reopenCycle > 0 && log.note)?.note ??
-        null;
+    cards: columns[index].map(toBoardCard),
+  }));
+}
+
+const BOARD_CARD_SELECT = {
+  id: true,
+  title: true,
+  status: true,
+  priority: true,
+  clientWork: true,
+  reopenCount: true,
+  assignedToId: true,
+  client: { select: { name: true } },
+  assignedTo: { select: { name: true } },
+  timeLogs: {
+    select: {
+      minutes: true,
+      reopenCycle: true,
+      note: true,
+      date: true,
+    },
+    orderBy: { date: "desc" },
+  },
+} satisfies Prisma.TaskSelect;
+
+type BoardTask = Prisma.TaskGetPayload<{ select: typeof BOARD_CARD_SELECT }>;
+
+function toBoardCard(task: BoardTask): BoardCard {
+  const time = splitReopenMinutes(task.timeLogs);
+  // Logs arrive newest first, so the first rework note is the latest word on
+  // why the task came back.
+  const latestReopenNote =
+    task.timeLogs.find((log) => log.reopenCycle > 0 && log.note)?.note ?? null;
+
+  return {
+    id: task.id,
+    title: task.title,
+    priority: task.priority,
+    clientName: task.client?.name ?? null,
+    clientWork: task.clientWork,
+    assigneeName: task.assignedTo?.name ?? null,
+    minutes: time.total,
+    reopenMinutes: time.reopen,
+    reopenCount: task.reopenCount,
+    latestReopenNote,
+  };
+}
+
+/** One person's board, for the admin dashboard's board-per-member view. */
+export type BoardGroup = {
+  /** The assignee's id, or "unassigned". */
+  key: string;
+  /** Null for the Unassigned board. */
+  name: string | null;
+  /** Every task on this person's board, across all four columns. */
+  taskCount: number;
+  columns: BoardColumn[];
+};
+
+/**
+ * Splits the board by assignee: one board per employee, even an empty one so
+ * nobody silently drops off the dashboard, plus anyone else who has board
+ * tasks (an admin or manager can be assigned work too), and an Unassigned
+ * board when anything is waiting on an owner.
+ *
+ * Everything on the board is fetched in one query and grouped here, rather
+ * than five queries per person. Closed work is not on the board, so this is
+ * the open and recently finished tasks only.
+ */
+export async function loadTaskBoardsByAssignee(): Promise<BoardGroup[]> {
+  const [members, tasks] = await Promise.all([
+    prisma.user.findMany({
+      where: { role: "member" },
+      orderBy: { name: "asc" },
+      select: { id: true, name: true },
+    }),
+    prisma.task.findMany({
+      where: { status: { in: [...BOARD_COLUMNS] } },
+      orderBy: { updatedAt: "desc" },
+      select: BOARD_CARD_SELECT,
+    }),
+  ]);
+
+  const people = new Map(members.map((member) => [member.id, member.name]));
+  const tasksByKey = new Map<string, BoardTask[]>();
+
+  for (const task of tasks) {
+    const key = task.assignedToId ?? "unassigned";
+
+    if (task.assignedToId && !people.has(task.assignedToId)) {
+      people.set(task.assignedToId, task.assignedTo?.name ?? "Unknown");
+    }
+
+    const bucket = tasksByKey.get(key);
+
+    if (bucket) {
+      bucket.push(task);
+    } else {
+      tasksByKey.set(key, [task]);
+    }
+  }
+
+  const groups: BoardGroup[] = [...people.entries()]
+    .sort(([, a], [, b]) => a.localeCompare(b))
+    .map(([id, name]) => toBoardGroup(id, name, tasksByKey.get(id) ?? []));
+
+  const unassigned = tasksByKey.get("unassigned");
+
+  if (unassigned) {
+    groups.push(toBoardGroup("unassigned", null, unassigned));
+  }
+
+  return groups;
+}
+
+function toBoardGroup(
+  key: string,
+  name: string | null,
+  tasks: BoardTask[]
+): BoardGroup {
+  return {
+    key,
+    name,
+    taskCount: tasks.length,
+    columns: BOARD_COLUMNS.map((status) => {
+      const inColumn = tasks.filter((task) => task.status === status);
 
       return {
-        id: task.id,
-        title: task.title,
-        priority: task.priority,
-        clientName: task.client?.name ?? null,
-        clientWork: task.clientWork,
-        assigneeName: task.assignedTo?.name ?? null,
-        minutes: time.total,
-        reopenMinutes: time.reopen,
-        reopenCount: task.reopenCount,
-        latestReopenNote,
+        status,
+        label: formatTaskStatus(status),
+        total: inColumn.length,
+        cards: inColumn.slice(0, COLUMN_CARD_LIMIT).map(toBoardCard),
       };
     }),
-  }));
+  };
 }
