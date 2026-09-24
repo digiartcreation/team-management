@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserTeams, tasksOnTeams, usersOnTeams } from "@/lib/teams";
 import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -32,27 +33,18 @@ export default async function ManagerDashboardPage() {
     redirect("/member");
   }
 
-  const manager = await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: {
-      name: true,
-      role: true,
-      teamId: true,
-      team: {
-        select: {
-          name: true,
-          _count: {
-            select: {
-              members: true,
-              tasks: true,
-            },
-          },
-        },
+  const [manager, teams] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: {
+        name: true,
+        role: true,
       },
-    },
-  });
+    }),
+    getUserTeams(sessionUser.id),
+  ]);
 
-  if (!manager?.teamId || !manager.team) {
+  if (!manager || teams.length === 0) {
     return (
       <DashboardLayout>
         <div className="mx-auto flex w-full max-w-7xl flex-col gap-8 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -77,38 +69,47 @@ export default async function ManagerDashboardPage() {
     );
   }
 
+  // Every team the manager runs, not just one.
+  const teamIds = teams.map((team) => team.id);
+  const teamTasks = tasksOnTeams(teamIds);
+
   const [
     backlogTasks,
     inProgressTasks,
     completedTasks,
     reopenedTasks,
     board,
+    memberCount,
+    teamTaskCount,
   ] = await Promise.all([
     prisma.task.count({
       where: {
-        teamId: manager.teamId,
+        ...teamTasks,
         status: "pending",
       },
     }),
     prisma.task.count({
       where: {
-        teamId: manager.teamId,
+        ...teamTasks,
         status: "in_progress",
       },
     }),
     prisma.task.count({
       where: {
-        teamId: manager.teamId,
+        ...teamTasks,
         status: "completed",
       },
     }),
     prisma.task.count({
       where: {
-        teamId: manager.teamId,
+        ...teamTasks,
         status: "reopened",
       },
     }),
-    loadTaskBoard({ teamId: manager.teamId }),
+    loadTaskBoard(teamTasks),
+    // Distinct people, so someone on two of the manager's teams counts once.
+    prisma.user.count({ where: usersOnTeams(teamIds) }),
+    prisma.task.count({ where: teamTasks }),
   ]);
 
   return (
@@ -148,19 +149,19 @@ export default async function ManagerDashboardPage() {
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
-            label="Assigned Team"
-            value={1}
-            description={manager.team.name}
+            label={teams.length === 1 ? "Assigned Team" : "Assigned Teams"}
+            value={teams.length}
+            description={teams.map((team) => team.name).join(", ")}
           />
           <StatCard
             label="Team Members"
-            value={manager.team._count.members}
-            description="Employees in your team"
+            value={memberCount}
+            description={teams.length === 1 ? "Employees in your team" : "Employees across your teams"}
           />
           <StatCard
             label="Team Tasks"
-            value={manager.team._count.tasks}
-            description="Tasks linked to your team"
+            value={teamTaskCount}
+            description={teams.length === 1 ? "Tasks linked to your team" : "Tasks linked to your teams"}
           />
           <StatCard
             label="Backlog"

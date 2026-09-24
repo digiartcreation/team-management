@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserTeamIds, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -28,15 +29,9 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   };
   if (!sessionUser.id) redirect("/login");
 
-  const currentUser =
-    sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
-      : null;
-
-  const managerTeamId = currentUser?.teamId ?? "__no_team__";
+  // A manager sees the people on any of their teams.
+  const managerTeamIds =
+    sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : [];
   const showUserColumn = sessionUser.role !== "member";
 
   const { entityType } = await searchParams;
@@ -46,7 +41,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
     sessionUser.role === "admin"
       ? {}
       : sessionUser.role === "manager"
-        ? { user: { teamId: managerTeamId } }
+        ? { user: usersOnTeams(managerTeamIds) }
         : { userId: sessionUser.id };
 
   const where: Prisma.ActivityLogWhereInput = {

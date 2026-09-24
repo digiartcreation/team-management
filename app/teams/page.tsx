@@ -41,11 +41,10 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
       include: {
         members: {
           select: {
-            id: true,
-            name: true,
+            user: { select: { id: true, name: true } },
           },
           orderBy: {
-            name: "asc",
+            user: { name: "asc" },
           },
         },
         _count: {
@@ -117,7 +116,7 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
                         <div className="mt-1 text-xs text-slate-400">
                           {team.members.length > 0
                             ? team.members
-                                .map((member) => member.name)
+                                .map((member) => member.user.name)
                                 .join(", ")
                             : "No members assigned"}
                         </div>

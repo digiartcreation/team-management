@@ -7,6 +7,8 @@ type TeamFormProps = {
     id: string;
     name: string;
     email: string;
+    /** Every team the person is on now. */
+    teamMemberships: { team: { id: string; name: string } }[];
   }[];
   team?: {
     id: string;
@@ -61,13 +63,22 @@ export default function TeamForm({
           <legend className="text-sm font-medium text-slate-700">
             Team Members
           </legend>
+          <p className="text-xs text-slate-500">
+            A person can be on several teams. Ticking someone here adds them to
+            this team without taking them off any other.
+          </p>
           {employees.length === 0 ? (
             <p className="rounded-md border border-dashed border-slate-300 p-4 text-sm text-slate-500">
               No employees available.
             </p>
           ) : (
             <div className="grid gap-2 rounded-md border border-slate-200 p-3">
-              {employees.map((employee) => (
+              {employees.map((employee) => {
+                const otherTeams = employee.teamMemberships
+                  .map((membership) => membership.team)
+                  .filter((other) => other.id !== team?.id);
+
+                return (
                 <label
                   key={employee.id}
                   className="flex items-center gap-3 rounded-md px-2 py-2 text-sm hover:bg-slate-50"
@@ -86,9 +97,15 @@ export default function TeamForm({
                     <span className="ml-2 text-slate-500">
                       {employee.email}
                     </span>
+                    {otherTeams.length > 0 ? (
+                      <span className="mt-0.5 block text-xs text-[#770FC2]">
+                        Also on {otherTeams.map((other) => other.name).join(", ")}
+                      </span>
+                    ) : null}
                   </span>
                 </label>
-              ))}
+                );
+              })}
             </div>
           )}
         </fieldset>

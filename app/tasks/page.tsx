@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getUserTeamIds, scopeIds, tasksOnTeams, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
 import TaskStatusControl from "@/components/tasks/TaskStatusControl";
@@ -68,20 +69,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   const page = getPage(filters.page);
   const where: Prisma.TaskWhereInput = {};
 
-  const currentUser =
-    sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
-      : null;
-  const managerTeamId =
-    sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
+  // Undefined for an admin; a manager sees the tasks of every team they run.
+  const managerTeamIds =
+    sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : undefined;
 
   if (isMember) {
     where.assignedToId = sessionUser.id;
-  } else if (sessionUser.role === "manager") {
-    where.teamId = managerTeamId;
+  } else if (managerTeamIds) {
+    Object.assign(where, tasksOnTeams(managerTeamIds));
   }
 
   if (isTaskStatus(filters.status)) {
@@ -92,7 +87,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     where.priority = filters.priority;
   }
 
-  if (sessionUser.role !== "manager" && filters.teamId) {
+  // A manager may narrow to one of their own teams, never to someone else's.
+  if (
+    filters.teamId &&
+    (!managerTeamIds || managerTeamIds.includes(filters.teamId))
+  ) {
     where.teamId = filters.teamId;
   }
 
@@ -151,8 +150,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     prisma.user.findMany({
       where: isMember
         ? { id: sessionUser.id }
-        : managerTeamId
-          ? { teamId: managerTeamId }
+        : managerTeamIds
+          ? usersOnTeams(managerTeamIds)
           : undefined,
       orderBy: {
         name: "asc",
@@ -163,7 +162,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       },
     }),
     prisma.team.findMany({
-      where: managerTeamId ? { id: managerTeamId } : undefined,
+      where: managerTeamIds ? { id: { in: scopeIds(managerTeamIds) } } : undefined,
       orderBy: {
         name: "asc",
       },
@@ -249,12 +248,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             </span>
             <select
               name="teamId"
-              defaultValue={sessionUser.role === "manager" ? "" : filters.teamId ?? ""}
-              disabled={sessionUser.role === "manager"}
+              defaultValue={filters.teamId ?? ""}
+              // Nothing to choose between for a manager who runs one team.
+              disabled={Boolean(managerTeamIds) && teams.length <= 1}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             >
               <option value="">
-                {sessionUser.role === "manager" ? "Your team" : "All teams"}
+                {managerTeamIds ? "All your teams" : "All teams"}
               </option>
               {teams.map((team) => (
                 <option key={team.id} value={team.id}>

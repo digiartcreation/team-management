@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { getUserTeamIds, usersOnTeams } from "@/lib/teams";
 import { createNotification } from "@/lib/notifications";
 
 export async function notifyAdminsAndTeamManagers({
@@ -18,15 +19,13 @@ export async function notifyAdminsAndTeamManagers({
     | "LEARNING_UPDATED"
     | "TOOL_USAGE_UPDATED";
 }) {
-  const actor = await prisma.user.findUnique({
-    where: { id: actorUserId },
-    select: { teamId: true },
-  });
+  // Managers on any team the actor is on.
+  const actorTeamIds = await getUserTeamIds(actorUserId);
   const recipients = await prisma.user.findMany({
     where: {
       OR: [
         { role: "admin" },
-        { role: "manager", teamId: actor?.teamId ?? "__no_team__" },
+        { role: "manager", ...usersOnTeams(actorTeamIds) },
       ],
     },
     select: { id: true },

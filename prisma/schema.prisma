@@ -15,7 +15,10 @@ model User {
   role                 String             @default("member")
   createdAt            DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
-  teamId               String?
+  /// The single team a user had before people could sit on several. Kept only
+  /// so the move to TeamMember can be rolled back -- nothing reads or writes
+  /// it. See prisma/add-team-members.sql.
+  legacyTeamId         String?            @map("teamId")
   activityLogs         ActivityLog[]
   announcementsCreated Announcement[]
   clientsCreated       Client[]
@@ -31,20 +34,33 @@ model User {
   taskTimeLogs         TaskTimeLog[]
   taskReopens          TaskReopen[]
   toolUsages           ToolUsage[]
-  team                 Team?              @relation(fields: [teamId], references: [id])
+  teamMemberships      TeamMember[]
 
-  @@index([teamId], map: "User_teamId_fkey")
+  @@index([legacyTeamId], map: "User_teamId_fkey")
   @@unique([email, role])
 }
 
 model Team {
-  id          String   @id @default(cuid())
-  name        String   @unique
+  id          String       @id @default(cuid())
+  name        String       @unique
   description String?
-  createdAt   DateTime @default(now())
-  updatedAt   DateTime @updatedAt
+  createdAt   DateTime     @default(now())
+  updatedAt   DateTime     @updatedAt
   tasks       Task[]
-  members     User[]
+  members     TeamMember[]
+}
+
+/// One person on one team. A person can be on as many teams as they work for;
+/// removing them from one team leaves the others alone.
+model TeamMember {
+  userId    String
+  teamId    String
+  createdAt DateTime @default(now())
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  team      Team     @relation(fields: [teamId], references: [id], onDelete: Cascade)
+
+  @@id([userId, teamId])
+  @@index([teamId])
 }
 
 model Client {
