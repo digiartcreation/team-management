@@ -5,7 +5,7 @@ import { auth } from "@/auth";
 // import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { loadTaskBoard } from "@/lib/taskBoard";
+import { loadTaskBoardsByAssignee } from "@/lib/taskBoard";
 import { createBroadcastNotification } from "@/app/notifications/actions";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 
@@ -42,8 +42,8 @@ export default async function Home() {
   ]);
   */
 
-  // No filter: an admin sees every team's work on the board.
-  const board = await loadTaskBoard({});
+  // Every team's work, split into a board per person.
+  const boards = await loadTaskBoardsByAssignee();
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;
@@ -86,8 +86,8 @@ export default async function Home() {
 
         <TaskBoard
           heading="Task Board"
-          description="Every team's tasks by stage. Drag a card to a new column to move its status."
-          columns={board}
+          description="Each member's tasks by stage. Drag a card to a new column to move its status."
+          groups={boards}
           today={todayInputValue()}
           dashboardPath="/"
         />
