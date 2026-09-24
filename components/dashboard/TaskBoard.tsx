@@ -143,8 +143,9 @@ function Card({
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
   /**
-   * The button along the foot of the card: Log time on reopened work, Close on
-   * completed work. Absent on columns that take neither.
+   * The button along the foot of the card: Close on completed work. Absent on
+   * every other column -- rework time is logged when the card is dragged back
+   * to Completed, or from Task Management.
    */
   action?: { label: string; onClick: () => void };
 }) {
@@ -454,19 +455,7 @@ export default function TaskBoard({
                                   reopenCount: card.reopenCount,
                                 }),
                             }
-                          : column.status === "reopened"
-                            ? {
-                                label: "Log time",
-                                onClick: () =>
-                                  setTimePrompt({
-                                    id: card.id,
-                                    title: card.title,
-                                    status: column.status,
-                                    reopenCount: card.reopenCount,
-                                    completing: false,
-                                  }),
-                              }
-                            : undefined
+                          : undefined
                       }
                     />
                   ))
