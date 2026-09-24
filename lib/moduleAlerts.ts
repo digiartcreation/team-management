@@ -1,5 +1,4 @@
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, tasksOnTeams, usersOnTeams } from "@/lib/teams";
 
 export type ModuleKey = "tasks" | "updates" | "learnings" | "tools";
 
@@ -15,9 +14,14 @@ export async function getSidebarAlertCounts(
     return {};
   }
 
-  // Undefined for an admin, who is not scoped; a manager counts any of their teams.
-  const managerTeamIds =
-    role === "manager" ? await getUserTeamIds(userId) : undefined;
+  const currentUser =
+    role === "manager"
+      ? await prisma.user.findUnique({
+          where: { id: userId },
+          select: { teamId: true },
+        })
+      : null;
+  const managerTeamId = role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
 
   const reviews = await prisma.moduleReview.findMany({
     where: { userId, module: { in: modules } },
@@ -31,25 +35,25 @@ export async function getSidebarAlertCounts(
     prisma.task.count({
       where: {
         updatedAt: after("tasks"),
-        ...(managerTeamIds ? tasksOnTeams(managerTeamIds) : {}),
+        ...(managerTeamId ? { teamId: managerTeamId } : {}),
       },
     }),
     prisma.dailyUpdate.count({
       where: {
         updatedAt: after("updates"),
-        ...(managerTeamIds ? { user: usersOnTeams(managerTeamIds) } : {}),
+        ...(managerTeamId ? { user: { teamId: managerTeamId } } : {}),
       },
     }),
     prisma.learning.count({
       where: {
         updatedAt: after("learnings"),
-        ...(managerTeamIds ? { user: usersOnTeams(managerTeamIds) } : {}),
+        ...(managerTeamId ? { user: { teamId: managerTeamId } } : {}),
       },
     }),
     prisma.toolUsage.count({
       where: {
         updatedAt: after("tools"),
-        ...(managerTeamIds ? { user: usersOnTeams(managerTeamIds) } : {}),
+        ...(managerTeamId ? { user: { teamId: managerTeamId } } : {}),
       },
     }),
   ]);

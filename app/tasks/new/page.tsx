@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, scopeIds, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { createTask } from "@/app/tasks/actions";
@@ -41,17 +40,23 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
     label: "Back to Tasks",
   };
 
-  // Undefined for an admin; everyone else adds work to a team they are on.
-  const ownTeamIds = scopedToTeam ? await getUserTeamIds(sessionUser.id) : undefined;
+  const currentUser = scopedToTeam
+    ? await prisma.user.findUnique({
+        where: { id: sessionUser.id },
+        select: { teamId: true },
+      })
+    : null;
+
+  const teamId = scopedToTeam ? currentUser?.teamId ?? "__no_team__" : undefined;
 
   const [employees, teams, clients] = await Promise.all([
     prisma.user.findMany({
       // An employee without a team can still add a task -- for themselves.
       where:
-        isMember && ownTeamIds?.length === 0
+        isMember && !currentUser?.teamId
           ? { id: sessionUser.id }
-          : ownTeamIds
-            ? usersOnTeams(ownTeamIds)
+          : teamId
+            ? { teamId }
             : undefined,
       orderBy: {
         name: "asc",
@@ -63,7 +68,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
       },
     }),
     prisma.team.findMany({
-      where: ownTeamIds ? { id: { in: scopeIds(ownTeamIds) } } : undefined,
+      where: teamId ? { id: teamId } : undefined,
       orderBy: {
         name: "asc",
       },
@@ -98,7 +103,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
           clients={clients}
           returnTo={back.href}
           defaultAssigneeId={isMember ? sessionUser.id : undefined}
-          defaultTeamId={ownTeamIds?.[0]}
+          defaultTeamId={scopedToTeam ? currentUser?.teamId ?? undefined : undefined}
         />
       </div>
     </DashboardLayout>

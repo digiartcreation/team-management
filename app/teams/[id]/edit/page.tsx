@@ -38,7 +38,7 @@ export default async function EditTeamPage({ params }: EditTeamPageProps) {
         description: true,
         members: {
           select: {
-            userId: true,
+            id: true,
           },
         },
       },
@@ -51,10 +51,6 @@ export default async function EditTeamPage({ params }: EditTeamPageProps) {
         id: true,
         name: true,
         email: true,
-        teamMemberships: {
-          select: { team: { select: { id: true, name: true } } },
-          orderBy: { team: { name: "asc" } },
-        },
       },
     }),
   ]);
@@ -82,10 +78,7 @@ export default async function EditTeamPage({ params }: EditTeamPageProps) {
           action={updateTeam}
           submitLabel="Update Team"
           employees={employees}
-          team={{
-            ...team,
-            members: team.members.map((member) => ({ id: member.userId })),
-          }}
+          team={team}
         />
       </div>
     </DashboardLayout>

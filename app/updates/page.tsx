@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -42,9 +41,13 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
     role?: string;
   };
 
-  // A manager sees the people on any of their teams.
-  const managerTeamIds =
-    sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : [];
+  const currentUser =
+    sessionUser.role === "manager"
+      ? await prisma.user.findUnique({
+          where: { id: sessionUser.id },
+          select: { teamId: true },
+        })
+      : null;
 
   const params = await searchParams;
   const page = getPage(params.page);
@@ -55,6 +58,7 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
 
   const showEmployeeColumn = sessionUser.role === "admin";
   const isManager = sessionUser.role === "manager";
+  const managerTeamId = currentUser?.teamId ?? "__no_team__";
 
   let dateWhere: Prisma.DateTimeFilter | undefined;
   if (date && datePattern.test(date)) {
@@ -81,7 +85,7 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
         }
       : isManager
         ? {
-            user: usersOnTeams(managerTeamIds),
+            user: { teamId: managerTeamId },
             ...(employeeId ? { userId: employeeId } : {}),
             ...(dateWhere ? { date: dateWhere } : {}),
           }
@@ -109,7 +113,7 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
         })
       : isManager
         ? prisma.user.findMany({
-            where: usersOnTeams(managerTeamIds),
+            where: { teamId: managerTeamId },
             select: { id: true, name: true },
             orderBy: { name: "asc" },
           })

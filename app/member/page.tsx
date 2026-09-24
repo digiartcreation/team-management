@@ -37,14 +37,13 @@ export default async function MemberDashboardPage() {
     select: {
       name: true,
       role: true,
-      teamMemberships: {
-        select: { team: { select: { name: true } } },
-        orderBy: { team: { name: "asc" } },
+      team: {
+        select: {
+          name: true,
+        },
       },
     },
   });
-  const teamNames =
-    member?.teamMemberships.map((membership) => membership.team.name) ?? [];
 
   // Spelled out rather than left as sessionUser.id: an undefined id is a
   // filter Prisma drops, which would put every task in the workspace on one
@@ -100,7 +99,7 @@ export default async function MemberDashboardPage() {
           dashboardPath="/member"
         />
 
-        {teamNames.length === 0 ? (
+        {!member?.team ? (
           <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">
             <p className="text-sm font-medium text-slate-700">
               You are not assigned to a team yet.
@@ -110,9 +109,9 @@ export default async function MemberDashboardPage() {
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
           <StatCard
-            label={teamNames.length === 1 ? "Assigned Team" : "Assigned Teams"}
-            value={teamNames.length}
-            description={teamNames.join(", ") || "No team assigned"}
+            label="Assigned Team"
+            value={member?.team ? 1 : 0}
+            description={member?.team?.name ?? "No team assigned"}
           />
           <StatCard
             label="Backlog"

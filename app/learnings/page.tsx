@@ -3,7 +3,6 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -38,15 +37,19 @@ export default async function LearningsPage({
   const { q } = await searchParams;
   const page = getPage((await searchParams).page);
   const showEmployeeColumn = sessionUser.role !== "member";
-  // A manager sees the people on any of their teams.
-  const managerTeamIds =
-    sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : [];
+  const currentUser =
+    sessionUser.role === "manager"
+      ? await prisma.user.findUnique({
+          where: { id: sessionUser.id },
+          select: { teamId: true },
+        })
+      : null;
 
   const where: Prisma.LearningWhereInput =
     sessionUser.role === "admin"
       ? {}
       : sessionUser.role === "manager"
-        ? { user: usersOnTeams(managerTeamIds) }
+        ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } }
         : { userId: sessionUser.id };
 
   if (q?.trim()) {

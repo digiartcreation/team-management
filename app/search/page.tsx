@@ -2,7 +2,6 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, scopeIds, tasksOnTeams, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { formatTaskStatus } from "@/lib/taskStatus";
 
@@ -32,15 +31,17 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const sessionUser = session.user as typeof session.user & { id?: string; role?: string };
   const { q, module, dateFrom, dateTo, role, teamId } = await searchParams;
   const query = q?.trim() ?? "";
-  // Managers and employees search within every team they are on.
-  const ownTeamIds =
+  const currentUser =
     sessionUser.role === "manager" || sessionUser.role === "member"
-      ? await getUserTeamIds(sessionUser.id)
-      : [];
+      ? await prisma.user.findUnique({
+          where: { id: sessionUser.id },
+          select: { teamId: true },
+        })
+      : null;
   const memberScope = sessionUser.role === "member";
-  const isManager = sessionUser.role === "manager";
-  // An admin may narrow to one team; a manager is always held to their own.
-  const selectedTeamIds = sessionUser.role === "admin" && teamId ? [teamId] : isManager ? ownTeamIds : undefined;
+  const managerTeamId = sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
+  const memberTeamId = memberScope ? currentUser?.teamId ?? "__no_team__" : undefined;
+  const selectedTeamId = sessionUser.role === "admin" && teamId ? teamId : managerTeamId;
   const createdAt =
     dateFrom || dateTo
       ? {
@@ -48,15 +49,15 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999Z`) } : {}),
         }
       : undefined;
-  const userWhere = memberScope ? { id: sessionUser.id } : isManager ? usersOnTeams(ownTeamIds) : { ...(role ? { role } : {}), ...(selectedTeamIds ? usersOnTeams(selectedTeamIds) : {}) };
-  const ownedWhere = memberScope ? { userId: sessionUser.id } : selectedTeamIds ? { user: usersOnTeams(selectedTeamIds) } : {};
-  const taskWhere = memberScope ? { assignedToId: sessionUser.id } : selectedTeamIds ? tasksOnTeams(selectedTeamIds) : {};
+  const userWhere = memberScope ? { id: sessionUser.id } : sessionUser.role === "manager" ? { teamId: managerTeamId } : { ...(role ? { role } : {}), ...(selectedTeamId ? { teamId: selectedTeamId } : {}) };
+  const ownedWhere = memberScope ? { userId: sessionUser.id } : sessionUser.role === "manager" ? { user: { teamId: managerTeamId } } : selectedTeamId ? { user: { teamId: selectedTeamId } } : {};
+  const taskWhere = memberScope ? { assignedToId: sessionUser.id } : sessionUser.role === "manager" ? { teamId: managerTeamId } : selectedTeamId ? { teamId: selectedTeamId } : {};
   const includeModule = (name: string) => !module || module === name;
   const teamsForFilter = sessionUser.role === "admin" ? await prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }) : [];
   const teamWhere =
     sessionUser.role === "admin"
-      ? { ...(createdAt ? { createdAt } : {}), ...(selectedTeamIds ? { id: { in: selectedTeamIds } } : {}), name: { contains: query } }
-      : { id: { in: scopeIds(ownTeamIds) }, name: { contains: query } };
+      ? { ...(createdAt ? { createdAt } : {}), ...(selectedTeamId ? { id: selectedTeamId } : {}), name: { contains: query } }
+      : { id: sessionUser.role === "manager" ? managerTeamId : memberTeamId, name: { contains: query } };
   const [users, teams, tasks, updates, learnings, tools, activity] = query
     ? await Promise.all([
         includeModule("employees") ? prisma.user.findMany({ where: { ...userWhere, ...(createdAt ? { createdAt } : {}), OR: [{ name: { contains: query } }, { email: { contains: query } }] }, take: 5 }) : [],

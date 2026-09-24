@@ -2,7 +2,6 @@ import Link from "next/link";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, scopeIds, tasksOnTeams, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { updateTask } from "@/app/tasks/actions";
@@ -32,13 +31,20 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
 
   const { id } = await params;
 
-  // Undefined for an admin; a manager edits within any team they run.
-  const managerTeamIds =
-    sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : undefined;
+  const currentUser =
+    sessionUser.role === "manager"
+      ? await prisma.user.findUnique({
+          where: { id: sessionUser.id },
+          select: { teamId: true },
+        })
+      : null;
+
+  const managerTeamId =
+    sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
 
   const [task, employees, teams] = await Promise.all([
-    prisma.task.findFirst({
-      where: { id, ...(managerTeamIds ? tasksOnTeams(managerTeamIds) : {}) },
+    prisma.task.findUnique({
+      where: { id, ...(managerTeamId ? { teamId: managerTeamId } : {}) },
       select: {
         id: true,
         title: true,
@@ -53,7 +59,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
       },
     }),
     prisma.user.findMany({
-      where: managerTeamIds ? usersOnTeams(managerTeamIds) : undefined,
+      where: managerTeamId ? { teamId: managerTeamId } : undefined,
       orderBy: {
         name: "asc",
       },
@@ -64,7 +70,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
       },
     }),
     prisma.team.findMany({
-      where: managerTeamIds ? { id: { in: scopeIds(managerTeamIds) } } : undefined,
+      where: managerTeamId ? { id: managerTeamId } : undefined,
       orderBy: {
         name: "asc",
       },

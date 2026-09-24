@@ -3,7 +3,6 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -22,8 +21,8 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   const showEmployeeColumn = sessionUser.role !== "member";
   const { q, category } = await searchParams;
   const page = getPage((await searchParams).page);
-  const managerTeamIds = sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : [];
-  const where: Prisma.ToolUsageWhereInput = sessionUser.role === "admin" ? {} : sessionUser.role === "manager" ? { user: usersOnTeams(managerTeamIds) } : { userId: sessionUser.id };
+  const currentUser = sessionUser.role === "manager" ? await prisma.user.findUnique({ where: { id: sessionUser.id }, select: { teamId: true } }) : null;
+  const where: Prisma.ToolUsageWhereInput = sessionUser.role === "admin" ? {} : sessionUser.role === "manager" ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } } : { userId: sessionUser.id };
   if (q?.trim()) where.toolName = { contains: q.trim() };
   if (category?.trim()) where.category = category.trim();
   const [entries, totalEntries] = await Promise.all([

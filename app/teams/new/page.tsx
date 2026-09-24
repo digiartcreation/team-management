@@ -29,10 +29,6 @@ export default async function NewTeamPage() {
       id: true,
       name: true,
       email: true,
-      teamMemberships: {
-        select: { team: { select: { id: true, name: true } } },
-        orderBy: { team: { name: "asc" } },
-      },
     },
   });
 

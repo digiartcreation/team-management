@@ -47,21 +47,31 @@ function handlePrismaTeamError(error: unknown): never {
   throw error;
 }
 
-/**
- * Makes the ticked people this team's members. Only this team's memberships
- * change: someone already on another team stays on it, since a person can
- * work for several teams at once.
- */
 async function assignMembers(teamId: string, memberIds: string[]) {
-  await prisma.$transaction([
-    prisma.teamMember.deleteMany({
-      where: { teamId, userId: { notIn: memberIds } },
-    }),
-    prisma.teamMember.createMany({
-      data: memberIds.map((userId) => ({ userId, teamId })),
-      skipDuplicates: true,
-    }),
-  ]);
+  await prisma.user.updateMany({
+    where: {
+      teamId,
+      id: {
+        notIn: memberIds,
+      },
+    },
+    data: {
+      teamId: null,
+    },
+  });
+
+  if (memberIds.length > 0) {
+    await prisma.user.updateMany({
+      where: {
+        id: {
+          in: memberIds,
+        },
+      },
+      data: {
+        teamId,
+      },
+    });
+  }
 }
 
 export async function createTeam(formData: FormData) {

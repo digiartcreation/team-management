@@ -2,7 +2,6 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { getUserTeamIds, usersOnTeams } from "@/lib/teams";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { checkIn, checkOut } from "@/app/attendance/actions";
 import { sessionsOf, summariseSessions } from "@/lib/attendance";
@@ -50,14 +49,18 @@ export default async function AttendancePage() {
     id?: string;
     role?: string;
   };
-  // A manager sees the people on any of their teams.
-  const managerTeamIds =
-    sessionUser.role === "manager" ? await getUserTeamIds(sessionUser.id) : [];
+  const currentUser =
+    sessionUser.role === "manager"
+      ? await prisma.user.findUnique({
+          where: { id: sessionUser.id },
+          select: { teamId: true },
+        })
+      : null;
   const where: Prisma.AttendanceRecordWhereInput =
     sessionUser.role === "admin"
       ? {}
       : sessionUser.role === "manager"
-        ? { user: usersOnTeams(managerTeamIds) }
+        ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } }
         : { userId: sessionUser.id };
   const records = await prisma.attendanceRecord.findMany({
     where,

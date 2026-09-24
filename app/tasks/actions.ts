@@ -10,7 +10,6 @@ import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import { DIGITAL_MARKETING, formatServiceLabel } from "@/lib/services";
 import { formatDuration } from "@/lib/duration";
-import { getUserTeamIds, isOnTeam } from "@/lib/teams";
 import {
   canMoveTo,
   canReopenFrom,
@@ -154,41 +153,43 @@ async function requireTaskCreator() {
 }
 
 /**
- * An employee's task goes on one of their own teams -- the one they picked, or
- * their first when they left it blank -- and can only be handed to someone on
- * that team. With no team at all, the task can still be made for themselves.
+ * An employee's task belongs to their own team, and can only go to someone on
+ * it -- or to themselves when they have no team yet.
  */
-async function resolveMemberTaskScope(
-  userId: string,
-  assignedToId: string | null,
-  requestedTeamId: string | null
-) {
-  const teamIds = await getUserTeamIds(userId);
-
-  if (requestedTeamId && !teamIds.includes(requestedTeamId)) {
-    throw new Error("You can only add tasks to a team you are on.");
-  }
-
-  const teamId = requestedTeamId ?? teamIds[0] ?? null;
+async function resolveMemberTaskScope(userId: string, assignedToId: string | null) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { teamId: true },
+  });
+  const teamId = user?.teamId ?? null;
 
   if (assignedToId && assignedToId !== userId) {
-    if (!teamId || !(await isOnTeam(assignedToId, teamId))) {
-      throw new Error("You can only assign tasks to people on that team.");
+    const assignee = teamId
+      ? await prisma.user.findUnique({
+          where: { id: assignedToId },
+          select: { teamId: true },
+        })
+      : null;
+
+    if (!assignee || assignee.teamId !== teamId) {
+      throw new Error("You can only assign tasks to people on your own team.");
     }
   }
 
   return teamId;
 }
 
-/** Every team the manager runs. A manager with none cannot manage tasks. */
-async function getManagerTeamIds(userId: string) {
-  const teamIds = await getUserTeamIds(userId);
+async function getManagerTeamId(userId: string) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { teamId: true },
+  });
 
-  if (teamIds.length === 0) {
+  if (!user?.teamId) {
     throw new Error("You must be assigned to a team before managing tasks.");
   }
 
-  return teamIds;
+  return user.teamId;
 }
 
 async function requireTaskDeleteAccess() {
@@ -257,13 +258,13 @@ async function resolveClientMapping(
 async function validateTaskRelations(
   assignedToId: string | null,
   teamId: string | null,
-  managerTeamIds?: string[]
+  managerTeamId?: string
 ) {
   const [assignedUser, team] = await Promise.all([
     assignedToId
       ? prisma.user.findUnique({
           where: { id: assignedToId },
-          select: { id: true },
+          select: { id: true, teamId: true },
         })
       : Promise.resolve(null),
     teamId
@@ -282,15 +283,13 @@ async function validateTaskRelations(
     throw new Error("Team not found.");
   }
 
-  if (managerTeamIds) {
-    if (!teamId || !managerTeamIds.includes(teamId)) {
-      throw new Error("Managers can only manage tasks for their own teams.");
+  if (managerTeamId) {
+    if (teamId !== managerTeamId) {
+      throw new Error("Managers can only manage tasks for their own team.");
     }
 
-    // On the task's own team, not just any of the manager's: a person on
-    // another of their teams is not working for this one.
-    if (assignedUser && !(await isOnTeam(assignedUser.id, teamId))) {
-      throw new Error("Managers can only assign tasks to people on the task's team.");
+    if (assignedUser && assignedUser.teamId !== managerTeamId) {
+      throw new Error("Managers can only assign tasks to users in their own team.");
     }
   }
 }
@@ -313,15 +312,11 @@ export async function createTask(formData: FormData) {
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const returnPath = resolveReturnPath(getValue(formData, "returnTo"));
-  const managerTeamIds =
-    sessionUser.role === "manager" ? await getManagerTeamIds(sessionUser.id) : undefined;
-  // A manager on one team need not pick it; on several, a blank pick means
-  // their first.
+  const managerTeamId =
+    sessionUser.role === "manager" ? await getManagerTeamId(sessionUser.id) : undefined;
   const teamId = isMember
-    ? await resolveMemberTaskScope(sessionUser.id, assignedToId, requestedTeamId)
-    : managerTeamIds
-      ? requestedTeamId ?? managerTeamIds[0]
-      : requestedTeamId;
+    ? await resolveMemberTaskScope(sessionUser.id, assignedToId)
+    : managerTeamId ?? requestedTeamId;
 
   if (!title) {
     throw new Error("Task title is required.");
@@ -335,7 +330,7 @@ export async function createTask(formData: FormData) {
     throw new Error(`A new task cannot start out ${formatTaskStatus(status).toLowerCase()}.`);
   }
 
-  await validateTaskRelations(assignedToId, teamId, managerTeamIds);
+  await validateTaskRelations(assignedToId, teamId, managerTeamId);
   const { clientId, clientWork } = await resolveClientMapping(
     requestedClientId,
     requestedClientWork
@@ -407,11 +402,9 @@ export async function updateTask(formData: FormData) {
   const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
-  const managerTeamIds =
-    sessionUser.role === "manager" ? await getManagerTeamIds(sessionUser.id) : undefined;
-  const teamId = managerTeamIds
-    ? requestedTeamId ?? managerTeamIds[0]
-    : requestedTeamId;
+  const managerTeamId =
+    sessionUser.role === "manager" ? await getManagerTeamId(sessionUser.id) : undefined;
+  const teamId = managerTeamId ?? requestedTeamId;
 
   if (!id || !title) {
     throw new Error("Task title is required.");
@@ -421,7 +414,7 @@ export async function updateTask(formData: FormData) {
     throw new Error("Invalid task status or priority.");
   }
 
-  await validateTaskRelations(assignedToId, teamId, managerTeamIds);
+  await validateTaskRelations(assignedToId, teamId, managerTeamId);
   const { clientId, clientWork } = await resolveClientMapping(
     requestedClientId,
     requestedClientWork
@@ -446,11 +439,8 @@ export async function updateTask(formData: FormData) {
       throw new Error("Task not found.");
     }
 
-    if (
-      managerTeamIds &&
-      (!previous.teamId || !managerTeamIds.includes(previous.teamId))
-    ) {
-      throw new Error("Managers can only edit tasks for their own teams.");
+    if (managerTeamId && previous.teamId !== managerTeamId) {
+      throw new Error("Managers can only edit tasks for their own team.");
     }
 
     assertStatusMove(previous.status, status);
@@ -561,8 +551,8 @@ export async function deleteTask(id: string) {
 }
 
 /**
- * Who may move a task's status. Admins anywhere, managers within any of their
- * teams, everyone else only on a task assigned to them.
+ * Who may move a task's status. Admins anywhere, managers within their own
+ * team, everyone else only on a task assigned to them.
  */
 async function canUpdateTaskStatus(
   userId: string,
@@ -574,9 +564,7 @@ async function canUpdateTaskStatus(
   }
 
   if (role === "manager") {
-    return task.teamId
-      ? (await getManagerTeamIds(userId)).includes(task.teamId)
-      : false;
+    return task.teamId === (await getManagerTeamId(userId));
   }
 
   return task.assignedToId === userId;
@@ -807,7 +795,12 @@ async function canLogTaskTime(
     return false;
   }
 
-  return isOnTeam(userId, task.teamId);
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { teamId: true },
+  });
+
+  return Boolean(user?.teamId) && user?.teamId === task.teamId;
 }
 
 /**
