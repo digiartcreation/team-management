@@ -1,7 +1,8 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
-import StatCard from "@/components/dashboard/StatCard";
+// Only used by the stat cards, which are commented out for now.
+// import { prisma } from "@/lib/prisma";
+// import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { loadTaskBoard } from "@/lib/taskBoard";
@@ -19,6 +20,9 @@ export default async function Home() {
     redirect("/login");
   }
 
+  // The stat cards below are hidden for now, so their counts are not queried.
+  // Bring these back together with the section.
+  /*
   const [
     totalUsers,
     totalTeams,
@@ -27,34 +31,19 @@ export default async function Home() {
     inProgressTasks,
     completedTasks,
     reopenedTasks,
-    board,
   ] = await Promise.all([
     prisma.user.count(),
     prisma.team.count(),
     prisma.task.count(),
-    prisma.task.count({
-      where: {
-        status: "pending",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        status: "in_progress",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        status: "completed",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        status: "reopened",
-      },
-    }),
-    // No filter: an admin sees every team's work on the board.
-    loadTaskBoard({}),
+    prisma.task.count({ where: { status: "pending" } }),
+    prisma.task.count({ where: { status: "in_progress" } }),
+    prisma.task.count({ where: { status: "completed" } }),
+    prisma.task.count({ where: { status: "reopened" } }),
   ]);
+  */
+
+  // No filter: an admin sees every team's work on the board.
+  const board = await loadTaskBoard({});
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;
@@ -100,8 +89,10 @@ export default async function Home() {
           description="Every team's tasks by stage. Drag a card to a new column to move its status."
           columns={board}
           today={todayInputValue()}
+          dashboardPath="/"
         />
 
+        {/* Stat cards hidden so the board carries the dashboard.
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">
           <StatCard
             label="Total Users"
@@ -139,6 +130,7 @@ export default async function Home() {
             description="Completed tasks sent back for rework"
           />
         </section>
+        */}
 
         <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
           <div>

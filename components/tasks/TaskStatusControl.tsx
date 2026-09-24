@@ -4,7 +4,7 @@ import { useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import { useActionMenu } from "@/components/ui/ActionMenu";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
-import { TASK_STATUS_OPTIONS, canReopenFrom } from "@/lib/taskStatus";
+import { TASK_STATUS_OPTIONS, allowedNextStatuses } from "@/lib/taskStatus";
 
 type TaskStatusControlProps = {
   taskId: string;
@@ -41,16 +41,14 @@ export default function TaskStatusControl({
   const [isPending, startTransition] = useTransition();
   const menu = useActionMenu();
 
-  // Reopening is a return trip: it is only offered on work that was called
-  // finished, plus on a task already sitting in Reopened so its own status
-  // still appears in the list.
-  const statusOptions = TASK_STATUS_OPTIONS.filter(
-    (option) =>
-      option.value !== "reopened" ||
-      canReopenFrom(status) ||
-      status === "reopened"
+  // Only the moves this task may make: finished work can be reopened or
+  // closed, never dropped back into Backlog or In Progress.
+  const allowed = new Set<string>(allowedNextStatuses(status));
+  const statusOptions = TASK_STATUS_OPTIONS.filter((option) =>
+    allowed.has(option.value)
   );
   const reopening = selectedStatus === "reopened" && status !== "reopened";
+  const closing = selectedStatus === "closed" && status !== "closed";
   const canLogWithoutChange =
     selectedStatus === status &&
     (status === "completed" || status === "reopened");
@@ -72,6 +70,16 @@ export default function TaskStatusControl({
 
   function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
+
+    if (
+      closing &&
+      !window.confirm(
+        `Are you sure you want to close "${taskTitle}"? It will leave the dashboard and only show in Task Management.`
+      )
+    ) {
+      return;
+    }
+
     updateStatus(selectedStatus, reopening ? reopenReason : undefined);
   }
 
@@ -145,7 +153,9 @@ export default function TaskStatusControl({
               ? "Updating..."
               : reopening
                 ? "Reopen task"
-                : "Update status"}
+                : closing
+                  ? "Close task"
+                  : "Update status"}
           </button>
         )}
       </form>

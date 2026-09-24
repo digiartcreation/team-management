@@ -197,14 +197,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
               Task Management
             </h1>
           </div>
-          {canManageTasks ? (
-            <Link
-              href="/tasks/new"
-              className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              Add Task
-            </Link>
-          ) : null}
+          {/* Everyone can add a task; editing other people's stays with managers. */}
+          <Link
+            href="/tasks/new"
+            className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Add Task
+          </Link>
         </header>
 
         <form className="grid gap-4 rounded-lg border border-slate-200 bg-white p-4 shadow-sm md:grid-cols-4">
@@ -447,7 +446,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                           className={`rounded-full px-2.5 py-1 text-xs font-medium ${
                             task.status === "reopened"
                               ? "bg-[#F3E8FF] text-[#770FC2]"
-                              : "bg-slate-100 text-slate-700"
+                              : task.status === "closed"
+                                ? "bg-slate-800 text-white"
+                                : "bg-slate-100 text-slate-700"
                           }`}
                         >
                           {formatTaskStatus(task.status)}

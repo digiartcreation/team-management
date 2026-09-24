@@ -25,10 +25,9 @@ const fieldClass =
 
 const labelClass = "text-xs font-medium uppercase tracking-normal text-slate-500";
 
-const timeSpentOptions = Array.from(
-  { length: 31 },
-  (_, index) => (index + 2) * 15
-);
+// 0 minutes to 8 hours in quarter hours. Zero is there on purpose: it lets a
+// task be marked done when it took no measurable time.
+const timeSpentOptions = Array.from({ length: 33 }, (_, index) => index * 15);
 
 function formatTimeSpent(minutes: number) {
   const hours = Math.floor(minutes / 60);

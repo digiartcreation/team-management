@@ -11,6 +11,7 @@ export const TASK_STATUSES = [
   "in_progress",
   "completed",
   "reopened",
+  "closed",
 ] as const;
 
 export type TaskStatus = (typeof TASK_STATUSES)[number];
@@ -20,6 +21,7 @@ const TASK_STATUS_LABELS: Record<TaskStatus, string> = {
   in_progress: "In Progress",
   completed: "Completed",
   reopened: "Reopened",
+  closed: "Closed",
 };
 
 export const TASK_STATUS_OPTIONS = TASK_STATUSES.map((value) => ({
@@ -47,7 +49,39 @@ export function formatTaskStatus(value: string) {
  * ordinary statuses instead.
  */
 export function canReopenFrom(status: string) {
+  return status === "completed" || status === "closed";
+}
+
+/**
+ * Closing is the last word on a task: it is signed off, drops off the
+ * dashboards and only lives on in Task Management. Only finished work can be
+ * signed off.
+ */
+export function canCloseFrom(status: string) {
   return status === "completed";
+}
+
+/**
+ * Where a task may go from the status it has now, its own status included so a
+ * picker can still show it. Finished work does not slide back into the queue:
+ * a completed task can only be reopened or closed, and a closed one only
+ * reopened.
+ */
+export function allowedNextStatuses(current: string): TaskStatus[] {
+  switch (current) {
+    case "completed":
+      return ["completed", "reopened", "closed"];
+    case "closed":
+      return ["closed", "reopened"];
+    case "reopened":
+      return ["pending", "in_progress", "reopened", "completed"];
+    default:
+      return ["pending", "in_progress", "completed"];
+  }
+}
+
+export function canMoveTo(current: string, next: string) {
+  return (allowedNextStatuses(current) as string[]).includes(next);
 }
 
 /**

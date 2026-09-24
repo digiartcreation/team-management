@@ -5,7 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import { formatDuration } from "@/lib/duration";
-import { canReopenFrom } from "@/lib/taskStatus";
+import { canMoveTo, type TaskStatus } from "@/lib/taskStatus";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
 import type { BoardCard, BoardColumn, BoardStatus } from "@/lib/taskBoard";
 
@@ -16,6 +16,8 @@ type TaskBoardProps = {
   columns: BoardColumn[];
   /** Today as "YYYY-MM-DD", for the log time dialog. */
   today: string;
+  /** The dashboard the board sits on, so an added task comes back to it. */
+  dashboardPath: "/" | "/manager" | "/member";
 };
 
 /** The card currently being dragged, and the column it started in. */
@@ -133,15 +135,18 @@ function Card({
   moving,
   onDragStart,
   onDragEnd,
-  onLogTime,
+  action,
 }: {
   card: BoardCard;
   edge: string;
   moving: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
-  /** Present on cards that take time without a status change. */
-  onLogTime?: () => void;
+  /**
+   * The button along the foot of the card: Log time on reopened work, Close on
+   * completed work. Absent on columns that take neither.
+   */
+  action?: { label: string; onClick: () => void };
 }) {
   return (
     <article
@@ -196,21 +201,21 @@ function Card({
         ) : null}
       </div>
 
-      {onLogTime ? (
+      {action ? (
         <button
           type="button"
-          onClick={onLogTime}
+          onClick={action.onClick}
           disabled={moving}
           className="mt-3 w-full rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-1.5 text-xs font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF] disabled:opacity-60"
         >
-          Log time
+          {action.label}
         </button>
       ) : null}
     </article>
   );
 }
 
-function statusFormData(id: string, status: BoardStatus, reopenReason?: string) {
+function statusFormData(id: string, status: TaskStatus, reopenReason?: string) {
   const formData = new FormData();
   formData.set("id", id);
   formData.set("status", status);
@@ -227,6 +232,7 @@ export default function TaskBoard({
   description,
   columns,
   today,
+  dashboardPath,
 }: TaskBoardProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -235,12 +241,13 @@ export default function TaskBoard({
   const [error, setError] = useState<string | null>(null);
   const [reopenPrompt, setReopenPrompt] = useState<DragCard | null>(null);
   const [reopenReason, setReopenReason] = useState("");
+  const [closePrompt, setClosePrompt] = useState<DragCard | null>(null);
   const [timePrompt, setTimePrompt] = useState<TimePrompt | null>(null);
   // Read by the save handler, which has to stay stable for the dialog's effect.
   const timePromptRef = useRef<TimePrompt | null>(null);
   timePromptRef.current = timePrompt;
 
-  function submitStatus(id: string, status: BoardStatus, reopenReason?: string) {
+  function submitStatus(id: string, status: TaskStatus, reopenReason?: string) {
     setError(null);
     setMovingCardId(id);
 
@@ -260,12 +267,9 @@ export default function TaskBoard({
     });
   }
 
+  // Same rules as the status picker: finished work only goes to Reopened.
   function canDropOn(target: BoardStatus, source: BoardStatus) {
-    if (source === target) {
-      return false;
-    }
-
-    return target !== "reopened" || canReopenFrom(source) || source === "reopened";
+    return source !== target && canMoveTo(source, target);
   }
 
   function handleDragStart(card: BoardCard, status: BoardStatus) {
@@ -329,6 +333,15 @@ export default function TaskBoard({
     setReopenPrompt(null);
   }
 
+  function confirmClose() {
+    if (!closePrompt) {
+      return;
+    }
+
+    submitStatus(closePrompt.id, "closed");
+    setClosePrompt(null);
+  }
+
   const handleTimeSaved = useCallback(() => {
     const prompt = timePromptRef.current;
     setTimePrompt(null);
@@ -349,12 +362,20 @@ export default function TaskBoard({
           <h2 className="text-lg font-semibold text-slate-950">{heading}</h2>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
         </div>
-        <Link
-          href="/tasks"
-          className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
-        >
-          View all
-        </Link>
+        <div className="flex items-center gap-4">
+          <Link
+            href="/tasks"
+            className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
+          >
+            View all
+          </Link>
+          <Link
+            href={`/tasks/new?from=${encodeURIComponent(dashboardPath)}`}
+            className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+          >
+            Add Task
+          </Link>
+        </div>
       </div>
 
       {error ? (
@@ -406,7 +427,8 @@ export default function TaskBoard({
                 </span>
               </div>
 
-              <div className="mt-3 flex max-h-[28rem] flex-col gap-3 overflow-y-auto">
+              {/* Grows with its cards, so every card in the column is in view. */}
+              <div className="mt-3 flex flex-col gap-3">
                 {column.cards.length === 0 ? (
                   <p className="rounded-md border border-dashed border-slate-300 p-4 text-center text-xs text-slate-400">
                     Nothing here
@@ -420,18 +442,31 @@ export default function TaskBoard({
                       moving={movingCardId === card.id}
                       onDragStart={handleDragStart(card, column.status)}
                       onDragEnd={() => setDragCard(null)}
-                      onLogTime={
-                        column.status === "completed" ||
-                        column.status === "reopened"
-                          ? () =>
-                              setTimePrompt({
-                                id: card.id,
-                                title: card.title,
-                                status: column.status,
-                                reopenCount: card.reopenCount,
-                                completing: false,
-                              })
-                          : undefined
+                      action={
+                        column.status === "completed"
+                          ? {
+                              label: "Close",
+                              onClick: () =>
+                                setClosePrompt({
+                                  id: card.id,
+                                  title: card.title,
+                                  status: column.status,
+                                  reopenCount: card.reopenCount,
+                                }),
+                            }
+                          : column.status === "reopened"
+                            ? {
+                                label: "Log time",
+                                onClick: () =>
+                                  setTimePrompt({
+                                    id: card.id,
+                                    title: card.title,
+                                    status: column.status,
+                                    reopenCount: card.reopenCount,
+                                    completing: false,
+                                  }),
+                              }
+                            : undefined
                       }
                     />
                   ))
@@ -493,6 +528,48 @@ export default function TaskBoard({
                 className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
               >
                 Reopen task
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
+      {closePrompt ? (
+        <div
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="close-prompt-heading"
+          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+        >
+          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
+            <h2
+              id="close-prompt-heading"
+              className="text-lg font-semibold text-slate-950"
+            >
+              Close task
+            </h2>
+            <p className="mt-1 break-words text-sm text-slate-500">
+              {closePrompt.title}
+            </p>
+            <p className="mt-4 text-sm text-slate-700">
+              Are you sure you want to close this task? It will leave the
+              dashboard and only show in Task Management.
+            </p>
+
+            <div className="mt-5 flex justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setClosePrompt(null)}
+                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+              >
+                No
+              </button>
+              <button
+                type="button"
+                onClick={confirmClose}
+                className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
+              >
+                Yes, close
               </button>
             </div>
           </div>

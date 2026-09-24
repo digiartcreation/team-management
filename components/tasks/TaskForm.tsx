@@ -2,7 +2,10 @@ import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ClientWorkField, {
   type TaskClientOption,
 } from "@/components/tasks/ClientWorkField";
-import { TASK_STATUS_OPTIONS, canReopenFrom } from "@/lib/taskStatus";
+import { TASK_STATUS_OPTIONS, allowedNextStatuses } from "@/lib/taskStatus";
+
+/** What a brand-new task may start out as: never reopened, never closed. */
+const NEW_TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
 
 type TaskFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -17,6 +20,11 @@ type TaskFormProps = {
     name: string;
   }[];
   clients: TaskClientOption[];
+  /** Where a new task's save lands, when it was added from a dashboard. */
+  returnTo?: string;
+  /** Preselected on a new task, e.g. the employee adding it for themselves. */
+  defaultAssigneeId?: string;
+  defaultTeamId?: string;
   task?: {
     id: string;
     title: string;
@@ -43,16 +51,18 @@ export default function TaskForm({
   employees,
   teams,
   clients,
+  returnTo,
+  defaultAssigneeId,
+  defaultTeamId,
   task,
 }: TaskFormProps) {
-  // Reopening is a return trip, so the option only exists on a task that was
-  // called finished -- or on one already sitting in Reopened, whose own status
-  // has to stay selectable.
-  const statuses = TASK_STATUS_OPTIONS.filter(
-    (status) =>
-      status.value !== "reopened" ||
-      canReopenFrom(task?.status ?? "") ||
-      task?.status === "reopened"
+  // An existing task only offers the moves it is allowed to make: finished
+  // work can be reopened or closed, not dropped back into the queue.
+  const allowed: Set<string> = task
+    ? new Set(allowedNextStatuses(task.status))
+    : NEW_TASK_STATUSES;
+  const statuses = TASK_STATUS_OPTIONS.filter((status) =>
+    allowed.has(status.value)
   );
 
   return (
@@ -61,6 +71,7 @@ export default function TaskForm({
       className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
     >
       {task ? <input type="hidden" name="id" value={task.id} /> : null}
+      {returnTo ? <input type="hidden" name="returnTo" value={returnTo} /> : null}
 
       <div className="grid gap-5">
         <label className="grid gap-2">
@@ -93,7 +104,7 @@ export default function TaskForm({
             </span>
             <select
               name="assignedToId"
-              defaultValue={task?.assignedToId ?? ""}
+              defaultValue={task ? task.assignedToId ?? "" : defaultAssigneeId ?? ""}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             >
               <option value="">Unassigned</option>
@@ -109,7 +120,7 @@ export default function TaskForm({
             <span className="text-sm font-medium text-slate-700">Team</span>
             <select
               name="teamId"
-              defaultValue={task?.teamId ?? ""}
+              defaultValue={task ? task.teamId ?? "" : defaultTeamId ?? ""}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
             >
               <option value="">No team</option>

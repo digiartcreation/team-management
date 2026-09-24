@@ -143,6 +143,7 @@ export default async function ManagerDashboardPage() {
           description="Your team's tasks by stage. Drag a card to a new column to move its status."
           columns={board}
           today={todayInputValue()}
+          dashboardPath="/manager"
         />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">

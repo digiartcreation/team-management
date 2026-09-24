@@ -7,7 +7,18 @@ import TaskForm from "@/components/tasks/TaskForm";
 import { createTask } from "@/app/tasks/actions";
 import { getTaskClientOptions } from "@/lib/taskClients";
 
-export default async function NewTaskPage() {
+/** The dashboards a task can be added from, and where "Back" leads for each. */
+const RETURN_PATHS: Record<string, { href: string; label: string }> = {
+  "/": { href: "/", label: "Back to Dashboard" },
+  "/manager": { href: "/manager", label: "Back to Dashboard" },
+  "/member": { href: "/member", label: "Back to Dashboard" },
+};
+
+type NewTaskPageProps = {
+  searchParams: Promise<{ from?: string }>;
+};
+
+export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
   const session = await auth();
 
   if (!session?.user) {
@@ -18,25 +29,35 @@ export default async function NewTaskPage() {
     id?: string;
     role?: string;
   };
+  const isAdmin = sessionUser.role === "admin";
+  // Managers and employees both add work for their own team only.
+  const scopedToTeam = !isAdmin;
+  const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
 
-  if (sessionUser.role !== "admin" && sessionUser.role !== "manager") {
-    redirect("/tasks");
-  }
+  const { from } = await searchParams;
+  const back = (from && RETURN_PATHS[from]) || {
+    href: "/tasks",
+    label: "Back to Tasks",
+  };
 
-  const currentUser =
-    sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
-      : null;
+  const currentUser = scopedToTeam
+    ? await prisma.user.findUnique({
+        where: { id: sessionUser.id },
+        select: { teamId: true },
+      })
+    : null;
 
-  const managerTeamId =
-    sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
+  const teamId = scopedToTeam ? currentUser?.teamId ?? "__no_team__" : undefined;
 
   const [employees, teams, clients] = await Promise.all([
     prisma.user.findMany({
-      where: managerTeamId ? { teamId: managerTeamId } : undefined,
+      // An employee without a team can still add a task -- for themselves.
+      where:
+        isMember && !currentUser?.teamId
+          ? { id: sessionUser.id }
+          : teamId
+            ? { teamId }
+            : undefined,
       orderBy: {
         name: "asc",
       },
@@ -47,7 +68,7 @@ export default async function NewTaskPage() {
       },
     }),
     prisma.team.findMany({
-      where: managerTeamId ? { id: managerTeamId } : undefined,
+      where: teamId ? { id: teamId } : undefined,
       orderBy: {
         name: "asc",
       },
@@ -64,10 +85,10 @@ export default async function NewTaskPage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
           <Link
-            href="/tasks"
+            href={back.href}
             className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
           >
-            Back to Tasks
+            {back.label}
           </Link>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
             Add Task
@@ -80,6 +101,9 @@ export default async function NewTaskPage() {
           employees={employees}
           teams={teams}
           clients={clients}
+          returnTo={back.href}
+          defaultAssigneeId={isMember ? sessionUser.id : undefined}
+          defaultTeamId={scopedToTeam ? currentUser?.teamId ?? undefined : undefined}
         />
       </div>
     </DashboardLayout>

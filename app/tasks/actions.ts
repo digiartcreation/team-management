@@ -11,6 +11,7 @@ import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import { DIGITAL_MARKETING, formatServiceLabel } from "@/lib/services";
 import { formatDuration } from "@/lib/duration";
 import {
+  canMoveTo,
   canReopenFrom,
   formatTaskStatus,
   isOnReopenCycle,
@@ -20,6 +21,39 @@ import {
 const priorities = new Set(["low", "medium", "high"]);
 
 const REOPEN_NEEDS_COMPLETED = "Only a completed task can be reopened.";
+
+/**
+ * The same rule the pickers and the board apply, held here too so a posted
+ * form cannot walk a completed task back into the queue.
+ */
+function assertStatusMove(previousStatus: string, nextStatus: string) {
+  if (previousStatus === nextStatus || canMoveTo(previousStatus, nextStatus)) {
+    return;
+  }
+
+  if (previousStatus === "completed") {
+    throw new Error("A completed task can only be reopened or closed.");
+  }
+
+  if (previousStatus === "closed") {
+    throw new Error("A closed task can only be reopened.");
+  }
+
+  if (nextStatus === "closed") {
+    throw new Error("Only a completed task can be closed.");
+  }
+
+  throw new Error(
+    `A ${formatTaskStatus(previousStatus)} task cannot be moved to ${formatTaskStatus(nextStatus)}.`
+  );
+}
+
+/** Where the add task form was opened from, so saving lands back there. */
+const TASK_RETURN_PATHS = new Set(["/", "/manager", "/member", "/tasks"]);
+
+function resolveReturnPath(value: string) {
+  return TASK_RETURN_PATHS.has(value) ? value : "/tasks";
+}
 
 /**
  * What a status change means for the reopen bookkeeping. Sending a completed
@@ -96,6 +130,53 @@ async function requireTaskEditor() {
   }
 
   return sessionUser as typeof sessionUser & { id: string };
+}
+
+/**
+ * Anyone signed in may add a task. Editing someone else's task stays with
+ * admins and managers; this only opens the door to creating one.
+ */
+async function requireTaskCreator() {
+  const session = await auth();
+  const sessionUser = session?.user as
+    | (NonNullable<typeof session>["user"] & {
+        id?: string;
+        role?: string;
+      })
+    | undefined;
+
+  if (!sessionUser?.id) {
+    redirect("/login");
+  }
+
+  return sessionUser as typeof sessionUser & { id: string };
+}
+
+/**
+ * An employee's task belongs to their own team, and can only go to someone on
+ * it -- or to themselves when they have no team yet.
+ */
+async function resolveMemberTaskScope(userId: string, assignedToId: string | null) {
+  const user = await prisma.user.findUnique({
+    where: { id: userId },
+    select: { teamId: true },
+  });
+  const teamId = user?.teamId ?? null;
+
+  if (assignedToId && assignedToId !== userId) {
+    const assignee = teamId
+      ? await prisma.user.findUnique({
+          where: { id: assignedToId },
+          select: { teamId: true },
+        })
+      : null;
+
+    if (!assignee || assignee.teamId !== teamId) {
+      throw new Error("You can only assign tasks to people on your own team.");
+    }
+  }
+
+  return teamId;
 }
 
 async function getManagerTeamId(userId: string) {
@@ -214,20 +295,28 @@ async function validateTaskRelations(
 }
 
 export async function createTask(formData: FormData) {
-  const sessionUser = await requireTaskEditor();
+  const sessionUser = await requireTaskCreator();
+  const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
 
   const title = getValue(formData, "title");
   const description = getValue(formData, "description");
-  const assignedToId = optionalValue(getValue(formData, "assignedToId"));
+  // An employee who leaves the assignee blank has made the task for themselves.
+  const requestedAssigneeId = optionalValue(getValue(formData, "assignedToId"));
+  const assignedToId = isMember
+    ? requestedAssigneeId ?? sessionUser.id
+    : requestedAssigneeId;
   const requestedTeamId = optionalValue(getValue(formData, "teamId"));
   const requestedClientId = optionalValue(getValue(formData, "clientId"));
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
+  const returnPath = resolveReturnPath(getValue(formData, "returnTo"));
   const managerTeamId =
     sessionUser.role === "manager" ? await getManagerTeamId(sessionUser.id) : undefined;
-  const teamId = managerTeamId ?? requestedTeamId;
+  const teamId = isMember
+    ? await resolveMemberTaskScope(sessionUser.id, assignedToId)
+    : managerTeamId ?? requestedTeamId;
 
   if (!title) {
     throw new Error("Task title is required.");
@@ -237,8 +326,8 @@ export async function createTask(formData: FormData) {
     throw new Error("Invalid task status or priority.");
   }
 
-  if (status === "reopened") {
-    throw new Error("A new task cannot start out reopened.");
+  if (status === "reopened" || status === "closed") {
+    throw new Error(`A new task cannot start out ${formatTaskStatus(status).toLowerCase()}.`);
   }
 
   await validateTaskRelations(assignedToId, teamId, managerTeamId);
@@ -273,7 +362,15 @@ export async function createTask(formData: FormData) {
       entityId: task.id,
       description: `Created task ${title}`,
     });
-    if (assignedToId) {
+    if (isMember) {
+      await notifyAdminsAndTeamManagers({
+        actorUserId: sessionUser.id,
+        title: "Task added",
+        message: `${sessionUser.name ?? "An employee"} added task "${title}".`,
+        type: "TASK_UPDATED",
+      });
+    }
+    if (assignedToId && assignedToId !== sessionUser.id) {
       await createNotification({
         userId: assignedToId,
         title: "Task assigned",
@@ -289,7 +386,7 @@ export async function createTask(formData: FormData) {
   revalidatePath("/");
   revalidatePath("/manager");
   revalidatePath("/member");
-  redirect("/tasks");
+  redirect(returnPath);
 }
 
 export async function updateTask(formData: FormData) {
@@ -345,6 +442,8 @@ export async function updateTask(formData: FormData) {
     if (managerTeamId && previous.teamId !== managerTeamId) {
       throw new Error("Managers can only edit tasks for their own team.");
     }
+
+    assertStatusMove(previous.status, status);
 
     const reopenCycle = resolveReopenCycle(
       previous.status,
@@ -550,6 +649,8 @@ export async function updateOwnTaskStatus(formData: FormData) {
     redirect("/tasks");
   }
 
+  assertStatusMove(task.status, status);
+
   const blockedCompletion = await completionTimeError(id, status, task);
 
   if (blockedCompletion) {
@@ -735,14 +836,15 @@ export async function logTaskTime(
   let date: Date;
 
   try {
-    minutes = Number(getValue(formData, "durationMinutes"));
+    const rawMinutes = getValue(formData, "durationMinutes");
+    minutes = rawMinutes === "" ? Number.NaN : Number(rawMinutes);
     if (
       !Number.isInteger(minutes) ||
-      minutes < 30 ||
+      minutes < 0 ||
       minutes > 8 * 60 ||
       minutes % 15
     ) {
-      throw new Error("Select a time between 30 minutes and 8 hours.");
+      throw new Error("Select a time between 0 minutes and 8 hours.");
     }
     date = parseLogDate(getValue(formData, "date"));
   } catch (error) {
@@ -760,11 +862,16 @@ export async function logTaskTime(
       teamId: true,
       assignedToId: true,
       reopenCount: true,
+      status: true,
     },
   });
 
   if (!task) {
     return { error: "Task not found." };
+  }
+
+  if (task.status === "closed") {
+    return { error: "This task is closed. Reopen it to log more time." };
   }
 
   if (!(await canLogTaskTime(sessionUser.id, sessionUser.role, task))) {

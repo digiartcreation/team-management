@@ -96,6 +96,7 @@ export default async function MemberDashboardPage() {
           description="Your tasks by stage. Drag a card to a new column to move its status."
           columns={board}
           today={todayInputValue()}
+          dashboardPath="/member"
         />
 
         {!member?.team ? (
