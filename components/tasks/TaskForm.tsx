@@ -4,8 +4,12 @@ import ClientWorkField, {
 } from "@/components/tasks/ClientWorkField";
 import { TASK_STATUS_OPTIONS, allowedNextStatuses } from "@/lib/taskStatus";
 
-/** What a brand-new task may start out as: never reopened, never closed. */
-const NEW_TASK_STATUSES = new Set(["pending", "in_progress", "completed"]);
+/**
+ * What a brand-new task may start out as: never completed, reopened or
+ * closed. Completing it goes through the status control, which asks for the
+ * time spent first.
+ */
+const NEW_TASK_STATUSES = new Set(["pending", "in_progress"]);
 
 type TaskFormProps = {
   action: (formData: FormData) => void | Promise<void>;

@@ -326,7 +326,7 @@ export async function createTask(formData: FormData) {
     throw new Error("Invalid task status or priority.");
   }
 
-  if (status === "reopened" || status === "closed") {
+  if (status === "completed" || status === "reopened" || status === "closed") {
     throw new Error(`A new task cannot start out ${formatTaskStatus(status).toLowerCase()}.`);
   }
 
