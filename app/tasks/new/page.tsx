@@ -102,7 +102,11 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
           teams={teams}
           clients={clients}
           returnTo={back.href}
-          defaultAssigneeId={isMember ? sessionUser.id : undefined}
+          defaultAssigneeId={
+            employees.some((employee) => employee.id === sessionUser.id)
+              ? sessionUser.id
+              : undefined
+          }
           defaultTeamId={scopedToTeam ? currentUser?.teamId ?? undefined : undefined}
         />
       </div>
