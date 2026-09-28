@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { ADMIN_ROLES } from "@/lib/roles";
 import { createNotification } from "@/lib/notifications";
 
 export async function notifyAdminsAndTeamManagers({
@@ -25,7 +26,7 @@ export async function notifyAdminsAndTeamManagers({
   const recipients = await prisma.user.findMany({
     where: {
       OR: [
-        { role: "admin" },
+        { role: { in: ADMIN_ROLES } },
         { role: "manager", teamId: actor?.teamId ?? "__no_team__" },
       ],
     },

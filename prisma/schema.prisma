@@ -12,8 +12,12 @@ model User {
   name                 String
   email                String
   password             String
+  /// "superadmin", "admin", "manager" or "member". A super admin has every
+  /// admin permission plus the Base Price menu; see lib/roles.ts.
   role                 String             @default("member")
-  createdAt            DateTime           @default(now())
+  /// Job level, one of DESIGNATION_OPTIONS in lib/designations.ts.
+  designation          String?
+  createdAt           DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   teamId               String?
   activityLogs         ActivityLog[]
@@ -102,6 +106,22 @@ model ClientService {
   @@index([clientId], map: "ClientService_clientId_fkey")
 }
 
+/// Hourly base price for one service when the work is done by an employee of
+/// a given designation. Managed by super admins only.
+model BasePrice {
+  id          String   @id @default(cuid())
+  /// One of SERVICE_OPTIONS in lib/services.ts.
+  service     String
+  /// One of DESIGNATION_OPTIONS in lib/designations.ts.
+  designation String
+  /// Amount in INR for one hour of work.
+  basePrice   Decimal  @db.Decimal(12, 2)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  @@unique([service, designation])
+}
+
 model Task {
   id           String   @id @default(cuid())
   title        String
@@ -116,6 +136,9 @@ model Task {
   clientWork   String?
   /// Amount in INR for a Digital Marketing task. Other work types leave this blank.
   digitalMarketingAmount Decimal? @db.Decimal(12, 2)
+  /// Effort weight for a Video Editing task, one of VIDEO_WEIGHTAGE_OPTIONS in
+  /// lib/services.ts (1 to 3 in half steps). Other work types leave this blank.
+  videoWeightage Decimal? @db.Decimal(3, 1)
   /// How many times this task has been reopened after being completed. It is
   /// also the cycle that new time logs are stamped with, so 0 means the task is
   /// still on its original run.

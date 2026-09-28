@@ -3,19 +3,18 @@ import Link from "next/link";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import EmployeeForm from "@/components/employees/EmployeeForm";
-import { updateEmployee } from "@/app/employees/actions";
-import { isSuperAdminRole } from "@/lib/roles";
+import BasePriceForm from "@/components/basePrices/BasePriceForm";
+import { updateBasePrice } from "@/app/base-prices/actions";
 
-type EditEmployeePageProps = {
+type EditBasePricePageProps = {
   params: Promise<{
     id: string;
   }>;
 };
 
-export default async function EditEmployeePage({
+export default async function EditBasePricePage({
   params,
-}: EditEmployeePageProps) {
+}: EditBasePricePageProps) {
   const session = await auth();
 
   if (!session?.user) {
@@ -23,34 +22,27 @@ export default async function EditEmployeePage({
   }
 
   const sessionUser = session.user as typeof session.user & {
-    role?: string;
     isSuperAdmin?: boolean;
   };
 
-  if (sessionUser.role !== "admin") {
-    redirect("/employees");
+  if (!sessionUser.isSuperAdmin) {
+    redirect("/");
   }
 
   const { id } = await params;
 
-  const employee = await prisma.user.findUnique({
+  const basePrice = await prisma.basePrice.findUnique({
     where: { id },
     select: {
       id: true,
-      name: true,
-      email: true,
-      role: true,
+      service: true,
       designation: true,
+      basePrice: true,
     },
   });
 
-  if (!employee) {
+  if (!basePrice) {
     notFound();
-  }
-
-  // Only a super admin may change another super admin's account.
-  if (isSuperAdminRole(employee.role) && !sessionUser.isSuperAdmin) {
-    redirect("/employees");
   }
 
   return (
@@ -58,21 +50,23 @@ export default async function EditEmployeePage({
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
           <Link
-            href="/employees"
+            href="/base-prices"
             className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
           >
-            Back to Employees
+            Back to Base Price
           </Link>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
-            Edit Employee
+            Edit Base Price
           </h1>
         </header>
 
-        <EmployeeForm
-          action={updateEmployee}
-          submitLabel="Update Employee"
-          employee={employee}
-          canAssignSuperAdmin={sessionUser.isSuperAdmin === true}
+        <BasePriceForm
+          action={updateBasePrice}
+          submitLabel="Update Base Price"
+          basePrice={{
+            ...basePrice,
+            basePrice: basePrice.basePrice.toNumber(),
+          }}
         />
       </div>
     </DashboardLayout>

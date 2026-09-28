@@ -54,6 +54,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
         clientId: true,
         clientWork: true,
         digitalMarketingAmount: true,
+        videoWeightage: true,
         status: true,
         priority: true,
       },
@@ -112,6 +113,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
           task={{
             ...task,
             digitalMarketingAmount: task.digitalMarketingAmount?.toNumber() ?? null,
+            videoWeightage: task.videoWeightage?.toNumber() ?? null,
           }}
         />
       </div>

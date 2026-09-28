@@ -8,7 +8,13 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
-import { DIGITAL_MARKETING, formatServiceLabel } from "@/lib/services";
+import {
+  DEFAULT_VIDEO_WEIGHTAGE,
+  DIGITAL_MARKETING,
+  VIDEO_EDITING,
+  VIDEO_WEIGHTAGE_OPTIONS,
+  formatServiceLabel,
+} from "@/lib/services";
 import { formatDuration } from "@/lib/duration";
 import {
   canMoveTo,
@@ -115,6 +121,21 @@ function resolveDigitalMarketingAmount(
   }
 
   return amount;
+}
+
+/** Weightage only applies to Video Editing work; a blank one takes the default. */
+function resolveVideoWeightage(clientWork: string | null, value: string) {
+  if (!clientWork?.startsWith(VIDEO_EDITING)) {
+    return null;
+  }
+
+  const weightage = value || DEFAULT_VIDEO_WEIGHTAGE;
+
+  if (!VIDEO_WEIGHTAGE_OPTIONS.includes(weightage)) {
+    throw new Error("Choose a video weightage between 1 and 3.");
+  }
+
+  return new Prisma.Decimal(weightage);
 }
 
 async function requireTaskEditor() {
@@ -309,6 +330,7 @@ export async function createTask(formData: FormData) {
   const requestedClientId = optionalValue(getValue(formData, "clientId"));
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
+  const requestedVideoWeightage = getValue(formData, "videoWeightage");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const returnPath = resolveReturnPath(getValue(formData, "returnTo"));
@@ -339,6 +361,10 @@ export async function createTask(formData: FormData) {
     clientWork,
     requestedDigitalMarketingAmount
   );
+  const videoWeightage = resolveVideoWeightage(
+    clientWork,
+    requestedVideoWeightage
+  );
 
   try {
     const task = await prisma.task.create({
@@ -350,6 +376,7 @@ export async function createTask(formData: FormData) {
         clientId,
         clientWork,
         digitalMarketingAmount,
+        videoWeightage,
         status,
         priority,
       },
@@ -400,6 +427,7 @@ export async function updateTask(formData: FormData) {
   const requestedClientId = optionalValue(getValue(formData, "clientId"));
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
+  const requestedVideoWeightage = getValue(formData, "videoWeightage");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const managerTeamId =
@@ -422,6 +450,10 @@ export async function updateTask(formData: FormData) {
   const digitalMarketingAmount = resolveDigitalMarketingAmount(
     clientWork,
     requestedDigitalMarketingAmount
+  );
+  const videoWeightage = resolveVideoWeightage(
+    clientWork,
+    requestedVideoWeightage
   );
 
   try {
@@ -461,6 +493,7 @@ export async function updateTask(formData: FormData) {
         clientId,
         clientWork,
         digitalMarketingAmount,
+        videoWeightage,
         status,
         priority,
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),

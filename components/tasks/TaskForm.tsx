@@ -38,6 +38,7 @@ type TaskFormProps = {
     clientId: string | null;
     clientWork: string | null;
     digitalMarketingAmount: number | null;
+    videoWeightage: number | null;
     status: string;
     priority: string;
   };
@@ -142,6 +143,7 @@ export default function TaskForm({
           selectedClientId={task?.clientId ?? null}
           selectedWork={task?.clientWork ?? null}
           digitalMarketingAmount={task?.digitalMarketingAmount ?? null}
+          videoWeightage={task?.videoWeightage ?? null}
         />
 
         <div className="grid gap-5 md:grid-cols-2">

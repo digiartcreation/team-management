@@ -5,6 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { ADMIN_ROLES } from "@/lib/roles";
 import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 
@@ -37,7 +38,7 @@ async function getSessionUser() {
 
 async function notifyAdmins(message: string) {
   const admins = await prisma.user.findMany({
-    where: { role: "admin" },
+    where: { role: { in: ADMIN_ROLES } },
     select: { id: true },
   });
 

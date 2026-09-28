@@ -1,3 +1,6 @@
+import { DESIGNATION_OPTIONS } from "@/lib/designations";
+import { SUPER_ADMIN, formatRole } from "@/lib/roles";
+
 type EmployeeFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   submitLabel: string;
@@ -6,23 +9,24 @@ type EmployeeFormProps = {
     name: string;
     email: string;
     role: string;
+    designation: string | null;
   };
   includePassword?: boolean;
+  /** Only a super admin may hand out the Super Admin role. */
+  canAssignSuperAdmin?: boolean;
 };
 
-const roles = ["admin", "manager", "member"];
-
-function formatRole(role: string) {
-  const label = role === "member" ? "employee" : role;
-  return label.charAt(0).toUpperCase() + label.slice(1);
-}
+const baseRoles = ["admin", "manager", "member"];
 
 export default function EmployeeForm({
   action,
   submitLabel,
   employee,
   includePassword = false,
+  canAssignSuperAdmin = false,
 }: EmployeeFormProps) {
+  const roles = canAssignSuperAdmin ? [SUPER_ADMIN, ...baseRoles] : baseRoles;
+
   return (
     <form
       action={action}
@@ -80,6 +84,24 @@ export default function EmployeeForm({
                 {formatRole(role)}
                 </option>
               ))}
+          </select>
+        </label>
+
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">
+            Designation
+          </span>
+          <select
+            name="designation"
+            defaultValue={employee?.designation ?? ""}
+            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
+          >
+            <option value="">No designation</option>
+            {DESIGNATION_OPTIONS.map((designation) => (
+              <option key={designation} value={designation}>
+                {designation}
+              </option>
+            ))}
           </select>
         </label>
       </div>

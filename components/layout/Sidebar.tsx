@@ -3,11 +3,12 @@ import SidebarNav from "@/components/layout/SidebarNav";
 
 type SidebarProps = {
   role?: string;
+  isSuperAdmin?: boolean;
   unreadNotifications?: number;
   alertCounts?: Record<string, number | undefined>;
 };
 
-function getNavItems(role?: string) {
+function getNavItems(role?: string, isSuperAdmin = false) {
   if (role === "manager") {
     return [
       { label: "Manager Dashboard", href: "/manager" },
@@ -36,7 +37,7 @@ function getNavItems(role?: string) {
     ];
   }
 
-  return [
+  const adminItems = [
     { label: "Dashboard", href: "/" },
     { label: "Employees", href: "/employees" },
     { label: "Teams", href: "/teams" },
@@ -51,20 +52,29 @@ function getNavItems(role?: string) {
     { label: "Activity", href: "/activity" },
     { label: "Search", href: "/search" },
   ];
+
+  if (isSuperAdmin) {
+    adminItems.splice(4, 0, { label: "Base Price", href: "/base-prices" });
+  }
+
+  return adminItems;
 }
 
 export default function Sidebar({
   role,
+  isSuperAdmin = false,
   unreadNotifications = 0,
   alertCounts = {},
 }: SidebarProps) {
-  const navItems = getNavItems(role);
+  const navItems = getNavItems(role, isSuperAdmin);
   const dashboardTitle =
     role === "manager"
       ? "Manager Dashboard"
       : role === "member"
         ? "Employee Dashboard"
-        : "Admin Dashboard";
+        : isSuperAdmin
+          ? "Super Admin Dashboard"
+          : "Admin Dashboard";
 
   return (
     <aside className="flex border-b border-[#E5E7EB] bg-white text-[#1F2937] shadow-sm lg:min-h-screen lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">

@@ -2,10 +2,10 @@ import { redirect } from "next/navigation";
 import Link from "next/link";
 import { auth } from "@/auth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import EmployeeForm from "@/components/employees/EmployeeForm";
-import { createEmployee } from "@/app/employees/actions";
+import BasePriceForm from "@/components/basePrices/BasePriceForm";
+import { createBasePrice } from "@/app/base-prices/actions";
 
-export default async function NewEmployeePage() {
+export default async function NewBasePricePage() {
   const session = await auth();
 
   if (!session?.user) {
@@ -13,12 +13,11 @@ export default async function NewEmployeePage() {
   }
 
   const sessionUser = session.user as typeof session.user & {
-    role?: string;
     isSuperAdmin?: boolean;
   };
 
-  if (sessionUser.role !== "admin") {
-    redirect("/employees");
+  if (!sessionUser.isSuperAdmin) {
+    redirect("/");
   }
 
   return (
@@ -26,22 +25,17 @@ export default async function NewEmployeePage() {
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
           <Link
-            href="/employees"
+            href="/base-prices"
             className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
           >
-            Back to Employees
+            Back to Base Price
           </Link>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
-            Add Employee
+            Set Base Price
           </h1>
         </header>
 
-        <EmployeeForm
-          action={createEmployee}
-          submitLabel="Create Employee"
-          includePassword
-          canAssignSuperAdmin={sessionUser.isSuperAdmin === true}
-        />
+        <BasePriceForm action={createBasePrice} submitLabel="Save Base Price" />
       </div>
     </DashboardLayout>
   );

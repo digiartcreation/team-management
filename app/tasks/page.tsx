@@ -429,6 +429,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                 {task.clientWork}
                               </div>
                             ) : null}
+                            {task.videoWeightage === null ? null : (
+                              <div className="mt-1 text-xs font-medium text-[#770FC2]">
+                                Weightage {Number(task.videoWeightage)}
+                              </div>
+                            )}
                             {task.digitalMarketingAmount === null ? null : (
                               <div className="mt-1 text-xs font-medium text-[#770FC2]">
                                 {formatInr(

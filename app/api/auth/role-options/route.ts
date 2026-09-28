@@ -1,8 +1,10 @@
 import { NextResponse } from "next/server";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
+import { SUPER_ADMIN } from "@/lib/roles";
 
 function getRoleLabel(role: string) {
+  if (role === SUPER_ADMIN) return "Super Admin Dashboard";
   if (role === "admin") return "Admin Dashboard";
   if (role === "manager") return "Manager Dashboard";
   return "Employee Dashboard";
