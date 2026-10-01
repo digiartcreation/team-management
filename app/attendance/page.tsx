@@ -6,13 +6,18 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import { checkIn, checkOut } from "@/app/attendance/actions";
 import { sessionsOf, summariseSessions } from "@/lib/attendance";
 import { formatDuration } from "@/lib/duration";
+import { OFFICE_TIME_ZONE, officeDate } from "@/lib/officeTime";
 
+// A day is stored as its UTC midnight, so it is read back in UTC; times are
+// shown on the office clock, not the server's.
 const dateFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
   year: "numeric",
   month: "short",
   day: "numeric",
 });
 const timeFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: OFFICE_TIME_ZONE,
   hour: "2-digit",
   minute: "2-digit",
 });
@@ -72,9 +77,7 @@ export default async function AttendancePage() {
     },
   });
   const now = new Date();
-  const todayDate = new Date(
-    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
-  );
+  const todayDate = officeDate(now);
   const ownTodayRecord = sessionUser.id
     ? await prisma.attendanceRecord.findUnique({
         where: { userId_date: { userId: sessionUser.id, date: todayDate } },
