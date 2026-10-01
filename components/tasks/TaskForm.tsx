@@ -1,3 +1,4 @@
+import ClickToSubmitForm from "@/components/ui/ClickToSubmitForm";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ClientWorkField, {
   type TaskClientOption,
@@ -70,8 +71,9 @@ export default function TaskForm({
     allowed.has(status.value)
   );
 
+  // Saved from the button only, never by Enter in a field.
   return (
-    <form
+    <ClickToSubmitForm
       action={action}
       className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
     >
@@ -191,6 +193,6 @@ export default function TaskForm({
           {submitLabel}
         </button>
       </div>
-    </form>
+    </ClickToSubmitForm>
   );
 }
