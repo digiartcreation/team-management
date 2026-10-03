@@ -167,20 +167,14 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   const sessionUser = session.user as typeof session.user & {
     id?: string;
     role?: string;
+    isSuperAdmin?: boolean;
   };
-  const currentUser =
-    sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
-      : null;
-  const where: Prisma.AttendanceRecordWhereInput =
-    sessionUser.role === "admin"
-      ? {}
-      : sessionUser.role === "manager"
-        ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } }
-        : { userId: sessionUser.id };
+  // Only a super admin sees everyone's attendance. Admins, managers and
+  // employees alike see -- and check in for -- their own days.
+  const isSuperAdmin = sessionUser.isSuperAdmin === true;
+  const where: Prisma.AttendanceRecordWhereInput = isSuperAdmin
+    ? {}
+    : { userId: sessionUser.id ?? "__no_user__" };
   const now = new Date();
   const todayDate = officeDate(now);
   const [earliest, ownTodayRecord] = await Promise.all([
@@ -216,9 +210,9 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   const todaySessions = ownTodayRecord ? sessionsOf(ownTodayRecord) : [];
   const today = summariseSessions(todaySessions, now);
   const isMember = sessionUser.role === "member";
-  const canCheckIn = sessionUser.role !== "admin";
+  const canCheckIn = !isSuperAdmin;
 
-  // Admins and managers see one block per person, the way the task board does.
+  // The super admin sees one block per person, the way the task board does.
   const people = new Map<string, { id: string; name: string; records: AttendanceRow[] }>();
 
   for (const record of records) {
@@ -369,9 +363,9 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                 {monthLabel(selectedMonth)}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
-                {isMember
-                  ? `${plural(records.length, "day")} recorded`
-                  : `${plural(groups.length, "person", "people")} · ${plural(records.length, "day")} recorded`}
+                {isSuperAdmin
+                  ? `${plural(groups.length, "person", "people")} · ${plural(records.length, "day")} recorded`
+                  : `${plural(records.length, "day")} recorded`}
               </p>
             </div>
             <MonthFilter
@@ -384,9 +378,9 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             <p className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
               No attendance recorded in {monthLabel(selectedMonth)}.
             </p>
-          ) : isMember ? (
+          ) : !isSuperAdmin ? (
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <AttendanceTable records={records} now={now} showStatus={false} />
+              <AttendanceTable records={records} now={now} showStatus={!isMember} />
             </div>
           ) : (
             groups.map((group) => (
