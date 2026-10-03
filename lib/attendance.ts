@@ -63,3 +63,57 @@ export function summariseSessions(sessions: WorkSession[], now: Date) {
 
   return { workedMinutes, breakMinutes, open };
 }
+
+/**
+ * The month a stored day belongs to, as the page's month filter names it:
+ * "2026-09". Days are stored as their UTC midnight, so the UTC month is theirs.
+ */
+export function monthKeyOf(day: Date) {
+  return day.toISOString().slice(0, 7);
+}
+
+function parseMonthKey(key: string) {
+  const [year, month] = key.split("-").map(Number);
+  return { year, month };
+}
+
+/** The stored days of a month: from its first UTC midnight up to the next month's. */
+export function monthRange(key: string) {
+  const { year, month } = parseMonthKey(key);
+
+  return {
+    gte: new Date(Date.UTC(year, month - 1, 1)),
+    lt: new Date(Date.UTC(year, month, 1)),
+  };
+}
+
+const monthNameFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
+  month: "short",
+});
+
+/** "2026-09" -> "Sep-2026". */
+export function monthLabel(key: string) {
+  const { gte } = monthRange(key);
+  return `${monthNameFormatter.format(gte)}-${gte.getUTCFullYear()}`;
+}
+
+/** Every month from `first` through `last`, newest first. */
+export function monthsBetween(first: string, last: string) {
+  const months: string[] = [];
+  let { year, month } = parseMonthKey(last);
+
+  for (let key = last; key >= first; ) {
+    months.push(key);
+    month -= 1;
+
+    if (month === 0) {
+      month = 12;
+      year -= 1;
+    }
+
+    key = `${year}-${String(month).padStart(2, "0")}`;
+  }
+
+  return months;
+}
