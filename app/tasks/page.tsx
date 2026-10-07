@@ -58,10 +58,11 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     id?: string;
     role?: string;
   };
-  const canManageTasks =
-    sessionUser.role === "admin" || sessionUser.role === "manager";
-  const canDeleteTasks = sessionUser.role === "admin";
   const isMember = sessionUser.role === "member";
+  // An employee only sees tasks assigned to them, so every row here is theirs.
+  const canEditTasks =
+    sessionUser.role === "admin" || sessionUser.role === "manager" || isMember;
+  const canDeleteTasks = sessionUser.role === "admin";
 
   const today = todayInputValue();
   const filters = await searchParams;
@@ -434,6 +435,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                 Weightage {Number(task.videoWeightage)}
                               </div>
                             )}
+                            {task.posterCount === null ? null : (
+                              <div className="mt-1 text-xs font-medium text-[#770FC2]">
+                                {task.posterCount}{" "}
+                                {task.posterCount === 1 ? "poster" : "posters"}
+                              </div>
+                            )}
                             {task.digitalMarketingAmount === null ? null : (
                               <div className="mt-1 text-xs font-medium text-[#770FC2]">
                                 {formatInr(
@@ -526,7 +533,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                             status={task.status}
                             reopenCount={task.reopenCount}
                           />
-                          {canManageTasks ? (
+                          {canEditTasks ? (
                             <Link
                               href={`/tasks/${task.id}/edit`}
                               className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
@@ -534,7 +541,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                               Edit
                             </Link>
                           ) : null}
-                            {canDeleteTasks ? (
+                            {/* An employee's delete would take logged hours with it. */}
+                            {canDeleteTasks ||
+                            (isMember && task.timeLogs.length === 0) ? (
                               <DeleteTaskButton taskId={task.id} />
                             ) : null}
                         </ActionMenu>

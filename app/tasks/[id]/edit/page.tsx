@@ -25,26 +25,27 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
     role?: string;
   };
 
-  if (sessionUser.role !== "admin" && sessionUser.role !== "manager") {
-    redirect("/tasks");
-  }
+  const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
+  // Managers and employees both edit within their own team only.
+  const scopedToTeam = sessionUser.role !== "admin";
 
   const { id } = await params;
 
-  const currentUser =
-    sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
-      : null;
+  const currentUser = scopedToTeam
+    ? await prisma.user.findUnique({
+        where: { id: sessionUser.id },
+        select: { teamId: true },
+      })
+    : null;
 
-  const managerTeamId =
-    sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
+  const teamId = scopedToTeam ? currentUser?.teamId ?? "__no_team__" : undefined;
 
   const [task, employees, teams] = await Promise.all([
     prisma.task.findUnique({
-      where: { id, ...(managerTeamId ? { teamId: managerTeamId } : {}) },
+      // An employee can open only the tasks assigned to them.
+      where: isMember
+        ? { id, assignedToId: sessionUser.id }
+        : { id, ...(teamId ? { teamId } : {}) },
       select: {
         id: true,
         title: true,
@@ -55,12 +56,19 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
         clientWork: true,
         digitalMarketingAmount: true,
         videoWeightage: true,
+        posterCount: true,
         status: true,
         priority: true,
       },
     }),
     prisma.user.findMany({
-      where: managerTeamId ? { teamId: managerTeamId } : undefined,
+      // An employee without a team can only keep the task for themselves.
+      where:
+        isMember && !currentUser?.teamId
+          ? { id: sessionUser.id }
+          : teamId
+            ? { teamId }
+            : undefined,
       orderBy: {
         name: "asc",
       },
@@ -71,7 +79,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
       },
     }),
     prisma.team.findMany({
-      where: managerTeamId ? { id: managerTeamId } : undefined,
+      where: teamId ? { id: teamId } : undefined,
       orderBy: {
         name: "asc",
       },
@@ -107,6 +115,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
         <TaskForm
           action={updateTask}
           submitLabel="Update Task"
+          pendingLabel="Updating Task..."
           employees={employees}
           teams={teams}
           clients={clients}

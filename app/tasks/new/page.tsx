@@ -98,6 +98,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
         <TaskForm
           action={createTask}
           submitLabel="Create Task"
+          pendingLabel="Creating Task..."
           employees={employees}
           teams={teams}
           clients={clients}

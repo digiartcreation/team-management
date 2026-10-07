@@ -11,6 +11,7 @@ import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import {
   DEFAULT_VIDEO_WEIGHTAGE,
   DIGITAL_MARKETING,
+  POSTER_DESIGN,
   VIDEO_EDITING,
   VIDEO_WEIGHTAGE_OPTIONS,
   formatServiceLabel,
@@ -138,26 +139,31 @@ function resolveVideoWeightage(clientWork: string | null, value: string) {
   return new Prisma.Decimal(weightage);
 }
 
-async function requireTaskEditor() {
-  const session = await auth();
-  const sessionUser = session?.user as
-    | (NonNullable<typeof session>["user"] & {
-        role?: string;
-      })
-    | undefined;
-
-  if (sessionUser?.role !== "admin" && sessionUser?.role !== "manager") {
-    redirect("/tasks");
+/** Poster count only applies to Poster Design work, and must be a whole number of 1 or more. */
+function resolvePosterCount(clientWork: string | null, value: string) {
+  if (!clientWork?.startsWith(POSTER_DESIGN)) {
+    return null;
   }
 
-  return sessionUser as typeof sessionUser & { id: string };
+  if (!value) {
+    throw new Error("Enter how many posters this task covers.");
+  }
+
+  const count = Number(value);
+
+  if (!Number.isInteger(count) || count < 1) {
+    throw new Error("Poster count must be a whole number of 1 or more.");
+  }
+
+  return count;
 }
 
 /**
- * Anyone signed in may add a task. Editing someone else's task stays with
- * admins and managers; this only opens the door to creating one.
+ * Anyone signed in may add or edit a task. Which tasks they may touch is
+ * checked by the caller: admins any, managers their own team's, employees only
+ * the ones assigned to them.
  */
-async function requireTaskCreator() {
+async function requireTaskUser() {
   const session = await auth();
   const sessionUser = session?.user as
     | (NonNullable<typeof session>["user"] & {
@@ -211,19 +217,6 @@ async function getManagerTeamId(userId: string) {
   }
 
   return user.teamId;
-}
-
-async function requireTaskDeleteAccess() {
-  const session = await auth();
-  const sessionUser = session?.user as
-    | (NonNullable<typeof session>["user"] & {
-        role?: string;
-      })
-    | undefined;
-
-  if (sessionUser?.role !== "admin") {
-    redirect("/tasks");
-  }
 }
 
 function handlePrismaTaskError(error: unknown): never {
@@ -316,7 +309,7 @@ async function validateTaskRelations(
 }
 
 export async function createTask(formData: FormData) {
-  const sessionUser = await requireTaskCreator();
+  const sessionUser = await requireTaskUser();
   const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
 
   const title = getValue(formData, "title");
@@ -331,6 +324,7 @@ export async function createTask(formData: FormData) {
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
   const requestedVideoWeightage = getValue(formData, "videoWeightage");
+  const requestedPosterCount = getValue(formData, "posterCount");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const returnPath = resolveReturnPath(getValue(formData, "returnTo"));
@@ -365,6 +359,7 @@ export async function createTask(formData: FormData) {
     clientWork,
     requestedVideoWeightage
   );
+  const posterCount = resolvePosterCount(clientWork, requestedPosterCount);
 
   try {
     const task = await prisma.task.create({
@@ -377,6 +372,7 @@ export async function createTask(formData: FormData) {
         clientWork,
         digitalMarketingAmount,
         videoWeightage,
+        posterCount,
         status,
         priority,
       },
@@ -417,22 +413,30 @@ export async function createTask(formData: FormData) {
 }
 
 export async function updateTask(formData: FormData) {
-  const sessionUser = await requireTaskEditor();
+  const sessionUser = await requireTaskUser();
+  const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
 
   const id = getValue(formData, "id");
   const title = getValue(formData, "title");
   const description = getValue(formData, "description");
-  const assignedToId = optionalValue(getValue(formData, "assignedToId"));
+  // As on create, an employee who clears the assignee keeps the task.
+  const requestedAssigneeId = optionalValue(getValue(formData, "assignedToId"));
+  const assignedToId = isMember
+    ? requestedAssigneeId ?? sessionUser.id
+    : requestedAssigneeId;
   const requestedTeamId = optionalValue(getValue(formData, "teamId"));
   const requestedClientId = optionalValue(getValue(formData, "clientId"));
   const requestedClientWork = optionalValue(getValue(formData, "clientWork"));
   const requestedDigitalMarketingAmount = getValue(formData, "digitalMarketingAmount");
   const requestedVideoWeightage = getValue(formData, "videoWeightage");
+  const requestedPosterCount = getValue(formData, "posterCount");
   const status = getValue(formData, "status");
   const priority = getValue(formData, "priority");
   const managerTeamId =
     sessionUser.role === "manager" ? await getManagerTeamId(sessionUser.id) : undefined;
-  const teamId = managerTeamId ?? requestedTeamId;
+  const teamId = isMember
+    ? await resolveMemberTaskScope(sessionUser.id, assignedToId)
+    : managerTeamId ?? requestedTeamId;
 
   if (!id || !title) {
     throw new Error("Task title is required.");
@@ -455,6 +459,7 @@ export async function updateTask(formData: FormData) {
     clientWork,
     requestedVideoWeightage
   );
+  const posterCount = resolvePosterCount(clientWork, requestedPosterCount);
 
   try {
     const previous = await prisma.task.findUnique({
@@ -475,7 +480,21 @@ export async function updateTask(formData: FormData) {
       throw new Error("Managers can only edit tasks for their own team.");
     }
 
+    if (isMember && previous.assignedToId !== sessionUser.id) {
+      throw new Error("You can only edit tasks assigned to you.");
+    }
+
     assertStatusMove(previous.status, status);
+
+    // An employee finishing work from the edit form owes the same hours as
+    // from the status control.
+    const blockedCompletion = isMember
+      ? await completionTimeError(id, status, previous)
+      : null;
+
+    if (blockedCompletion) {
+      throw new Error(blockedCompletion);
+    }
 
     const reopenCycle = resolveReopenCycle(
       previous.status,
@@ -494,6 +513,7 @@ export async function updateTask(formData: FormData) {
         clientWork,
         digitalMarketingAmount,
         videoWeightage,
+        posterCount,
         status,
         priority,
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
@@ -527,35 +547,46 @@ export async function updateTask(formData: FormData) {
         ? `Reopened task ${title} (reopen ${reopenCycle})`
         : `Updated task ${title}`,
     });
-    if (assignedToId && assignedToId !== previous?.assignedToId) {
-      await createNotification({
-        userId: assignedToId,
-        title: "Task assigned",
-        message: `You were assigned: ${title}`,
-        type: "TASK_ASSIGNED",
+    if (isMember) {
+      await notifyAdminsAndTeamManagers({
+        actorUserId: sessionUser.id,
+        title: "Task edited",
+        message: `${sessionUser.name ?? "An employee"} edited task "${title}".`,
+        type: "TASK_UPDATED",
       });
     }
-    if (assignedToId && status === "completed" && previous?.status !== "completed") {
-      await createNotification({
-        userId: assignedToId,
-        title: "Task completed",
-        message: `Task completed: ${title}`,
-        type: "TASK_COMPLETED",
-      });
-    } else if (assignedToId && reopenCycle) {
-      await createNotification({
-        userId: assignedToId,
-        title: "Task reopened",
-        message: `Task reopened for more work: ${title}`,
-        type: "TASK_UPDATED",
-      });
-    } else if (assignedToId && previous?.status !== status) {
-      await createNotification({
-        userId: assignedToId,
-        title: "Task updated",
-        message: `Task status changed: ${title}`,
-        type: "TASK_UPDATED",
-      });
+    // Nobody needs telling about a change they made to their own task.
+    if (assignedToId && assignedToId !== sessionUser.id) {
+      if (assignedToId !== previous.assignedToId) {
+        await createNotification({
+          userId: assignedToId,
+          title: "Task assigned",
+          message: `You were assigned: ${title}`,
+          type: "TASK_ASSIGNED",
+        });
+      }
+      if (status === "completed" && previous.status !== "completed") {
+        await createNotification({
+          userId: assignedToId,
+          title: "Task completed",
+          message: `Task completed: ${title}`,
+          type: "TASK_COMPLETED",
+        });
+      } else if (reopenCycle) {
+        await createNotification({
+          userId: assignedToId,
+          title: "Task reopened",
+          message: `Task reopened for more work: ${title}`,
+          type: "TASK_UPDATED",
+        });
+      } else if (previous.status !== status) {
+        await createNotification({
+          userId: assignedToId,
+          title: "Task updated",
+          message: `Task status changed: ${title}`,
+          type: "TASK_UPDATED",
+        });
+      }
     }
   } catch (error) {
     handlePrismaTaskError(error);
@@ -568,19 +599,69 @@ export async function updateTask(formData: FormData) {
   redirect("/tasks");
 }
 
+/**
+ * Admins may delete any task. An employee may delete one assigned to them, but
+ * only while nothing is logged on it: its time logs go with it, and those are
+ * the hours the reports bill.
+ */
 export async function deleteTask(id: string) {
-  await requireTaskDeleteAccess();
+  const sessionUser = await requireTaskUser();
+  const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
+
+  if (sessionUser.role === "manager") {
+    redirect("/tasks");
+  }
+
+  if (isMember) {
+    const task = await prisma.task.findUnique({
+      where: { id },
+      select: {
+        assignedToId: true,
+        _count: { select: { timeLogs: true } },
+      },
+    });
+
+    if (!task) {
+      throw new Error("Task not found.");
+    }
+
+    if (task.assignedToId !== sessionUser.id) {
+      throw new Error("You can only delete tasks assigned to you.");
+    }
+
+    if (task._count.timeLogs > 0) {
+      throw new Error("A task with time logged on it cannot be deleted.");
+    }
+  }
 
   try {
-    await prisma.task.delete({
+    const task = await prisma.task.delete({
       where: { id },
+      select: { title: true },
     });
+    if (isMember) {
+      await logActivity({
+        userId: sessionUser.id,
+        action: "deleted",
+        entityType: "task",
+        entityId: id,
+        description: `Deleted task ${task.title}`,
+      });
+      await notifyAdminsAndTeamManagers({
+        actorUserId: sessionUser.id,
+        title: "Task deleted",
+        message: `${sessionUser.name ?? "An employee"} deleted task "${task.title}".`,
+        type: "TASK_UPDATED",
+      });
+    }
   } catch (error) {
     handlePrismaTaskError(error);
   }
 
   revalidatePath("/tasks");
   revalidatePath("/");
+  revalidatePath("/manager");
+  revalidatePath("/member");
 }
 
 /**

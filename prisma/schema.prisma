@@ -139,6 +139,8 @@ model Task {
   /// Effort weight for a Video Editing task, one of VIDEO_WEIGHTAGE_OPTIONS in
   /// lib/services.ts (1 to 3 in half steps). Other work types leave this blank.
   videoWeightage Decimal? @db.Decimal(3, 1)
+  /// How many posters a Poster Design task covers. Other work types leave this blank.
+  posterCount  Int?
   /// How many times this task has been reopened after being completed. It is
   /// also the cycle that new time logs are stamped with, so 0 means the task is
   /// still on its original run.

@@ -1,4 +1,5 @@
 import ClickToSubmitForm from "@/components/ui/ClickToSubmitForm";
+import SubmitButton from "@/components/ui/SubmitButton";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ClientWorkField, {
   type TaskClientOption,
@@ -15,6 +16,8 @@ const NEW_TASK_STATUSES = new Set(["pending", "in_progress"]);
 type TaskFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   submitLabel: string;
+  /** Button text while the save is running, e.g. "Creating Task...". */
+  pendingLabel: string;
   employees: {
     id: string;
     name: string;
@@ -40,6 +43,7 @@ type TaskFormProps = {
     clientWork: string | null;
     digitalMarketingAmount: number | null;
     videoWeightage: number | null;
+    posterCount: number | null;
     status: string;
     priority: string;
   };
@@ -54,6 +58,7 @@ const priorities = [
 export default function TaskForm({
   action,
   submitLabel,
+  pendingLabel,
   employees,
   teams,
   clients,
@@ -146,6 +151,7 @@ export default function TaskForm({
           selectedWork={task?.clientWork ?? null}
           digitalMarketingAmount={task?.digitalMarketingAmount ?? null}
           videoWeightage={task?.videoWeightage ?? null}
+          posterCount={task?.posterCount ?? null}
         />
 
         <div className="grid gap-5 md:grid-cols-2">
@@ -186,12 +192,12 @@ export default function TaskForm({
       </div>
 
       <div className="mt-6 flex justify-end">
-        <button
-          type="submit"
-          className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+        <SubmitButton
+          pendingLabel={pendingLabel}
+          className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 disabled:hover:bg-slate-950"
         >
           {submitLabel}
-        </button>
+        </SubmitButton>
       </div>
     </ClickToSubmitForm>
   );
