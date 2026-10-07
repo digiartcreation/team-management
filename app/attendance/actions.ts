@@ -5,24 +5,17 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { SUPER_ADMIN } from "@/lib/roles";
 import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
+import { officeDate, officeMinutes } from "@/lib/officeTime";
 
 const scheduledStartTime = "09:00";
 const scheduledEndTime = "18:00";
 
-function startOfToday() {
-  const now = new Date();
-  return new Date(Date.UTC(now.getFullYear(), now.getMonth(), now.getDate()));
-}
-
 function minutesFromTime(value: string) {
   const [hours, minutes] = value.split(":").map(Number);
   return hours * 60 + minutes;
-}
-
-function minutesFromDate(value: Date) {
-  return value.getHours() * 60 + value.getMinutes();
 }
 
 async function getSessionUser() {
@@ -35,9 +28,10 @@ async function getSessionUser() {
   return sessionUser as typeof sessionUser & { id: string };
 }
 
-async function notifyAdmins(message: string) {
+/** Only super admins see everyone's attendance, so only they hear about it. */
+async function notifySuperAdmins(message: string) {
   const admins = await prisma.user.findMany({
-    where: { role: "admin" },
+    where: { role: SUPER_ADMIN },
     select: { id: true },
   });
 
@@ -77,7 +71,7 @@ async function findToday(userId: string, date: Date) {
 export async function checkIn() {
   const sessionUser = await getSessionUser();
   const now = new Date();
-  const date = startOfToday();
+  const date = officeDate(now);
   const existing = await findToday(sessionUser.id, date);
 
   if (existing?.sessions.some((session) => !session.checkOutTime)) {
@@ -102,7 +96,7 @@ export async function checkIn() {
   } else {
     const lateDurationMinutes = Math.max(
       0,
-      minutesFromDate(now) - minutesFromTime(scheduledStartTime)
+      officeMinutes(now) - minutesFromTime(scheduledStartTime)
     );
 
     try {
@@ -143,13 +137,13 @@ export async function checkIn() {
       : "Checked in again",
   });
 
-  // Admins hear about the start of the day, not about every break.
+  // Super admins hear about the start of the day, not about every break.
   if (firstOfDay) {
     const user = await prisma.user.findUnique({
       where: { id: sessionUser.id },
       select: { name: true },
     });
-    await notifyAdmins(
+    await notifySuperAdmins(
       `New attendance check-in recorded for ${user?.name ?? "a team member"}.`
     );
   }
@@ -164,7 +158,7 @@ export async function checkIn() {
 export async function checkOut() {
   const sessionUser = await getSessionUser();
   const now = new Date();
-  const date = startOfToday();
+  const date = officeDate(now);
   const existing = await findToday(sessionUser.id, date);
 
   if (!existing) {
@@ -179,7 +173,7 @@ export async function checkOut() {
 
   const earlyDepartureMinutes = Math.max(
     0,
-    minutesFromTime(scheduledEndTime) - minutesFromDate(now)
+    minutesFromTime(scheduledEndTime) - officeMinutes(now)
   );
 
   await prisma.$transaction([

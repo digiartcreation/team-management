@@ -3,16 +3,30 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import MonthFilter from "@/components/attendance/MonthFilter";
+import Avatar from "@/components/ui/Avatar";
 import { checkIn, checkOut } from "@/app/attendance/actions";
-import { sessionsOf, summariseSessions } from "@/lib/attendance";
+import {
+  monthKeyOf,
+  monthLabel,
+  monthRange,
+  monthsBetween,
+  sessionsOf,
+  summariseSessions,
+} from "@/lib/attendance";
 import { formatDuration } from "@/lib/duration";
+import { OFFICE_TIME_ZONE, officeDate } from "@/lib/officeTime";
 
+// A day is stored as its UTC midnight, so it is read back in UTC; times are
+// shown on the office clock, not the server's.
 const dateFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
   year: "numeric",
   month: "short",
   day: "numeric",
 });
 const timeFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: OFFICE_TIME_ZONE,
   hour: "2-digit",
   minute: "2-digit",
 });
@@ -41,50 +55,199 @@ function StatusBadge({ status }: { status: string }) {
   );
 }
 
-export default async function AttendancePage() {
+const recordInclude = {
+  user: { select: { id: true, name: true } },
+  sessions: sessionSelect,
+} satisfies Prisma.AttendanceRecordInclude;
+
+type AttendanceRow = Prisma.AttendanceRecordGetPayload<{
+  include: typeof recordInclude;
+}>;
+
+function plural(count: number, one: string, many = `${one}s`) {
+  return `${count} ${count === 1 ? one : many}`;
+}
+
+/**
+ * One person's days, newest first. Employees get the plain log: no Late /
+ * Present status, breaks, lateness or early departure.
+ */
+function AttendanceTable({
+  records,
+  now,
+  detailed,
+}: {
+  records: AttendanceRow[];
+  now: Date;
+  detailed: boolean;
+}) {
+  return (
+    <div className="overflow-x-auto">
+      <table
+        className={`w-full text-left text-sm ${detailed ? "min-w-[900px]" : "min-w-[600px]"}`}
+      >
+        <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+          <tr>
+            <th className="px-4 py-3">Date</th>
+            {detailed ? <th className="px-4 py-3">Status</th> : null}
+            <th className="px-4 py-3">First In</th>
+            <th className="px-4 py-3">Last Out</th>
+            <th className="px-4 py-3">Sessions</th>
+            <th className="px-4 py-3">Total Hours</th>
+            {detailed ? (
+              <>
+                <th className="px-4 py-3">Breaks</th>
+                <th className="px-4 py-3">Late</th>
+                <th className="px-4 py-3">Early Departure</th>
+              </>
+            ) : null}
+          </tr>
+        </thead>
+        <tbody className="divide-y divide-slate-200">
+          {records.map((record) => {
+            const sessions = sessionsOf(record);
+            const day = summariseSessions(sessions, now);
+
+            return (
+              <tr key={record.id} className="align-top hover:bg-slate-50">
+                <td className="px-4 py-4 text-slate-600">
+                  {dateFormatter.format(record.date)}
+                  <div className="mt-0.5 text-xs text-slate-400">
+                    Shift {record.scheduledStartTime}–{record.scheduledEndTime}
+                  </div>
+                </td>
+                {detailed ? (
+                  <td className="px-4 py-4">
+                    <StatusBadge status={record.status} />
+                  </td>
+                ) : null}
+                <td className="px-4 py-4 text-slate-600">{formatTime(record.actualCheckInTime)}</td>
+                <td className="px-4 py-4 text-slate-600">
+                  {day.open ? (
+                    <span className="font-medium text-emerald-700">Checked in</span>
+                  ) : (
+                    formatTime(record.actualCheckOutTime)
+                  )}
+                </td>
+                <td className="px-4 py-4 text-slate-600">
+                  {sessions.length > 1 ? (
+                    <details>
+                      <summary className="cursor-pointer font-medium text-[#770FC2]">
+                        {sessions.length} sessions
+                      </summary>
+                      <ol className="mt-2 grid gap-1 text-xs">
+                        {sessions.map((item) => (
+                          <li key={item.id} className="tabular-nums">
+                            {timeFormatter.format(item.checkInTime)} →{" "}
+                            {item.checkOutTime ? timeFormatter.format(item.checkOutTime) : "now"}
+                          </li>
+                        ))}
+                      </ol>
+                    </details>
+                  ) : (
+                    sessions.length
+                  )}
+                </td>
+                <td className="px-4 py-4 font-medium text-slate-800">
+                  {sessions.length > 0 ? formatDuration(day.workedMinutes) : "None"}
+                </td>
+                {detailed ? (
+                  <>
+                    <td className="px-4 py-4 text-slate-600">
+                      {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
+                    </td>
+                    <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
+                    <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
+                  </>
+                ) : null}
+              </tr>
+            );
+          })}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
+type AttendancePageProps = {
+  searchParams: Promise<{ month?: string }>;
+};
+
+export default async function AttendancePage({ searchParams }: AttendancePageProps) {
   const session = await auth();
   if (!session?.user) redirect("/login");
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
     role?: string;
+    isSuperAdmin?: boolean;
   };
-  const currentUser =
-    sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
-      : null;
-  const where: Prisma.AttendanceRecordWhereInput =
-    sessionUser.role === "admin"
-      ? {}
-      : sessionUser.role === "manager"
-        ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } }
-        : { userId: sessionUser.id };
-  const records = await prisma.attendanceRecord.findMany({
-    where,
-    orderBy: { date: "desc" },
-    take: 60,
-    include: {
-      user: { select: { id: true, name: true } },
-      sessions: sessionSelect,
-    },
-  });
+  // Only a super admin sees everyone's attendance. Admins, managers and
+  // employees alike see -- and check in for -- their own days.
+  const isSuperAdmin = sessionUser.isSuperAdmin === true;
+  const where: Prisma.AttendanceRecordWhereInput = isSuperAdmin
+    ? {}
+    : { userId: sessionUser.id ?? "__no_user__" };
   const now = new Date();
-  const todayDate = new Date(
-    Date.UTC(now.getFullYear(), now.getMonth(), now.getDate())
+  const todayDate = officeDate(now);
+  const [earliest, ownTodayRecord] = await Promise.all([
+    prisma.attendanceRecord.findFirst({
+      where,
+      orderBy: { date: "asc" },
+      select: { date: true },
+    }),
+    sessionUser.id
+      ? prisma.attendanceRecord.findUnique({
+          where: { userId_date: { userId: sessionUser.id, date: todayDate } },
+          include: { sessions: sessionSelect },
+        })
+      : null,
+  ]);
+
+  // The filter offers every month from the first recorded day to this one, and
+  // opens on this month.
+  const currentMonth = monthKeyOf(todayDate);
+  const earliestMonth = earliest ? monthKeyOf(earliest.date) : currentMonth;
+  const months = monthsBetween(
+    earliestMonth < currentMonth ? earliestMonth : currentMonth,
+    currentMonth
   );
-  const ownTodayRecord = sessionUser.id
-    ? await prisma.attendanceRecord.findUnique({
-        where: { userId_date: { userId: sessionUser.id, date: todayDate } },
-        include: { sessions: sessionSelect },
-      })
-    : null;
+  const { month } = await searchParams;
+  const selectedMonth = month && months.includes(month) ? month : currentMonth;
+
+  const records = await prisma.attendanceRecord.findMany({
+    where: { ...where, date: monthRange(selectedMonth) },
+    orderBy: { date: "desc" },
+    include: recordInclude,
+  });
   const todaySessions = ownTodayRecord ? sessionsOf(ownTodayRecord) : [];
   const today = summariseSessions(todaySessions, now);
-  const showEmployeeColumn = sessionUser.role !== "member";
-  const canCheckIn = sessionUser.role !== "admin";
+  const isMember = sessionUser.role === "member";
+  const canCheckIn = !isSuperAdmin;
+
+  // The super admin sees one block per person, the way the task board does.
+  const people = new Map<string, { id: string; name: string; records: AttendanceRow[] }>();
+
+  for (const record of records) {
+    const person = people.get(record.user.id) ?? {
+      ...record.user,
+      records: [],
+    };
+    person.records.push(record);
+    people.set(person.id, person);
+  }
+
+  const groups = [...people.values()]
+    .sort((a, b) => a.name.localeCompare(b.name))
+    .map((person) => ({
+      ...person,
+      workedMinutes: person.records.reduce(
+        (sum, record) =>
+          sum + summariseSessions(sessionsOf(record), now).workedMinutes,
+        0
+      ),
+      lateDays: person.records.filter((record) => record.status === "Late").length,
+    }));
 
   return (
     <DashboardLayout>
@@ -120,7 +283,7 @@ export default async function AttendancePage() {
                 </p>
                 <dl className="mt-4 grid grid-cols-3 gap-3">
                   <div className="rounded-md bg-slate-50 p-3">
-                    <dt className="text-xs text-slate-500">Worked</dt>
+                    <dt className="text-xs text-slate-500">Total Hours</dt>
                     <dd className="mt-1 font-semibold text-slate-950">
                       {formatDuration(today.workedMinutes)}
                     </dd>
@@ -206,88 +369,66 @@ export default async function AttendancePage() {
           </section>
         ) : null}
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        <section className="flex flex-col gap-4">
+          <div className="flex flex-wrap items-end justify-between gap-3">
+            <div>
+              <h2 className="text-lg font-semibold text-slate-950">
+                {monthLabel(selectedMonth)}
+              </h2>
+              <p className="mt-1 text-sm text-slate-500">
+                {isSuperAdmin
+                  ? `${plural(groups.length, "person", "people")} · ${plural(records.length, "day")} recorded`
+                  : `${plural(records.length, "day")} recorded`}
+              </p>
+            </div>
+            <MonthFilter
+              months={months.map((key) => ({ value: key, label: monthLabel(key) }))}
+              selected={selectedMonth}
+            />
+          </div>
+
           {records.length === 0 ? (
-            <div className="p-8 text-center text-sm text-slate-500">
-              No attendance records found.
+            <p className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+              No attendance recorded in {monthLabel(selectedMonth)}.
+            </p>
+          ) : !isSuperAdmin ? (
+            <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+              <AttendanceTable records={records} now={now} detailed={!isMember} />
             </div>
           ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[1060px] text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3">Date</th>
-                    {showEmployeeColumn ? <th className="px-4 py-3">Employee</th> : null}
-                    <th className="px-4 py-3">Status</th>
-                    <th className="px-4 py-3">First In</th>
-                    <th className="px-4 py-3">Last Out</th>
-                    <th className="px-4 py-3">Sessions</th>
-                    <th className="px-4 py-3">Worked</th>
-                    <th className="px-4 py-3">Breaks</th>
-                    <th className="px-4 py-3">Late</th>
-                    <th className="px-4 py-3">Early Departure</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200">
-                  {records.map((record) => {
-                    const sessions = sessionsOf(record);
-                    const day = summariseSessions(sessions, now);
-
-                    return (
-                      <tr key={record.id} className="align-top hover:bg-slate-50">
-                        <td className="px-4 py-4 text-slate-600">
-                          {dateFormatter.format(record.date)}
-                          <div className="mt-0.5 text-xs text-slate-400">
-                            Shift {record.scheduledStartTime}–{record.scheduledEndTime}
-                          </div>
-                        </td>
-                        {showEmployeeColumn ? (
-                          <td className="px-4 py-4 font-medium text-slate-950">{record.user.name}</td>
-                        ) : null}
-                        <td className="px-4 py-4">
-                          <StatusBadge status={record.status} />
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">{formatTime(record.actualCheckInTime)}</td>
-                        <td className="px-4 py-4 text-slate-600">
-                          {day.open ? (
-                            <span className="font-medium text-emerald-700">Checked in</span>
-                          ) : (
-                            formatTime(record.actualCheckOutTime)
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          {sessions.length > 1 ? (
-                            <details>
-                              <summary className="cursor-pointer font-medium text-[#770FC2]">
-                                {sessions.length} sessions
-                              </summary>
-                              <ol className="mt-2 grid gap-1 text-xs">
-                                {sessions.map((item) => (
-                                  <li key={item.id} className="tabular-nums">
-                                    {timeFormatter.format(item.checkInTime)} →{" "}
-                                    {item.checkOutTime ? timeFormatter.format(item.checkOutTime) : "now"}
-                                  </li>
-                                ))}
-                              </ol>
-                            </details>
-                          ) : (
-                            sessions.length
-                          )}
-                        </td>
-                        <td className="px-4 py-4 font-medium text-slate-800">
-                          {sessions.length > 0 ? formatDuration(day.workedMinutes) : "None"}
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
-                        <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
+            groups.map((group) => (
+              <details
+                key={group.id}
+                open
+                className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
+              >
+                <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+                  <span className="flex min-w-0 items-center gap-3">
+                    <Avatar name={group.name} />
+                    <span className="truncate text-sm font-semibold text-slate-900">
+                      {group.name}
+                    </span>
+                    <span className="shrink-0 rounded bg-slate-100 px-1.5 py-0.5 text-xs font-medium text-slate-500">
+                      {plural(group.records.length, "day")}
+                    </span>
+                  </span>
+                  <span className="flex shrink-0 items-center gap-4">
+                    <span className="hidden text-xs text-slate-500 sm:inline">
+                      Worked {formatDuration(group.workedMinutes)} · {group.lateDays} late
+                    </span>
+                    <span
+                      aria-hidden
+                      className="-rotate-90 text-xs text-slate-400 transition group-open:rotate-0"
+                    >
+                      &#9660;
+                    </span>
+                  </span>
+                </summary>
+                <div className="border-t border-slate-100">
+                  <AttendanceTable records={group.records} now={now} detailed />
+                </div>
+              </details>
+            ))
           )}
         </section>
       </div>

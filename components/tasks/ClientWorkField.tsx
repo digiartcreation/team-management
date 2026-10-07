@@ -1,7 +1,13 @@
 "use client";
 
 import { useState } from "react";
-import { DIGITAL_MARKETING } from "@/lib/services";
+import {
+  DEFAULT_VIDEO_WEIGHTAGE,
+  DIGITAL_MARKETING,
+  POSTER_DESIGN,
+  VIDEO_EDITING,
+  VIDEO_WEIGHTAGE_OPTIONS,
+} from "@/lib/services";
 
 export type TaskClientOption = {
   id: string;
@@ -16,6 +22,8 @@ type ClientWorkFieldProps = {
   selectedClientId: string | null;
   selectedWork: string | null;
   digitalMarketingAmount?: number | null;
+  videoWeightage?: number | null;
+  posterCount?: number | null;
 };
 
 const selectClassName =
@@ -26,6 +34,8 @@ export default function ClientWorkField({
   selectedClientId,
   selectedWork,
   digitalMarketingAmount,
+  videoWeightage,
+  posterCount,
 }: ClientWorkFieldProps) {
   const [clientId, setClientId] = useState(selectedClientId ?? "");
   const [work, setWork] = useState(selectedWork ?? "");
@@ -33,6 +43,16 @@ export default function ClientWorkField({
     digitalMarketingAmount === null || digitalMarketingAmount === undefined
       ? ""
       : String(digitalMarketingAmount)
+  );
+
+  const [weightage, setWeightage] = useState(
+    videoWeightage === null || videoWeightage === undefined
+      ? DEFAULT_VIDEO_WEIGHTAGE
+      : String(videoWeightage)
+  );
+
+  const [count, setCount] = useState(
+    posterCount === null || posterCount === undefined ? "" : String(posterCount)
   );
 
   const selectedClient = clients.find((client) => client.id === clientId);
@@ -44,6 +64,8 @@ export default function ClientWorkField({
   const workOptions =
     work && !works.includes(work) ? [...works, work] : works;
   const isDigitalMarketing = work.startsWith(DIGITAL_MARKETING);
+  const isVideoEditing = work.startsWith(VIDEO_EDITING);
+  const isPosterDesign = work.startsWith(POSTER_DESIGN);
 
   return (
     <div className="grid gap-5 md:grid-cols-2">
@@ -57,6 +79,7 @@ export default function ClientWorkField({
             // Work belongs to the client, so a new client invalidates it.
             setWork("");
             setAmount("");
+            setCount("");
           }}
           className={selectClassName}
         >
@@ -80,6 +103,9 @@ export default function ClientWorkField({
             setWork(nextWork);
             if (!nextWork.startsWith(DIGITAL_MARKETING)) {
               setAmount("");
+            }
+            if (!nextWork.startsWith(POSTER_DESIGN)) {
+              setCount("");
             }
           }}
           disabled={!clientId || workOptions.length === 0}
@@ -119,6 +145,47 @@ export default function ClientWorkField({
             onChange={(event) => setAmount(event.target.value)}
             required
             placeholder="Enter amount"
+            className={selectClassName}
+          />
+        </label>
+      ) : null}
+
+      {isVideoEditing ? (
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">
+            Video Weightage
+          </span>
+          <select
+            name="videoWeightage"
+            value={weightage}
+            onChange={(event) => setWeightage(event.target.value)}
+            required
+            className={selectClassName}
+          >
+            {VIDEO_WEIGHTAGE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
+              </option>
+            ))}
+          </select>
+        </label>
+      ) : null}
+
+      {isPosterDesign ? (
+        <label className="grid gap-2">
+          <span className="text-sm font-medium text-slate-700">
+            Poster Count
+          </span>
+          <input
+            name="posterCount"
+            type="number"
+            min="1"
+            step="1"
+            inputMode="numeric"
+            value={count}
+            onChange={(event) => setCount(event.target.value)}
+            required
+            placeholder="Number of posters"
             className={selectClassName}
           />
         </label>

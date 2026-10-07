@@ -99,7 +99,9 @@ export default function LoginPage() {
           typeof option.label === "string"
         );
       })
-      .filter((option) => ["admin", "manager", "member"].includes(option.role));
+      .filter((option) =>
+        ["superadmin", "admin", "manager", "member"].includes(option.role)
+      );
   }
 
   async function completeSignIn(role?: string) {

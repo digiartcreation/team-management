@@ -7,8 +7,10 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { isDesignation } from "@/lib/designations";
+import { SUPER_ADMIN, isSuperAdminRole } from "@/lib/roles";
 
-const roles = new Set(["admin", "manager", "member"]);
+const roles = new Set([SUPER_ADMIN, "admin", "manager", "member"]);
 const emailPattern = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function getValue(formData: FormData, key: string) {
@@ -22,6 +24,7 @@ async function requireAdmin() {
     | (NonNullable<typeof session>["user"] & {
         id?: string;
         role?: string;
+        isSuperAdmin?: boolean;
       })
     | undefined;
 
@@ -30,6 +33,46 @@ async function requireAdmin() {
   }
 
   return sessionUser as typeof sessionUser & { id: string };
+}
+
+function resolveDesignation(formData: FormData) {
+  const designation = getValue(formData, "designation");
+
+  if (!designation) {
+    return null;
+  }
+
+  if (!isDesignation(designation)) {
+    throw new Error("Invalid designation.");
+  }
+
+  return designation;
+}
+
+/** Only a super admin may create, promote to, or change a super admin. */
+function assertCanManageRole(
+  sessionUser: { isSuperAdmin?: boolean },
+  role: string
+) {
+  if (isSuperAdminRole(role) && !sessionUser.isSuperAdmin) {
+    throw new Error("Only a super admin can manage super admin accounts.");
+  }
+}
+
+async function assertCanManageEmployee(
+  sessionUser: { isSuperAdmin?: boolean },
+  id: string
+) {
+  const target = await prisma.user.findUnique({
+    where: { id },
+    select: { role: true },
+  });
+
+  if (!target) {
+    throw new Error("Employee not found.");
+  }
+
+  assertCanManageRole(sessionUser, target.role);
 }
 
 function validateEmail(email: string) {
@@ -64,6 +107,8 @@ export async function createEmployee(formData: FormData) {
     throw new Error("Invalid employee data.");
   }
 
+  assertCanManageRole(sessionUser, role);
+  const designation = resolveDesignation(formData);
   validateEmail(email);
 
   if (password.length < 8) {
@@ -79,6 +124,7 @@ export async function createEmployee(formData: FormData) {
         email,
         password: hashedPassword,
         role,
+        designation,
       },
       select: { id: true },
     });
@@ -98,7 +144,7 @@ export async function createEmployee(formData: FormData) {
 }
 
 export async function updateEmployee(formData: FormData) {
-  await requireAdmin();
+  const sessionUser = await requireAdmin();
 
   const id = getValue(formData, "id");
   const name = getValue(formData, "name");
@@ -109,6 +155,9 @@ export async function updateEmployee(formData: FormData) {
     throw new Error("Invalid employee data.");
   }
 
+  assertCanManageRole(sessionUser, role);
+  await assertCanManageEmployee(sessionUser, id);
+  const designation = resolveDesignation(formData);
   validateEmail(email);
 
   try {
@@ -118,6 +167,7 @@ export async function updateEmployee(formData: FormData) {
         name,
         email,
         role,
+        designation,
       },
     });
   } catch (error) {
@@ -134,6 +184,8 @@ export async function deleteEmployee(id: string) {
   if (sessionUser.id === id) {
     throw new Error("You cannot delete your own account.");
   }
+
+  await assertCanManageEmployee(sessionUser, id);
 
   try {
     await prisma.user.delete({

@@ -16,6 +16,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     | (NonNullable<typeof session>["user"] & {
         id?: string;
         role?: string;
+        isSuperAdmin?: boolean;
       })
     | undefined;
   const unreadNotifications = sessionUser?.id
@@ -52,6 +53,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     <div className="min-h-screen bg-[#F8F7FB] text-[#1F2937] lg:flex">
       <Sidebar
         role={sessionUser?.role}
+        isSuperAdmin={sessionUser?.isSuperAdmin === true}
         unreadNotifications={unreadNotifications}
         alertCounts={sidebarAlertCounts}
       />

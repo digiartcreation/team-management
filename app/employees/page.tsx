@@ -7,16 +7,13 @@ import DeleteEmployeeButton from "@/components/employees/DeleteEmployeeButton";
 import ActionMenu from "@/components/ui/ActionMenu";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
+import { formatRole, isSuperAdminRole } from "@/lib/roles";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
   month: "short",
   day: "numeric",
 });
-
-function formatRole(role: string) {
-  return role === "member" ? "employee" : role;
-}
 
 type EmployeesPageProps = {
   searchParams: Promise<{ page?: string }>;
@@ -31,6 +28,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;
+    isSuperAdmin?: boolean;
   };
   const isAdmin = sessionUser.role === "admin";
 
@@ -47,6 +45,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
         name: true,
         email: true,
         role: true,
+        designation: true,
         createdAt: true,
       },
     }),
@@ -93,6 +92,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                     <th className="px-4 py-3 font-semibold">Name</th>
                     <th className="px-4 py-3 font-semibold">Email</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
+                    <th className="px-4 py-3 font-semibold">Designation</th>
                     <th className="px-4 py-3 font-semibold">Created Date</th>
                     <th className="px-4 py-3 font-semibold">
                       <span className="sr-only">Row menu</span>
@@ -114,10 +114,17 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                         </span>
                       </td>
                       <td className="px-4 py-4 text-slate-600">
+                        {employee.designation ?? (
+                          <span className="text-slate-400">Not set</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
                         {dateFormatter.format(employee.createdAt)}
                       </td>
                       <td className="px-4 py-4">
-                        {isAdmin ? (
+                        {isAdmin &&
+                        (sessionUser.isSuperAdmin ||
+                          !isSuperAdminRole(employee.role)) ? (
                           <ActionMenu>
                             <Link
                               href={`/employees/${employee.id}/edit`}
