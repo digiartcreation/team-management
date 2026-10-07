@@ -68,30 +68,39 @@ function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
-/** One person's days, newest first. Employees do not see the Late / Present status. */
+/**
+ * One person's days, newest first. Employees get the plain log: no Late /
+ * Present status, breaks, lateness or early departure.
+ */
 function AttendanceTable({
   records,
   now,
-  showStatus,
+  detailed,
 }: {
   records: AttendanceRow[];
   now: Date;
-  showStatus: boolean;
+  detailed: boolean;
 }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[900px] text-left text-sm">
+      <table
+        className={`w-full text-left text-sm ${detailed ? "min-w-[900px]" : "min-w-[600px]"}`}
+      >
         <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
           <tr>
             <th className="px-4 py-3">Date</th>
-            {showStatus ? <th className="px-4 py-3">Status</th> : null}
+            {detailed ? <th className="px-4 py-3">Status</th> : null}
             <th className="px-4 py-3">First In</th>
             <th className="px-4 py-3">Last Out</th>
             <th className="px-4 py-3">Sessions</th>
-            <th className="px-4 py-3">Worked</th>
-            <th className="px-4 py-3">Breaks</th>
-            <th className="px-4 py-3">Late</th>
-            <th className="px-4 py-3">Early Departure</th>
+            <th className="px-4 py-3">Total Hours</th>
+            {detailed ? (
+              <>
+                <th className="px-4 py-3">Breaks</th>
+                <th className="px-4 py-3">Late</th>
+                <th className="px-4 py-3">Early Departure</th>
+              </>
+            ) : null}
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-200">
@@ -107,7 +116,7 @@ function AttendanceTable({
                     Shift {record.scheduledStartTime}–{record.scheduledEndTime}
                   </div>
                 </td>
-                {showStatus ? (
+                {detailed ? (
                   <td className="px-4 py-4">
                     <StatusBadge status={record.status} />
                   </td>
@@ -142,11 +151,15 @@ function AttendanceTable({
                 <td className="px-4 py-4 font-medium text-slate-800">
                   {sessions.length > 0 ? formatDuration(day.workedMinutes) : "None"}
                 </td>
-                <td className="px-4 py-4 text-slate-600">
-                  {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
-                </td>
-                <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
-                <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
+                {detailed ? (
+                  <>
+                    <td className="px-4 py-4 text-slate-600">
+                      {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
+                    </td>
+                    <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
+                    <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
+                  </>
+                ) : null}
               </tr>
             );
           })}
@@ -270,7 +283,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                 </p>
                 <dl className="mt-4 grid grid-cols-3 gap-3">
                   <div className="rounded-md bg-slate-50 p-3">
-                    <dt className="text-xs text-slate-500">Worked</dt>
+                    <dt className="text-xs text-slate-500">Total Hours</dt>
                     <dd className="mt-1 font-semibold text-slate-950">
                       {formatDuration(today.workedMinutes)}
                     </dd>
@@ -380,7 +393,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             </p>
           ) : !isSuperAdmin ? (
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <AttendanceTable records={records} now={now} showStatus={!isMember} />
+              <AttendanceTable records={records} now={now} detailed={!isMember} />
             </div>
           ) : (
             groups.map((group) => (
@@ -412,7 +425,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                   </span>
                 </summary>
                 <div className="border-t border-slate-100">
-                  <AttendanceTable records={group.records} now={now} showStatus />
+                  <AttendanceTable records={group.records} now={now} detailed />
                 </div>
               </details>
             ))
