@@ -27,7 +27,8 @@ export async function POST(request: Request) {
     body && typeof body === "object" && "password" in body
       ? (body as { password?: unknown }).password
       : "";
-  const normalizedEmail = typeof email === "string" ? email.trim() : "";
+  const normalizedEmail =
+    typeof email === "string" ? email.trim().toLowerCase() : "";
   const normalizedPassword = typeof password === "string" ? password : "";
 
   if (!normalizedEmail || !normalizedPassword) {

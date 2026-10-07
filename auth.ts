@@ -21,8 +21,12 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
           return null;
         }
 
+        // Emails are stored trimmed and lowercased, so the lookup has to match
+        // that or a stray space / capital letter fails an otherwise valid login.
+        const normalizedEmail = email.trim().toLowerCase();
+
         const users = await prisma.user.findMany({
-          where: { email },
+          where: { email: normalizedEmail },
         });
 
         if (users.length === 0) {
