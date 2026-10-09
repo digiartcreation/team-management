@@ -12,6 +12,7 @@ import {
   DEFAULT_VIDEO_WEIGHTAGE,
   DIGITAL_MARKETING,
   POSTER_DESIGN,
+  SERVICE_OPTIONS,
   VIDEO_EDITING,
   VIDEO_WEIGHTAGE_OPTIONS,
   formatServiceLabel,
@@ -234,8 +235,12 @@ async function resolveClientMapping(
   clientWork: string | null
 ) {
   if (!clientId) {
-    // Work is meaningless without a client.
-    return { clientId: null, clientWork: null };
+    // An internal task may name any service as its work, or none at all.
+    if (clientWork && !SERVICE_OPTIONS.includes(clientWork)) {
+      throw new Error("Selected work is not a known service.");
+    }
+
+    return { clientId: null, clientWork };
   }
 
   const client = await prisma.client.findUnique({
