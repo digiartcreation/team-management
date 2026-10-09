@@ -5,6 +5,7 @@ import {
   DEFAULT_VIDEO_WEIGHTAGE,
   DIGITAL_MARKETING,
   POSTER_DESIGN,
+  SERVICE_OPTIONS,
   VIDEO_EDITING,
   VIDEO_WEIGHTAGE_OPTIONS,
 } from "@/lib/services";
@@ -56,7 +57,8 @@ export default function ClientWorkField({
   );
 
   const selectedClient = clients.find((client) => client.id === clientId);
-  const works = selectedClient?.works ?? [];
+  // An internal task has no client to narrow the list, so every service is open.
+  const works = clientId ? (selectedClient?.works ?? []) : SERVICE_OPTIONS;
 
   // A task saved before the client's service list changed can point at work the
   // client no longer has. Keep showing it so editing an unrelated field does not
@@ -108,13 +110,13 @@ export default function ClientWorkField({
               setCount("");
             }
           }}
-          disabled={!clientId || workOptions.length === 0}
+          disabled={workOptions.length === 0}
           required={Boolean(clientId) && workOptions.length > 0}
           className={selectClassName}
         >
           <option value="">
             {!clientId
-              ? "Select a client first"
+              ? "No specific work"
               : workOptions.length === 0
                 ? "No services on this client"
                 : "Select the work"}
