@@ -15,7 +15,7 @@ import {
   summariseSessions,
 } from "@/lib/attendance";
 import { formatDuration } from "@/lib/duration";
-import { OFFICE_TIME_ZONE, officeDate } from "@/lib/officeTime";
+import { OFFICE_TIME_ZONE, officeDate, officeMinutes } from "@/lib/officeTime";
 
 // A day is stored as its UTC midnight, so it is read back in UTC; times are
 // shown on the office clock, not the server's.
@@ -189,6 +189,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
     ? {}
     : { userId: sessionUser.id ?? "__no_user__" };
   const now = new Date();
+  const isLateForCheckIn = officeMinutes(now) > 9 * 60 + 20;
   const todayDate = officeDate(now);
   const [earliest, ownTodayRecord] = await Promise.all([
     prisma.attendanceRecord.findFirst({
@@ -312,7 +313,13 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                 </form>
               ) : (
                 <form action={checkIn}>
-                  <button className="w-full rounded-md bg-[#770FC2] px-4 py-2.5 text-sm font-medium text-white transition hover:bg-[#6B1BBD]">
+                  <button
+                    className={`w-full rounded-md px-4 py-2.5 text-sm font-medium text-white transition ${
+                      isLateForCheckIn
+                        ? "bg-red-600 hover:bg-red-700"
+                        : "bg-emerald-600 hover:bg-emerald-700"
+                    }`}
+                  >
                     {todaySessions.length > 0 ? "Check-In Again" : "Check-In"}
                   </button>
                 </form>
