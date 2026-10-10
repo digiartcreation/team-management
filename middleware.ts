@@ -17,5 +17,10 @@ export default auth((req) => {
 });
 
 export const config = {
-  matcher: ["/((?!api/auth|_next/static|_next/image|favicon.ico).*)"],
+  // Public images skip the auth check: the /_next/image optimizer fetches
+  // them internally without the visitor's cookies, so a redirect to /login
+  // here breaks every next/image (and the favicon on the login page).
+  matcher: [
+    "/((?!api/auth|_next/static|_next/image|favicon.ico|.*\\.(?:png|jpe?g|gif|svg|webp|ico)$).*)",
+  ],
 };
