@@ -1,4 +1,4 @@
-import { DESIGNATION_OPTIONS } from "@/lib/designations";
+import { INTERN, SECTORS } from "@/lib/designations";
 import { SERVICE_OPTIONS } from "@/lib/services";
 
 type BasePriceFormProps = {
@@ -62,10 +62,15 @@ export default function BasePriceForm({
             <option value="" disabled>
               Select a designation
             </option>
-            {DESIGNATION_OPTIONS.map((designation) => (
-              <option key={designation} value={designation}>
-                {designation}
-              </option>
+            <option value={INTERN}>{INTERN}</option>
+            {SECTORS.map((sector) => (
+              <optgroup key={sector.name} label={sector.name}>
+                {sector.designations.map((designation) => (
+                  <option key={designation} value={designation}>
+                    {designation}
+                  </option>
+                ))}
+              </optgroup>
             ))}
           </select>
         </label>
