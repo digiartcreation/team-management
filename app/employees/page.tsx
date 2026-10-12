@@ -45,6 +45,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
         name: true,
         email: true,
         role: true,
+        sector: true,
         designation: true,
         createdAt: true,
       },
@@ -86,12 +87,13 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[760px] text-left text-sm">
+              <table className="w-full min-w-[880px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Name</th>
                     <th className="px-4 py-3 font-semibold">Email</th>
                     <th className="px-4 py-3 font-semibold">Role</th>
+                    <th className="px-4 py-3 font-semibold">Sector</th>
                     <th className="px-4 py-3 font-semibold">Designation</th>
                     <th className="px-4 py-3 font-semibold">Created Date</th>
                     <th className="px-4 py-3 font-semibold">
@@ -112,6 +114,11 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                         <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium capitalize text-slate-700">
                           {formatRole(employee.role)}
                         </span>
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {employee.sector ?? (
+                          <span className="text-slate-400">Not set</span>
+                        )}
                       </td>
                       <td className="px-4 py-4 text-slate-600">
                         {employee.designation ?? (

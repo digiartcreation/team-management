@@ -40,6 +40,7 @@ export default async function EditEmployeePage({
       name: true,
       email: true,
       role: true,
+      sector: true,
       designation: true,
     },
   });

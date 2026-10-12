@@ -15,7 +15,10 @@ model User {
   /// "superadmin", "admin", "manager" or "member". A super admin has every
   /// admin permission plus the Base Price menu; see lib/roles.ts.
   role                 String             @default("member")
-  /// Job level, one of DESIGNATION_OPTIONS in lib/designations.ts.
+  /// One of SECTOR_OPTIONS in lib/designations.ts.
+  sector               String?
+  /// One of DESIGNATION_OPTIONS in lib/designations.ts, and part of `sector`
+  /// unless it is "Intern", which fits any sector or none.
   designation          String?
   createdAt           DateTime           @default(now())
   updatedAt            DateTime           @updatedAt

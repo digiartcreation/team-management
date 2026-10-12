@@ -7,7 +7,11 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { isDesignation } from "@/lib/designations";
+import {
+  isDesignation,
+  isDesignationInSector,
+  isSector,
+} from "@/lib/designations";
 import { SUPER_ADMIN, isSuperAdminRole } from "@/lib/roles";
 
 const roles = new Set([SUPER_ADMIN, "admin", "manager", "member"]);
@@ -35,18 +39,29 @@ async function requireAdmin() {
   return sessionUser as typeof sessionUser & { id: string };
 }
 
-function resolveDesignation(formData: FormData) {
-  const designation = getValue(formData, "designation");
+function resolveSectorAndDesignation(formData: FormData) {
+  const sector = getValue(formData, "sector") || null;
+  const designation = getValue(formData, "designation") || null;
 
-  if (!designation) {
-    return null;
+  if (sector && !isSector(sector)) {
+    throw new Error("Invalid sector.");
   }
 
-  if (!isDesignation(designation)) {
-    throw new Error("Invalid designation.");
+  if (designation) {
+    if (!isDesignation(designation)) {
+      throw new Error("Invalid designation.");
+    }
+
+    if (!isDesignationInSector(designation, sector ?? "")) {
+      throw new Error(
+        sector
+          ? `${designation} is not a designation in ${sector}.`
+          : "Choose a sector for this designation."
+      );
+    }
   }
 
-  return designation;
+  return { sector, designation };
 }
 
 /** Only a super admin may create, promote to, or change a super admin. */
@@ -108,7 +123,7 @@ export async function createEmployee(formData: FormData) {
   }
 
   assertCanManageRole(sessionUser, role);
-  const designation = resolveDesignation(formData);
+  const { sector, designation } = resolveSectorAndDesignation(formData);
   validateEmail(email);
 
   if (password.length < 8) {
@@ -124,6 +139,7 @@ export async function createEmployee(formData: FormData) {
         email,
         password: hashedPassword,
         role,
+        sector,
         designation,
       },
       select: { id: true },
@@ -157,7 +173,7 @@ export async function updateEmployee(formData: FormData) {
 
   assertCanManageRole(sessionUser, role);
   await assertCanManageEmployee(sessionUser, id);
-  const designation = resolveDesignation(formData);
+  const { sector, designation } = resolveSectorAndDesignation(formData);
   validateEmail(email);
 
   try {
@@ -167,6 +183,7 @@ export async function updateEmployee(formData: FormData) {
         name,
         email,
         role,
+        sector,
         designation,
       },
     });
