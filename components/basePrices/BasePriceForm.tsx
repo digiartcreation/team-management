@@ -1,4 +1,5 @@
-import { INTERN, SECTORS } from "@/lib/designations";
+import SectorDesignationField from "@/components/employees/SectorDesignationField";
+import { sectorOfDesignation } from "@/lib/designations";
 import { SERVICE_OPTIONS } from "@/lib/services";
 
 type BasePriceFormProps = {
@@ -30,6 +31,14 @@ export default function BasePriceForm({
       ) : null}
 
       <div className="grid gap-5 md:grid-cols-2">
+        <SectorDesignationField
+          selectedSector={
+            basePrice ? sectorOfDesignation(basePrice.designation) : null
+          }
+          selectedDesignation={basePrice?.designation ?? null}
+          required
+        />
+
         <label className="grid gap-2">
           <span className="text-sm font-medium text-slate-700">Service</span>
           <select
@@ -45,32 +54,6 @@ export default function BasePriceForm({
               <option key={service} value={service}>
                 {service}
               </option>
-            ))}
-          </select>
-        </label>
-
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">
-            Designation
-          </span>
-          <select
-            name="designation"
-            defaultValue={basePrice?.designation ?? ""}
-            required
-            className={fieldClassName}
-          >
-            <option value="" disabled>
-              Select a designation
-            </option>
-            <option value={INTERN}>{INTERN}</option>
-            {SECTORS.map((sector) => (
-              <optgroup key={sector.name} label={sector.name}>
-                {sector.designations.map((designation) => (
-                  <option key={designation} value={designation}>
-                    {designation}
-                  </option>
-                ))}
-              </optgroup>
             ))}
           </select>
         </label>

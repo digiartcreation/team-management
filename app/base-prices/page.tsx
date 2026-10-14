@@ -6,7 +6,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import ActionMenu from "@/components/ui/ActionMenu";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteBasePrice } from "@/app/base-prices/actions";
-import { DESIGNATION_OPTIONS } from "@/lib/designations";
+import { DESIGNATION_OPTIONS, sectorOfDesignation } from "@/lib/designations";
 import { SERVICE_OPTIONS, formatInr } from "@/lib/services";
 
 /** Orders rows the way the dropdowns list them, not alphabetically. */
@@ -78,11 +78,12 @@ export default async function BasePricesPage() {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[720px] text-left text-sm">
+              <table className="w-full min-w-[840px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Service</th>
                     <th className="px-4 py-3 font-semibold">Hourly</th>
+                    <th className="px-4 py-3 font-semibold">Sector</th>
                     <th className="px-4 py-3 font-semibold">Designation</th>
                     <th className="px-4 py-3 font-semibold">Base Price</th>
                     <th className="px-4 py-3 font-semibold">
@@ -98,6 +99,11 @@ export default async function BasePricesPage() {
                         </td>
                         <td className="px-4 py-4 text-slate-600">
                           Per hour
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
+                          {sectorOfDesignation(basePrice.designation) ?? (
+                            <span className="text-slate-400">All sectors</span>
+                          )}
                         </td>
                         <td className="px-4 py-4 text-slate-600">
                           {basePrice.designation}

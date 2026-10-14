@@ -183,3 +183,11 @@ export function getSectorDesignations(sector: string) {
 export function isDesignationInSector(designation: string, sector: string) {
   return getSectorDesignations(sector).includes(designation);
 }
+
+/** The sector a designation belongs to; null for Intern, which fits them all. */
+export function sectorOfDesignation(designation: string) {
+  return (
+    SECTORS.find((sector) => sector.designations.includes(designation))
+      ?.name ?? null
+  );
+}

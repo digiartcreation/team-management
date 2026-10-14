@@ -10,6 +10,8 @@ import {
 type SectorDesignationFieldProps = {
   selectedSector: string | null;
   selectedDesignation: string | null;
+  /** A designation must be picked (base prices); employees may have none. */
+  required?: boolean;
 };
 
 const selectClassName =
@@ -18,6 +20,7 @@ const selectClassName =
 export default function SectorDesignationField({
   selectedSector,
   selectedDesignation,
+  required = false,
 }: SectorDesignationFieldProps) {
   const [sector, setSector] = useState(selectedSector ?? "");
   const [designation, setDesignation] = useState(selectedDesignation ?? "");
@@ -41,7 +44,9 @@ export default function SectorDesignationField({
           }}
           className={selectClassName}
         >
-          <option value="">No sector</option>
+          <option value="" disabled={required}>
+            {required ? "Select a sector" : "No sector"}
+          </option>
           {sector && !SECTOR_OPTIONS.includes(sector) ? (
             <option value={sector}>{sector}</option>
           ) : null}
@@ -59,10 +64,13 @@ export default function SectorDesignationField({
           name="designation"
           value={designation}
           onChange={(event) => setDesignation(event.target.value)}
+          required={required}
           className={selectClassName}
         >
-          <option value="">No designation</option>
-          {/* An employee saved before the sector list changed can hold a
+          <option value="" disabled={required}>
+            {required ? "Select a designation" : "No designation"}
+          </option>
+          {/* A record saved before the sector list changed can hold a
               designation that no longer fits; keep it so an unrelated edit
               does not drop it. */}
           {designation && !designations.includes(designation) ? (

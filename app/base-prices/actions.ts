@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { isDesignation } from "@/lib/designations";
+import { isDesignation, isDesignationInSector } from "@/lib/designations";
 import { SERVICE_OPTIONS } from "@/lib/services";
 
 function getValue(formData: FormData, key: string) {
@@ -52,6 +52,7 @@ function parseBasePrice(value: string) {
 
 function readBasePrice(formData: FormData) {
   const service = getValue(formData, "service");
+  const sector = getValue(formData, "sector");
   const designation = getValue(formData, "designation");
   const basePrice = getValue(formData, "basePrice");
 
@@ -61,6 +62,11 @@ function readBasePrice(formData: FormData) {
 
   if (!isDesignation(designation)) {
     throw new Error("Choose a designation.");
+  }
+
+  // The sector only narrows the list; the designation alone is stored.
+  if (sector && !isDesignationInSector(designation, sector)) {
+    throw new Error(`${designation} is not a designation in ${sector}.`);
   }
 
   if (!basePrice) {
