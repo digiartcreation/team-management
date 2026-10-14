@@ -29,7 +29,7 @@ export default function SectorDesignationField({
 
   return (
     <>
-      <label className="grid gap-2">
+      <label className="grid content-start gap-2">
         <span className="text-sm font-medium text-slate-700">Sector</span>
         <select
           name="sector"
@@ -58,7 +58,7 @@ export default function SectorDesignationField({
         </select>
       </label>
 
-      <label className="grid gap-2">
+      <label className="grid content-start gap-2">
         <span className="text-sm font-medium text-slate-700">Designation</span>
         <select
           name="designation"
