@@ -1,4 +1,4 @@
-import { DESIGNATION_OPTIONS } from "@/lib/designations";
+import SectorDesignationField from "@/components/employees/SectorDesignationField";
 import { SUPER_ADMIN, formatRole } from "@/lib/roles";
 
 type EmployeeFormProps = {
@@ -9,6 +9,7 @@ type EmployeeFormProps = {
     name: string;
     email: string;
     role: string;
+    sector: string | null;
     designation: string | null;
   };
   includePassword?: boolean;
@@ -87,23 +88,10 @@ export default function EmployeeForm({
           </select>
         </label>
 
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">
-            Designation
-          </span>
-          <select
-            name="designation"
-            defaultValue={employee?.designation ?? ""}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-          >
-            <option value="">No designation</option>
-            {DESIGNATION_OPTIONS.map((designation) => (
-              <option key={designation} value={designation}>
-                {designation}
-              </option>
-            ))}
-          </select>
-        </label>
+        <SectorDesignationField
+          selectedSector={employee?.sector ?? null}
+          selectedDesignation={employee?.designation ?? null}
+        />
       </div>
 
       <div className="mt-6 flex justify-end">

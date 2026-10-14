@@ -8,7 +8,7 @@ type SidebarProps = {
   alertCounts?: Record<string, number | undefined>;
 };
 
-function getNavItems(role?: string) {
+function getNavItems(role?: string, isSuperAdmin = false) {
   if (role === "manager") {
     return [
       { label: "Manager Dashboard", href: "/manager" },
@@ -53,6 +53,10 @@ function getNavItems(role?: string) {
     { label: "Search", href: "/search" },
   ];
 
+  if (isSuperAdmin) {
+    adminItems.splice(4, 0, { label: "Base Price", href: "/base-prices" });
+  }
+
   return adminItems;
 }
 
@@ -62,7 +66,7 @@ export default function Sidebar({
   unreadNotifications = 0,
   alertCounts = {},
 }: SidebarProps) {
-  const navItems = getNavItems(role);
+  const navItems = getNavItems(role, isSuperAdmin);
   const dashboardTitle =
     role === "manager"
       ? "Manager Dashboard"
