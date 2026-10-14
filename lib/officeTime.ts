@@ -40,3 +40,22 @@ export function officeMinutes(value: Date) {
   const { hour, minute } = officeParts(value);
   return hour * 60 + minute;
 }
+
+/** A shift time as minutes since midnight: "18:00" is 1080. */
+export function minutesFromTime(value: string) {
+  const [hours, minutes] = value.split(":").map(Number);
+  return hours * 60 + minutes;
+}
+
+/**
+ * The instant the office clock reads `minutes` past midnight on a stored day
+ * (that day's UTC midnight): 18:00 on Oct 14 is 12:30 UTC that day.
+ */
+export function officeInstant(day: Date, minutes: number) {
+  const wall = day.getTime() + minutes * 60_000;
+  const parts = officeParts(new Date(wall));
+  const offset =
+    Date.UTC(parts.year, parts.month - 1, parts.day, parts.hour, parts.minute) -
+    wall;
+  return new Date(wall - offset);
+}

@@ -15,7 +15,17 @@ import {
   summariseSessions,
 } from "@/lib/attendance";
 import { formatDuration } from "@/lib/duration";
-import { OFFICE_TIME_ZONE, officeDate, officeMinutes } from "@/lib/officeTime";
+import {
+  CHECK_OUT_CUTOFF,
+  closeExpiredSessions,
+  isCheckOutClosed,
+} from "@/lib/autoCheckOut";
+import {
+  OFFICE_TIME_ZONE,
+  minutesFromTime,
+  officeDate,
+  officeMinutes,
+} from "@/lib/officeTime";
 
 // A day is stored as its UTC midnight, so it is read back in UTC; times are
 // shown on the office clock, not the server's.
@@ -33,6 +43,17 @@ const timeFormatter = new Intl.DateTimeFormat("en", {
 
 function formatTime(value: Date | null) {
   return value ? timeFormatter.format(value) : "Not recorded";
+}
+
+const clockFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
+  hour: "2-digit",
+  minute: "2-digit",
+});
+
+/** A shift time the way the page shows times: "18:00" -> "06:00 PM". */
+function formatClock(value: string) {
+  return clockFormatter.format(new Date(minutesFromTime(value) * 60_000));
 }
 
 const sessionSelect = {
@@ -189,7 +210,11 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
     ? {}
     : { userId: sessionUser.id ?? "__no_user__" };
   const now = new Date();
+  // Sessions left open past 10 PM are checked out at shift end before any
+  // day is read, so the page never shows one still running.
+  await closeExpiredSessions(now);
   const isLateForCheckIn = officeMinutes(now) > 9 * 60 + 20;
+  const checkInClosed = isCheckOutClosed(now);
   const todayDate = officeDate(now);
   const [earliest, ownTodayRecord] = await Promise.all([
     prisma.attendanceRecord.findFirst({
@@ -306,11 +331,31 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
 
               {/* One button that flips: in when out, out when in, as often as needed. */}
               {today.open ? (
-                <form action={checkOut}>
+                <form action={checkOut} className="grid gap-2">
                   <button className="w-full rounded-md border border-[#770FC2] px-4 py-2.5 text-sm font-medium text-[#770FC2] transition hover:bg-[#F3E8FF]">
                     Check-Out
                   </button>
+                  {ownTodayRecord ? (
+                    <p className="text-center text-xs text-slate-500">
+                      Check out by {formatClock(CHECK_OUT_CUTOFF)}. After that
+                      you are checked out at{" "}
+                      {formatClock(ownTodayRecord.scheduledEndTime)}.
+                    </p>
+                  ) : null}
                 </form>
+              ) : checkInClosed ? (
+                <div className="grid gap-2">
+                  <button
+                    disabled
+                    className="w-full cursor-not-allowed rounded-md bg-slate-200 px-4 py-2.5 text-sm font-medium text-slate-500"
+                  >
+                    Check-In
+                  </button>
+                  <p className="text-center text-xs text-slate-500">
+                    Attendance closes at {formatClock(CHECK_OUT_CUTOFF)}. Check
+                    in again tomorrow.
+                  </p>
+                </div>
               ) : (
                 <form action={checkIn}>
                   <button

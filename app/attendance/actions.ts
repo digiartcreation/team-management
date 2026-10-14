@@ -8,15 +8,15 @@ import { prisma } from "@/lib/prisma";
 import { SUPER_ADMIN } from "@/lib/roles";
 import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
-import { officeDate, officeMinutes } from "@/lib/officeTime";
+import { closeExpiredSessions, isCheckOutClosed } from "@/lib/autoCheckOut";
+import {
+  minutesFromTime,
+  officeDate,
+  officeMinutes,
+} from "@/lib/officeTime";
 
 const scheduledStartTime = "09:00";
 const scheduledEndTime = "18:00";
-
-function minutesFromTime(value: string) {
-  const [hours, minutes] = value.split(":").map(Number);
-  return hours * 60 + minutes;
-}
 
 async function getSessionUser() {
   const session = await auth();
@@ -71,6 +71,14 @@ async function findToday(userId: string, date: Date) {
 export async function checkIn() {
   const sessionUser = await getSessionUser();
   const now = new Date();
+  // Settles a session left open on an earlier day before starting a new one.
+  await closeExpiredSessions(now);
+
+  // A session opened now could never be checked out by hand.
+  if (isCheckOutClosed(now)) {
+    throw new Error("Attendance is closed for today. Check in tomorrow.");
+  }
+
   const date = officeDate(now);
   const existing = await findToday(sessionUser.id, date);
 
@@ -154,10 +162,19 @@ export async function checkIn() {
 /**
  * Closes the open session. The day's check-out and early-departure minutes
  * always follow the latest one, so they settle on the last check-out of the day.
+ * Past the 10 PM cut-off a check-out no longer counts: the session is closed at
+ * the end of the shift instead, and the page shows that.
  */
 export async function checkOut() {
   const sessionUser = await getSessionUser();
   const now = new Date();
+  await closeExpiredSessions(now);
+
+  if (isCheckOutClosed(now)) {
+    revalidatePath("/attendance");
+    return;
+  }
+
   const date = officeDate(now);
   const existing = await findToday(sessionUser.id, date);
 
