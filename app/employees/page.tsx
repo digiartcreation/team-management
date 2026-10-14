@@ -7,7 +7,7 @@ import DeleteEmployeeButton from "@/components/employees/DeleteEmployeeButton";
 import ActionMenu from "@/components/ui/ActionMenu";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
-import { formatRole, isSuperAdminRole } from "@/lib/roles";
+import { formatRole } from "@/lib/roles";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -30,7 +30,12 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
     role?: string;
     isSuperAdmin?: boolean;
   };
-  const isAdmin = sessionUser.role === "admin";
+  // Admins see the list read-only; only a super admin adds, edits or deletes.
+  if (sessionUser.role !== "admin") {
+    redirect("/");
+  }
+
+  const isSuperAdmin = sessionUser.isSuperAdmin === true;
 
   const params = await searchParams;
   const page = getPage(params.page);
@@ -65,7 +70,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
               Employee Management
             </h1>
           </div>
-          {isAdmin ? (
+          {isSuperAdmin ? (
             <Link
               href="/employees/new"
               className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
@@ -129,9 +134,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                         {dateFormatter.format(employee.createdAt)}
                       </td>
                       <td className="px-4 py-4">
-                        {isAdmin &&
-                        (sessionUser.isSuperAdmin ||
-                          !isSuperAdminRole(employee.role)) ? (
+                        {isSuperAdmin ? (
                           <ActionMenu>
                             <Link
                               href={`/employees/${employee.id}/edit`}

@@ -5,7 +5,6 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import EmployeeForm from "@/components/employees/EmployeeForm";
 import { updateEmployee } from "@/app/employees/actions";
-import { isSuperAdminRole } from "@/lib/roles";
 
 type EditEmployeePageProps = {
   params: Promise<{
@@ -27,7 +26,8 @@ export default async function EditEmployeePage({
     isSuperAdmin?: boolean;
   };
 
-  if (sessionUser.role !== "admin") {
+  // Admins can view employees; only a super admin edits them.
+  if (!sessionUser.isSuperAdmin) {
     redirect("/employees");
   }
 
@@ -47,11 +47,6 @@ export default async function EditEmployeePage({
 
   if (!employee) {
     notFound();
-  }
-
-  // Only a super admin may change another super admin's account.
-  if (isSuperAdminRole(employee.role) && !sessionUser.isSuperAdmin) {
-    redirect("/employees");
   }
 
   return (

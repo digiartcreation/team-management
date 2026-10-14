@@ -17,7 +17,8 @@ export default async function NewEmployeePage() {
     isSuperAdmin?: boolean;
   };
 
-  if (sessionUser.role !== "admin") {
+  // Admins can view employees; only a super admin adds them.
+  if (!sessionUser.isSuperAdmin) {
     redirect("/employees");
   }
 
