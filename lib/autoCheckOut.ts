@@ -14,23 +14,33 @@ export function isCheckOutClosed(now: Date) {
   return officeMinutes(now) >= minutesFromTime(CHECK_OUT_CUTOFF);
 }
 
+/** A session nobody checked out of counts for this long. */
+export const AUTO_CHECK_OUT_MINUTES = 30;
+
 /**
- * When a session nobody checked out of is taken to have ended: the end of the
- * shift (6 PM), or its check-in if that came later. Null while its day's
- * cut-off has not passed, since it can still be checked out by hand.
+ * Where a session left open will be closed: 30 minutes after its check-in
+ * (7:30 PM -> 8:00 PM), but no later than its day's cut-off.
  */
-export function autoCheckOutTime(
-  day: Date,
-  scheduledEndTime: string,
-  checkInTime: Date,
-  now: Date
-) {
+export function autoCheckOutAt(day: Date, checkInTime: Date) {
+  const cutoff = officeInstant(day, minutesFromTime(CHECK_OUT_CUTOFF));
+  const closesAt = new Date(
+    checkInTime.getTime() + AUTO_CHECK_OUT_MINUTES * 60_000
+  );
+  // A check-in from before the cut-off existed can sit past it; it still
+  // gets its 30 minutes rather than closing before it began.
+  return checkInTime < cutoff && closesAt > cutoff ? cutoff : closesAt;
+}
+
+/**
+ * The check-out to record for a session nobody checked out of. Null while
+ * its day's cut-off has not passed, since it can still be checked out by hand.
+ */
+export function autoCheckOutTime(day: Date, checkInTime: Date, now: Date) {
   if (now < officeInstant(day, minutesFromTime(CHECK_OUT_CUTOFF))) {
     return null;
   }
 
-  const shiftEnd = officeInstant(day, minutesFromTime(scheduledEndTime));
-  return shiftEnd > checkInTime ? shiftEnd : checkInTime;
+  return autoCheckOutAt(day, checkInTime);
 }
 
 /**
@@ -54,7 +64,6 @@ export async function closeExpiredSessions(now: Date) {
     const { attendance } = session;
     const checkOutTime = autoCheckOutTime(
       attendance.date,
-      attendance.scheduledEndTime,
       session.checkInTime,
       now
     );
@@ -62,6 +71,17 @@ export async function closeExpiredSessions(now: Date) {
     if (!checkOutTime) {
       continue;
     }
+
+    // Counted from the day's own midnight, so a check-out past midnight is
+    // never mistaken for an early one.
+    const checkOutMinutes = Math.round(
+      (checkOutTime.getTime() - officeInstant(attendance.date, 0).getTime()) /
+        60_000
+    );
+    const earlyDepartureMinutes = Math.max(
+      0,
+      minutesFromTime(attendance.scheduledEndTime) - checkOutMinutes
+    );
 
     const closed = await prisma.$transaction(async (tx) => {
       // Another request may have closed it since the read above.
@@ -75,10 +95,13 @@ export async function closeExpiredSessions(now: Date) {
       }
 
       // The open session is always the day's latest, so it sets the day's
-      // check-out. It is never before the shift end, so never an early one.
+      // check-out and early departure, as a check-out by hand would.
       await tx.attendanceRecord.update({
         where: { id: attendance.id },
-        data: { actualCheckOutTime: checkOutTime, earlyDepartureMinutes: null },
+        data: {
+          actualCheckOutTime: checkOutTime,
+          earlyDepartureMinutes: earlyDepartureMinutes || null,
+        },
       });
 
       return true;

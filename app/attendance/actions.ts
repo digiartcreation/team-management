@@ -162,8 +162,8 @@ export async function checkIn() {
 /**
  * Closes the open session. The day's check-out and early-departure minutes
  * always follow the latest one, so they settle on the last check-out of the day.
- * Past the 10 PM cut-off a check-out no longer counts: the session is closed at
- * the end of the shift instead, and the page shows that.
+ * Past the 10 PM cut-off a check-out no longer counts: the session is closed 30
+ * minutes after its check-in instead, and the page shows that.
  */
 export async function checkOut() {
   const sessionUser = await getSessionUser();
