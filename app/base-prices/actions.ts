@@ -6,7 +6,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { isDesignation, isDesignationInSector } from "@/lib/designations";
+import { isDesignationInSector, isSector } from "@/lib/designations";
 import { SERVICE_OPTIONS } from "@/lib/services";
 
 function getValue(formData: FormData, key: string) {
@@ -60,13 +60,13 @@ function readBasePrice(formData: FormData) {
     throw new Error("Choose a service.");
   }
 
-  if (!isDesignation(designation)) {
-    throw new Error("Choose a designation.");
+  if (!isSector(sector)) {
+    throw new Error("Choose a domain.");
   }
 
-  // The sector only narrows the list; the designation alone is stored.
-  if (sector && !isDesignationInSector(designation, sector)) {
-    throw new Error(`${designation} is not a designation in ${sector}.`);
+  // Every domain has its own Intern, so the domain is part of the price.
+  if (!isDesignationInSector(designation, sector)) {
+    throw new Error(`Choose a designation from ${sector}.`);
   }
 
   if (!basePrice) {
@@ -75,6 +75,7 @@ function readBasePrice(formData: FormData) {
 
   return {
     service,
+    sector,
     designation,
     basePrice: parseBasePrice(basePrice),
   };
@@ -84,7 +85,7 @@ function handlePrismaBasePriceError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2002") {
       throw new Error(
-        "A base price for this service and designation already exists."
+        "A base price for this service, domain and designation already exists."
       );
     }
 
@@ -96,21 +97,36 @@ function handlePrismaBasePriceError(error: unknown): never {
   throw error;
 }
 
+/**
+ * Sets the price for a service, domain and designation. When that combination
+ * already has one, its amount is updated rather than the save being refused.
+ */
 export async function createBasePrice(formData: FormData) {
   const sessionUser = await requireSuperAdmin();
   const data = readBasePrice(formData);
+  const key = {
+    service: data.service,
+    sector: data.sector,
+    designation: data.designation,
+  };
 
   try {
-    const basePrice = await prisma.basePrice.create({
-      data,
+    const existing = await prisma.basePrice.findUnique({
+      where: { service_sector_designation: key },
+      select: { id: true },
+    });
+    const basePrice = await prisma.basePrice.upsert({
+      where: { service_sector_designation: key },
+      create: data,
+      update: { basePrice: data.basePrice },
       select: { id: true },
     });
     await logActivity({
       userId: sessionUser.id,
-      action: "created",
+      action: existing ? "updated" : "created",
       entityType: "basePrice",
       entityId: basePrice.id,
-      description: `Set base price for ${data.service} (${data.designation})`,
+      description: `${existing ? "Updated" : "Set"} base price for ${data.service} (${data.designation}, ${data.sector})`,
     });
   } catch (error) {
     handlePrismaBasePriceError(error);

@@ -36,6 +36,7 @@ export default async function EditBasePricePage({
     select: {
       id: true,
       service: true,
+      sector: true,
       designation: true,
       basePrice: true,
     },

@@ -2,6 +2,8 @@
 
 import { useActionState, useEffect, useRef } from "react";
 import { logTaskTime, type LogTimeState } from "@/app/tasks/actions";
+import { formatDuration } from "@/lib/duration";
+import type { BoardTimeLog } from "@/lib/taskBoard";
 import { isOnReopenCycle } from "@/lib/taskStatus";
 
 type LogTimeDialogProps = {
@@ -18,7 +20,21 @@ type LogTimeDialogProps = {
   onClose: () => void;
   onSaved: () => void;
   completing: boolean;
+  /**
+   * Just the time spent, logged against today: the quick entry from a
+   * completed card. A reopened task still asks for its required note.
+   */
+  timeOnly?: boolean;
+  /** Entries already logged, listed under "Saved time". */
+  savedLogs?: BoardTimeLog[];
 };
+
+const logDateFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
 
 const fieldClass =
   "w-full rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-[#770FC2] focus:ring-2 focus:ring-[#770FC2]/20";
@@ -51,6 +67,8 @@ export default function LogTimeDialog({
   onClose,
   onSaved,
   completing,
+  timeOnly = false,
+  savedLogs = [],
 }: LogTimeDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const formRef = useRef<HTMLFormElement>(null);
@@ -107,7 +125,7 @@ export default function LogTimeDialog({
                 : "Log time"}
           </h2>
           <p className="mt-1 break-words text-sm text-slate-500">{taskTitle}</p>
-          {onReopen ? (
+          {onReopen && !timeOnly ? (
             <p className="mt-2 rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-2 text-sm text-[#770FC2]">
               This task has been reopened {reopenCount}{" "}
               {reopenCount === 1 ? "time" : "times"}. Time saved here counts
@@ -136,40 +154,85 @@ export default function LogTimeDialog({
           </select>
         </fieldset>
 
-        <label className="grid gap-2">
-          <span className={labelClass}>Date Of Work Completion</span>
-          <input
-            name="date"
-            type="date"
-            defaultValue={today}
-            max={today}
-            required
-            className={fieldClass}
-          />
-        </label>
+        {timeOnly ? (
+          <input type="hidden" name="date" value={today} />
+        ) : (
+          <label className="grid gap-2">
+            <span className={labelClass}>Date Of Work Completion</span>
+            <input
+              name="date"
+              type="date"
+              defaultValue={today}
+              max={today}
+              required
+              className={fieldClass}
+            />
+          </label>
+        )}
 
-        <label className="grid gap-2">
-          <span className={labelClass}>
-            {onReopen ? "Note (required)" : "Note (optional)"}
-          </span>
-          <input
-            name="note"
-            type="text"
-            required={onReopen}
-            placeholder={
-              onReopen
-                ? "Eg: re-export after client feedback"
-                : "Eg: first cut and colour pass"
-            }
-            className={fieldClass}
-          />
-          {onReopen ? (
-            <span className="text-xs text-slate-500">
-              Say what the rework was for. Reopened hours are reported on their
-              own, so they cannot go in unexplained.
+        {timeOnly && !onReopen ? null : (
+          <label className="grid gap-2">
+            <span className={labelClass}>
+              {onReopen ? "Note (required)" : "Note (optional)"}
             </span>
-          ) : null}
-        </label>
+            <input
+              name="note"
+              type="text"
+              required={onReopen}
+              placeholder={
+                onReopen
+                  ? "Eg: re-export after client feedback"
+                  : "Eg: first cut and colour pass"
+              }
+              className={fieldClass}
+            />
+            {onReopen ? (
+              <span className="text-xs text-slate-500">
+                Say what the rework was for. Reopened hours are reported on
+                their own, so they cannot go in unexplained.
+              </span>
+            ) : null}
+          </label>
+        )}
+
+        {savedLogs.length > 0 ? (
+          <details className="rounded-md border border-slate-200">
+            <summary className="flex cursor-pointer items-center justify-between gap-3 px-3 py-2 text-sm font-medium text-slate-700">
+              <span>
+                Saved time · {savedLogs.length}{" "}
+                {savedLogs.length === 1 ? "entry" : "entries"}
+              </span>
+              <span className="font-mono text-xs text-slate-500">
+                {formatDuration(
+                  savedLogs.reduce((sum, log) => sum + log.minutes, 0)
+                )}
+              </span>
+            </summary>
+            <ul className="max-h-48 divide-y divide-slate-100 overflow-y-auto border-t border-slate-200">
+              {savedLogs.map((log, index) => (
+                <li
+                  key={`${log.date}-${index}`}
+                  className="flex items-start justify-between gap-3 px-3 py-2 text-xs"
+                >
+                  <span className="min-w-0">
+                    <span className="text-slate-700">
+                      {logDateFormatter.format(new Date(`${log.date}T00:00:00Z`))}
+                    </span>
+                    <span className="text-slate-400"> · {log.userName}</span>
+                    {log.note ? (
+                      <span className="block break-words italic text-slate-500">
+                        {log.note}
+                      </span>
+                    ) : null}
+                  </span>
+                  <span className="shrink-0 font-mono text-slate-600">
+                    {formatDuration(log.minutes)}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </details>
+        ) : null}
 
         {state && "error" in state ? (
           <p

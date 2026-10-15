@@ -45,7 +45,7 @@ function resolveSectorAndDesignation(formData: FormData) {
   const designation = getValue(formData, "designation") || null;
 
   if (sector && !isSector(sector)) {
-    throw new Error("Invalid sector.");
+    throw new Error("Invalid domain.");
   }
 
   if (designation) {
@@ -57,7 +57,7 @@ function resolveSectorAndDesignation(formData: FormData) {
       throw new Error(
         sector
           ? `${designation} is not a designation in ${sector}.`
-          : "Choose a sector for this designation."
+          : "Choose a domain for this designation."
       );
     }
   }

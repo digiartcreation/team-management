@@ -86,6 +86,27 @@ function resolveReopenCycle(
   return reopenCount + 1;
 }
 
+/**
+ * The completion time a status move writes. It is the date the task was first
+ * completed and stays locked there: a reopen does not clear it, and completing
+ * the rework does not move it -- rework time is reported on its own.
+ */
+function completionStamp(
+  previousStatus: string,
+  nextStatus: string,
+  completedAt: Date | null
+) {
+  if (
+    nextStatus === "completed" &&
+    previousStatus !== "completed" &&
+    !completedAt
+  ) {
+    return { completedAt: new Date() };
+  }
+
+  return {};
+}
+
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
   return typeof value === "string" ? value.trim() : "";
@@ -474,6 +495,7 @@ export async function updateTask(formData: FormData) {
         status: true,
         teamId: true,
         reopenCount: true,
+        completedAt: true,
       },
     });
 
@@ -522,6 +544,7 @@ export async function updateTask(formData: FormData) {
         status,
         priority,
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
+        ...completionStamp(previous.status, status, previous.completedAt),
       },
     });
 
@@ -757,6 +780,7 @@ export async function updateOwnTaskStatus(formData: FormData) {
       title: true,
       status: true,
       reopenCount: true,
+      completedAt: true,
     },
   });
 
@@ -784,6 +808,7 @@ export async function updateOwnTaskStatus(formData: FormData) {
       data: {
         status,
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
+        ...completionStamp(task.status, status, task.completedAt),
       },
     });
 
