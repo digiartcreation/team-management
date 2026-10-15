@@ -8,6 +8,7 @@ import BreakdownTable from "@/components/reports/BreakdownTable";
 import ReportCharts from "@/components/reports/ReportCharts";
 import ReportExport from "@/components/reports/ReportExport";
 import { formatDuration } from "@/lib/duration";
+import { formatOfficeDate } from "@/lib/officeTime";
 import {
   buildReportAnalytics,
   datePresets,
@@ -289,6 +290,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
               title: true,
               clientWork: true,
               reopenCount: true,
+              completedAt: true,
               client: { select: { id: true, name: true } },
             },
           },
@@ -669,6 +671,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                             <p className="mt-0.5 pl-6 text-xs text-slate-500">
                               {task.client} · reopened {task.reopenCount}{" "}
                               {task.reopenCount === 1 ? "time" : "times"}
+                              {task.completedAt
+                                ? ` · first completed ${formatOfficeDate(task.completedAt)}`
+                                : null}
                             </p>
                           </div>
                           <div className="flex items-center gap-4 pl-6 sm:pl-0">

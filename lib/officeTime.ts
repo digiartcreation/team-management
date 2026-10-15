@@ -15,6 +15,21 @@ const partsFormatter = new Intl.DateTimeFormat("en-US", {
   hourCycle: "h23",
 });
 
+const officeDateFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: OFFICE_TIME_ZONE,
+  year: "numeric",
+  month: "short",
+  day: "numeric",
+});
+
+/**
+ * A moment as its office calendar date: "Oct 9, 2026". Takes an ISO string
+ * too, the form dates cross into client components in.
+ */
+export function formatOfficeDate(value: Date | string) {
+  return officeDateFormatter.format(new Date(value));
+}
+
 function officeParts(value: Date) {
   const parts = Object.fromEntries(
     partsFormatter.formatToParts(value).map((part) => [part.type, part.value])
