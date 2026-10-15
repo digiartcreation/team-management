@@ -1,7 +1,7 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import { splitReopenMinutes } from "@/lib/duration";
-import { formatTaskStatus } from "@/lib/taskStatus";
+import { COMPLETED_STALE_DAYS, formatTaskStatus } from "@/lib/taskStatus";
 
 /**
  * The board's columns, in the order work moves through them. Reopened sits
@@ -41,6 +41,12 @@ export type BoardCard = {
   latestReopenNote: string | null;
   /** When the task was first completed (locked after that), as an ISO string. */
   completedAt: string | null;
+  /**
+   * Still sitting in Completed more than COMPLETED_STALE_DAYS (lib/taskStatus)
+   * after it was first completed: due to be closed, so the card is outlined
+   * in red.
+   */
+  completedStale: boolean;
   /** Every entry logged against the task, newest first. */
   timeLogs: BoardTimeLog[];
 };
@@ -124,6 +130,8 @@ const BOARD_CARD_SELECT = {
 
 type BoardTask = Prisma.TaskGetPayload<{ select: typeof BOARD_CARD_SELECT }>;
 
+const COMPLETED_STALE_MS = COMPLETED_STALE_DAYS * 24 * 60 * 60 * 1000;
+
 function toBoardCard(task: BoardTask): BoardCard {
   const time = splitReopenMinutes(task.timeLogs);
   // Logs arrive newest first, so the first rework note is the latest word on
@@ -143,6 +151,11 @@ function toBoardCard(task: BoardTask): BoardCard {
     reopenCount: task.reopenCount,
     latestReopenNote,
     completedAt: task.completedAt?.toISOString() ?? null,
+    // Worked out here, on the server, so the page and the browser agree.
+    completedStale:
+      task.status === "completed" &&
+      task.completedAt !== null &&
+      Date.now() - task.completedAt.getTime() > COMPLETED_STALE_MS,
     timeLogs: task.timeLogs.map((log) => ({
       minutes: log.minutes,
       // Log dates are stored as their UTC midnight.

@@ -92,3 +92,9 @@ export function canMoveTo(current: string, next: string) {
 export function isOnReopenCycle(reopenCount: number) {
   return reopenCount > 0;
 }
+
+/**
+ * How many days a task may sit in Completed, counted from when it was first
+ * completed, before its board card is outlined in red as due to be closed.
+ */
+export const COMPLETED_STALE_DAYS = 5;
