@@ -7,7 +7,11 @@ import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import Avatar from "@/components/ui/Avatar";
 import { formatDuration } from "@/lib/duration";
 import { OFFICE_TIME_ZONE } from "@/lib/officeTime";
-import { canMoveTo, type TaskStatus } from "@/lib/taskStatus";
+import {
+  COMPLETED_STALE_DAYS,
+  canMoveTo,
+  type TaskStatus,
+} from "@/lib/taskStatus";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
 import type {
   BoardCard,
@@ -131,9 +135,12 @@ function Card({
       draggable={!moving}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
-      className={`rounded-md border border-slate-200 border-l-4 bg-white p-3 shadow-sm transition ${edge} ${
-        moving ? "opacity-50" : "cursor-grab active:cursor-grabbing"
-      }`}
+      className={`rounded-md border border-l-4 bg-white p-3 shadow-sm transition ${
+        // Completed for too long without being closed: outlined in red.
+        card.completedStale
+          ? "border-red-500 ring-1 ring-red-200"
+          : `border-slate-200 ${edge}`
+      } ${moving ? "opacity-50" : "cursor-grab active:cursor-grabbing"}`}
     >
       <h3 className="break-words text-sm font-medium leading-snug text-slate-950">
         {card.title}
@@ -153,8 +160,15 @@ function Card({
       </div>
 
       {showCompletedAt && card.completedAt ? (
-        <p className="mt-1 text-[11px] text-emerald-700">
+        <p
+          className={`mt-1 text-[11px] ${
+            card.completedStale ? "font-medium text-red-600" : "text-emerald-700"
+          }`}
+        >
           Completed {completedFormatter.format(new Date(card.completedAt))}
+          {card.completedStale
+            ? ` · over ${COMPLETED_STALE_DAYS} days, close it`
+            : null}
         </p>
       ) : null}
 
