@@ -6,6 +6,7 @@ import { useCallback, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import Avatar from "@/components/ui/Avatar";
 import { formatDuration } from "@/lib/duration";
+import { OFFICE_TIME_ZONE } from "@/lib/officeTime";
 import { canMoveTo, type TaskStatus } from "@/lib/taskStatus";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
 import type {
@@ -13,6 +14,7 @@ import type {
   BoardColumn,
   BoardGroup,
   BoardStatus,
+  BoardTimeLog,
 } from "@/lib/taskBoard";
 
 type TaskBoardProps = {
@@ -51,8 +53,21 @@ const SINGLE_BOARD = "board";
 /**
  * The task the log time dialog is open for. `completing` means the entry was
  * asked for by a drop on Completed, and saving it moves the card there.
+ * `timeOnly` is the quick entry from a completed card's Log time button.
  */
-type TimePrompt = DragCard & { completing: boolean };
+type TimePrompt = DragCard & {
+  completing: boolean;
+  timeOnly?: boolean;
+  logs?: BoardTimeLog[];
+};
+
+// On the office clock, so the server render and the browser agree on the day.
+const completedFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: OFFICE_TIME_ZONE,
+  day: "numeric",
+  month: "short",
+  year: "numeric",
+});
 
 /** The dot beside a column heading, and the tint of its cards' left edge. */
 const COLUMN_ACCENT: Record<BoardStatus, { dot: string; edge: string }> = {
@@ -94,19 +109,22 @@ function Card({
   moving,
   onDragStart,
   onDragEnd,
-  action,
+  showCompletedAt = false,
+  actions = [],
 }: {
   card: BoardCard;
   edge: string;
   moving: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
+  /** The first completion date, shown on the Completed column only. */
+  showCompletedAt?: boolean;
   /**
-   * The button along the foot of the card: Close on completed work. Absent on
-   * every other column -- rework time is logged when the card is dragged back
-   * to Completed, or from Task Management.
+   * The buttons along the foot of the card: Log time and Close on completed
+   * work. None on the other columns -- their time is logged when the card is
+   * dragged to Completed, or from Task Management.
    */
-  action?: { label: string; onClick: () => void };
+  actions?: { label: string; onClick: () => void }[];
 }) {
   return (
     <article
@@ -133,6 +151,12 @@ function Card({
         </span>
         <Avatar name={card.assigneeName} />
       </div>
+
+      {showCompletedAt && card.completedAt ? (
+        <p className="mt-1 text-[11px] text-emerald-700">
+          Completed {completedFormatter.format(new Date(card.completedAt))}
+        </p>
+      ) : null}
 
       {card.latestReopenNote ? (
         <p className="mt-2 break-words border-l-2 border-[#A05DD0]/50 pl-2 text-[11px] italic leading-snug text-slate-500">
@@ -161,15 +185,20 @@ function Card({
         ) : null}
       </div>
 
-      {action ? (
-        <button
-          type="button"
-          onClick={action.onClick}
-          disabled={moving}
-          className="mt-3 w-full rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-1.5 text-xs font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF] disabled:opacity-60"
-        >
-          {action.label}
-        </button>
+      {actions.length > 0 ? (
+        <div className="mt-3 grid grid-cols-2 gap-2">
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              onClick={action.onClick}
+              disabled={moving}
+              className="w-full rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-1.5 text-xs font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF] disabled:opacity-60"
+            >
+              {action.label}
+            </button>
+          ))}
+        </div>
       ) : null}
     </article>
   );
@@ -371,19 +400,36 @@ export default function TaskBoard({
                         moving={movingCardId === card.id}
                         onDragStart={handleDragStart(card, column.status, group)}
                         onDragEnd={() => setDragCard(null)}
-                        action={
+                        showCompletedAt={column.status === "completed"}
+                        actions={
                           column.status === "completed"
-                            ? {
-                                label: "Close",
-                                onClick: () =>
-                                  setClosePrompt({
-                                    id: card.id,
-                                    title: card.title,
-                                    status: column.status,
-                                    reopenCount: card.reopenCount,
-                                    group,
-                                  }),
-                              }
+                            ? [
+                                {
+                                  label: "Log time",
+                                  onClick: () =>
+                                    setTimePrompt({
+                                      id: card.id,
+                                      title: card.title,
+                                      status: column.status,
+                                      reopenCount: card.reopenCount,
+                                      group,
+                                      completing: false,
+                                      timeOnly: true,
+                                      logs: card.timeLogs,
+                                    }),
+                                },
+                                {
+                                  label: "Close",
+                                  onClick: () =>
+                                    setClosePrompt({
+                                      id: card.id,
+                                      title: card.title,
+                                      status: column.status,
+                                      reopenCount: card.reopenCount,
+                                      group,
+                                    }),
+                                },
+                              ]
                             : undefined
                         }
                       />
@@ -579,7 +625,7 @@ export default function TaskBoard({
 
       {timePrompt ? (
         <LogTimeDialog
-          key={`${timePrompt.id}-${timePrompt.completing}`}
+          key={`${timePrompt.id}-${timePrompt.completing}-${timePrompt.timeOnly ?? false}`}
           taskId={timePrompt.id}
           taskTitle={timePrompt.title}
           today={today}
@@ -588,6 +634,8 @@ export default function TaskBoard({
           onClose={() => setTimePrompt(null)}
           onSaved={handleTimeSaved}
           completing={timePrompt.completing}
+          timeOnly={timePrompt.timeOnly}
+          savedLogs={timePrompt.logs}
         />
       ) : null}
     </section>

@@ -6,7 +6,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import ActionMenu from "@/components/ui/ActionMenu";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteBasePrice } from "@/app/base-prices/actions";
-import { DESIGNATION_OPTIONS, sectorOfDesignation } from "@/lib/designations";
+import { SECTOR_OPTIONS, getSectorDesignations } from "@/lib/designations";
 import { SERVICE_OPTIONS, formatInr } from "@/lib/services";
 
 /** Orders rows the way the dropdowns list them, not alphabetically. */
@@ -35,6 +35,7 @@ export default async function BasePricesPage() {
       select: {
         id: true,
         service: true,
+        sector: true,
         designation: true,
         basePrice: true,
       },
@@ -42,8 +43,9 @@ export default async function BasePricesPage() {
   ).sort(
     (a, b) =>
       rank(SERVICE_OPTIONS, a.service) - rank(SERVICE_OPTIONS, b.service) ||
-      rank(DESIGNATION_OPTIONS, a.designation) -
-        rank(DESIGNATION_OPTIONS, b.designation)
+      rank(SECTOR_OPTIONS, a.sector) - rank(SECTOR_OPTIONS, b.sector) ||
+      rank(getSectorDesignations(a.sector), a.designation) -
+        rank(getSectorDesignations(b.sector), b.designation)
   );
 
   return (
@@ -83,7 +85,7 @@ export default async function BasePricesPage() {
                   <tr>
                     <th className="px-4 py-3 font-semibold">Service</th>
                     <th className="px-4 py-3 font-semibold">Hourly</th>
-                    <th className="px-4 py-3 font-semibold">Sector</th>
+                    <th className="px-4 py-3 font-semibold">Domain</th>
                     <th className="px-4 py-3 font-semibold">Designation</th>
                     <th className="px-4 py-3 font-semibold">Base Price</th>
                     <th className="px-4 py-3 font-semibold">
@@ -101,9 +103,7 @@ export default async function BasePricesPage() {
                           Per hour
                         </td>
                         <td className="px-4 py-4 text-slate-600">
-                          {sectorOfDesignation(basePrice.designation) ?? (
-                            <span className="text-slate-400">All sectors</span>
-                          )}
+                          {basePrice.sector}
                         </td>
                         <td className="px-4 py-4 text-slate-600">
                           {basePrice.designation}

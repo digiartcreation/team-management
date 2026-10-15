@@ -17,6 +17,7 @@ import {
 import { formatDuration } from "@/lib/duration";
 import {
   CHECK_OUT_CUTOFF,
+  autoCheckOutAt,
   closeExpiredSessions,
   isCheckOutClosed,
 } from "@/lib/autoCheckOut";
@@ -210,8 +211,8 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
     ? {}
     : { userId: sessionUser.id ?? "__no_user__" };
   const now = new Date();
-  // Sessions left open past 10 PM are checked out at shift end before any
-  // day is read, so the page never shows one still running.
+  // Sessions left open past 10 PM are checked out (30 minutes after their
+  // check-in) before any day is read, so the page never shows one running.
   await closeExpiredSessions(now);
   const isLateForCheckIn = officeMinutes(now) > 9 * 60 + 20;
   const checkInClosed = isCheckOutClosed(now);
@@ -337,9 +338,12 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                   </button>
                   {ownTodayRecord ? (
                     <p className="text-center text-xs text-slate-500">
-                      Check out by {formatClock(CHECK_OUT_CUTOFF)}. After that
-                      you are checked out at{" "}
-                      {formatClock(ownTodayRecord.scheduledEndTime)}.
+                      Check out by {formatClock(CHECK_OUT_CUTOFF)}. If you
+                      don&apos;t, this session closes at{" "}
+                      {formatTime(
+                        autoCheckOutAt(ownTodayRecord.date, today.open.checkInTime)
+                      )}
+                      .
                     </p>
                   ) : null}
                 </form>

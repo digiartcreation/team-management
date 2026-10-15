@@ -39,6 +39,18 @@ export type BoardCard = {
   reopenCount: number;
   /** The most recent note written against a reopen cycle, if any. */
   latestReopenNote: string | null;
+  /** When the task was first completed (locked after that), as an ISO string. */
+  completedAt: string | null;
+  /** Every entry logged against the task, newest first. */
+  timeLogs: BoardTimeLog[];
+};
+
+export type BoardTimeLog = {
+  minutes: number;
+  /** The day the work was done, as "YYYY-MM-DD". */
+  date: string;
+  userName: string;
+  note: string | null;
 };
 
 export type BoardColumn = {
@@ -94,6 +106,7 @@ const BOARD_CARD_SELECT = {
   priority: true,
   clientWork: true,
   reopenCount: true,
+  completedAt: true,
   assignedToId: true,
   client: { select: { name: true } },
   assignedTo: { select: { name: true } },
@@ -103,8 +116,9 @@ const BOARD_CARD_SELECT = {
       reopenCycle: true,
       note: true,
       date: true,
+      user: { select: { name: true } },
     },
-    orderBy: { date: "desc" },
+    orderBy: [{ date: "desc" }, { createdAt: "desc" }],
   },
 } satisfies Prisma.TaskSelect;
 
@@ -128,6 +142,14 @@ function toBoardCard(task: BoardTask): BoardCard {
     reopenMinutes: time.reopen,
     reopenCount: task.reopenCount,
     latestReopenNote,
+    completedAt: task.completedAt?.toISOString() ?? null,
+    timeLogs: task.timeLogs.map((log) => ({
+      minutes: log.minutes,
+      // Log dates are stored as their UTC midnight.
+      date: log.date.toISOString().slice(0, 10),
+      userName: log.user.name,
+      note: log.note,
+    })),
   };
 }
 

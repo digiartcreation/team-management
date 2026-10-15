@@ -1,5 +1,8 @@
+"use client";
+
+import { useState } from "react";
 import SectorDesignationField from "@/components/employees/SectorDesignationField";
-import { sectorOfDesignation } from "@/lib/designations";
+import SubmitButton from "@/components/ui/SubmitButton";
 import { SERVICE_OPTIONS } from "@/lib/services";
 
 type BasePriceFormProps = {
@@ -8,6 +11,7 @@ type BasePriceFormProps = {
   basePrice?: {
     id: string;
     service: string;
+    sector: string;
     designation: string;
     basePrice: number;
   };
@@ -21,6 +25,17 @@ export default function BasePriceForm({
   submitLabel,
   basePrice,
 }: BasePriceFormProps) {
+  // Every field is required, so Save stays off until each one has a value.
+  const [sector, setSector] = useState(basePrice?.sector ?? "");
+  const [designation, setDesignation] = useState(basePrice?.designation ?? "");
+  const [service, setService] = useState(basePrice?.service ?? "");
+  const [amount, setAmount] = useState(
+    basePrice ? String(basePrice.basePrice) : ""
+  );
+  const complete = Boolean(
+    sector && designation && service && amount.trim() !== ""
+  );
+
   return (
     <form
       action={action}
@@ -32,33 +47,36 @@ export default function BasePriceForm({
 
       <div className="grid gap-5 md:grid-cols-2">
         <SectorDesignationField
-          selectedSector={
-            basePrice ? sectorOfDesignation(basePrice.designation) : null
-          }
+          selectedSector={basePrice?.sector ?? null}
           selectedDesignation={basePrice?.designation ?? null}
           required
+          onChange={(value) => {
+            setSector(value.sector);
+            setDesignation(value.designation);
+          }}
         />
 
-        <label className="grid gap-2">
+        <label className="grid content-start gap-2">
           <span className="text-sm font-medium text-slate-700">Service</span>
           <select
             name="service"
-            defaultValue={basePrice?.service ?? ""}
+            value={service}
+            onChange={(event) => setService(event.target.value)}
             required
             className={fieldClassName}
           >
             <option value="" disabled>
               Select a service
             </option>
-            {SERVICE_OPTIONS.map((service) => (
-              <option key={service} value={service}>
-                {service}
+            {SERVICE_OPTIONS.map((option) => (
+              <option key={option} value={option}>
+                {option}
               </option>
             ))}
           </select>
         </label>
 
-        <label className="grid gap-2">
+        <label className="grid content-start gap-2">
           <span className="text-sm font-medium text-slate-700">
             Base Price per Hour (₹)
           </span>
@@ -68,7 +86,8 @@ export default function BasePriceForm({
             min="0"
             step="0.01"
             inputMode="decimal"
-            defaultValue={basePrice?.basePrice}
+            value={amount}
+            onChange={(event) => setAmount(event.target.value)}
             required
             placeholder="Enter hourly price"
             className={fieldClassName}
@@ -77,12 +96,13 @@ export default function BasePriceForm({
       </div>
 
       <div className="mt-6 flex justify-end">
-        <button
-          type="submit"
+        <SubmitButton
+          disabled={!complete}
+          pendingLabel="Saving..."
           className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
         >
           {submitLabel}
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

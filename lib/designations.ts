@@ -3,13 +3,17 @@ export type Sector = {
   designations: string[];
 };
 
-/** The one designation open to every sector, and to an employee with none. */
+/**
+ * Every sector has its own Intern, listed first once the sector is chosen. An
+ * Intern in Creative & Design is a different designation (and base price) from
+ * one in Sales, so Intern always goes with a sector.
+ */
 export const INTERN = "Intern";
 
 /**
- * Sectors an employee can work in, each with its designations. Designation
- * names are unique across sectors, so a designation alone identifies its
- * sector (and its base price).
+ * Sectors an employee can work in, each with its designations. The app shows
+ * them as "Domain"; the code and database keep the name `sector`. Apart from
+ * Intern, designation names are unique across sectors.
  */
 export const SECTORS: Sector[] = [
   {
@@ -174,20 +178,12 @@ export function isDesignation(value: string) {
   return DESIGNATION_OPTIONS.includes(value);
 }
 
-/** Designations to offer for a sector; Intern alone when none is chosen. */
+/** A sector's designations, its Intern first; none until a sector is chosen. */
 export function getSectorDesignations(sector: string) {
   const match = SECTORS.find((item) => item.name === sector);
-  return [INTERN, ...(match?.designations ?? [])];
+  return match ? [INTERN, ...match.designations] : [];
 }
 
 export function isDesignationInSector(designation: string, sector: string) {
   return getSectorDesignations(sector).includes(designation);
-}
-
-/** The sector a designation belongs to; null for Intern, which fits them all. */
-export function sectorOfDesignation(designation: string) {
-  return (
-    SECTORS.find((sector) => sector.designations.includes(designation))
-      ?.name ?? null
-  );
 }

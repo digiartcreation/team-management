@@ -110,19 +110,22 @@ model ClientService {
 }
 
 /// Hourly base price for one service when the work is done by an employee of
-/// a given designation. Managed by super admins only.
+/// a given designation in a given domain. Managed by super admins only.
 model BasePrice {
   id          String   @id @default(cuid())
   /// One of SERVICE_OPTIONS in lib/services.ts.
   service     String
-  /// One of DESIGNATION_OPTIONS in lib/designations.ts.
+  /// One of SECTOR_OPTIONS in lib/designations.ts, shown as "Domain". Needed
+  /// in the key because every domain has its own Intern.
+  sector      String
+  /// One of the sector's designations in lib/designations.ts.
   designation String
   /// Amount in INR for one hour of work.
   basePrice   Decimal  @db.Decimal(12, 2)
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
 
-  @@unique([service, designation])
+  @@unique([service, sector, designation])
 }
 
 model Task {
@@ -148,6 +151,9 @@ model Task {
   /// also the cycle that new time logs are stamped with, so 0 means the task is
   /// still on its original run.
   reopenCount  Int      @default(0)
+  /// When the task was first completed. Locked once set: reopening and
+  /// completing the rework leave it alone.
+  completedAt  DateTime?
   createdAt    DateTime @default(now())
   updatedAt    DateTime @updatedAt
   assignedTo   User?    @relation("AssignedTasks", fields: [assignedToId], references: [id], onDelete: SetNull)
