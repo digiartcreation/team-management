@@ -2,6 +2,7 @@
 
 import { useMemo, useState } from "react";
 import { formatDuration } from "@/lib/duration";
+import { formatOfficeDate } from "@/lib/officeTime";
 import type { ReportGroup } from "@/lib/reports";
 
 type BreakdownTableProps = {
@@ -222,6 +223,11 @@ function GroupRows({
             <tr key={task.taskId} className="align-top hover:bg-slate-50">
               <td className="py-3 pl-12 pr-4">
                 <p className="font-medium text-slate-800">{task.title}</p>
+                {task.completedAt ? (
+                  <p className="mt-1 text-xs text-emerald-700">
+                    Completed {formatOfficeDate(task.completedAt)}
+                  </p>
+                ) : null}
                 {task.reopenCount > 0 ? (
                   <p className="mt-1 text-xs font-medium text-[#770FC2]">
                     Reopened {task.reopenCount} {task.reopenCount === 1 ? "time" : "times"}

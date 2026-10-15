@@ -13,9 +13,16 @@ export type TimeLogRow = {
     title: string;
     clientWork: string | null;
     reopenCount: number;
+    /** When the task was first completed; null while it never has been. */
+    completedAt: Date | null;
     client: { id: string; name: string } | null;
   };
 };
+
+/** A first completion date as it crosses to client components: ISO, or null. */
+function completedIso(log: TimeLogRow) {
+  return log.task.completedAt?.toISOString() ?? null;
+}
 
 export type PersonTotal = {
   userId: string;
@@ -38,6 +45,8 @@ export type TaskTotal = {
   reopenMinutes: number;
   /** How many times the task has been sent back, 0 for most of them. */
   reopenCount: number;
+  /** When the task was first completed, as an ISO string; null if not yet. */
+  completedAt: string | null;
   people: PersonTotal[];
 };
 
@@ -67,6 +76,8 @@ export type ReopenTotal = {
   title: string;
   client: string;
   reopenCount: number;
+  /** When the task was first completed, as an ISO string; null if not yet. */
+  completedAt: string | null;
   originalMinutes: number;
   reopenMinutes: number;
   minutes: number;
@@ -192,6 +203,7 @@ export function buildReport(
           minutes: number;
           reopenMinutes: number;
           reopenCount: number;
+          completedAt: string | null;
           people: Map<string, PersonTotal>;
         }
       >;
@@ -226,6 +238,7 @@ export function buildReport(
         minutes: 0,
         reopenMinutes: 0,
         reopenCount: log.task.reopenCount,
+        completedAt: completedIso(log),
         people: new Map(),
       };
       group.tasks.set(log.task.id, task);
@@ -265,6 +278,7 @@ export function buildReport(
           minutes: task.minutes,
           reopenMinutes: task.reopenMinutes,
           reopenCount: task.reopenCount,
+          completedAt: task.completedAt,
           people: [...task.people.values()].sort(
             byMinutesThenName<PersonTotal>((person) => person.name)
           ),
@@ -303,6 +317,7 @@ export function buildReopenSummary(logs: TimeLogRow[]): ReopenTotal[] {
         title: log.task.title,
         client: clientLabel(log),
         reopenCount: log.task.reopenCount,
+        completedAt: completedIso(log),
         originalMinutes: 0,
         reopenMinutes: 0,
         minutes: 0,

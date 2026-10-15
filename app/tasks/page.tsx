@@ -23,6 +23,7 @@ import {
   isTaskStatus,
 } from "@/lib/taskStatus";
 import { buildReopenHistory, countReopenNotes } from "@/lib/reopenHistory";
+import { formatOfficeDate } from "@/lib/officeTime";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -332,7 +333,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[1260px] text-left text-sm">
+              <table className="w-full min-w-[1380px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Title</th>
@@ -345,6 +346,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                     <th className="px-4 py-3 font-semibold">Priority</th>
                     <th className="px-4 py-3 font-semibold">Time Spent</th>
                     <th className="px-4 py-3 font-semibold">Created On</th>
+                    <th className="px-4 py-3 font-semibold">Completed On</th>
                     <th className="px-4 py-3 font-semibold">
                       <span className="sr-only">Row menu</span>
                     </th>
@@ -523,6 +525,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                             Edited on {dateFormatter.format(task.updatedAt)}
                           </div>
                         ) : null}
+                      </td>
+                      {/* The first completion; a reopen does not move it. */}
+                      <td className="px-4 py-4 text-slate-600">
+                        {task.completedAt ? (
+                          formatOfficeDate(task.completedAt)
+                        ) : (
+                          <span className="text-slate-400">Not yet</span>
+                        )}
                       </td>
                       <td className="px-4 py-4">
                         <ActionMenu trigger="Update">

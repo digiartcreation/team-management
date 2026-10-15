@@ -81,6 +81,7 @@ const reportLogs: TimeLogRow[] = logs.map((log) => ({
     title: "Ar Raheem promo",
     clientWork: "Video Editing",
     reopenCount: 2,
+    completedAt: day("2026-09-21"),
     client: { id: "c1", name: "Ar Raheem" },
   },
 }));
@@ -88,6 +89,11 @@ const reportLogs: TimeLogRow[] = logs.map((log) => ({
 const [summary] = buildReopenSummary(reportLogs);
 
 assert.equal(summary.originalMinutes, 240);
+assert.equal(
+  summary.completedAt,
+  day("2026-09-21").toISOString(),
+  "the first completion date is carried into the report"
+);
 assert.equal(summary.reopenMinutes, 180);
 assert.equal(summary.minutes, 420, "original plus rework is the task total");
 assert.equal(summary.reopenCount, 2);

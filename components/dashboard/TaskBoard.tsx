@@ -6,7 +6,7 @@ import { useCallback, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import Avatar from "@/components/ui/Avatar";
 import { formatDuration } from "@/lib/duration";
-import { OFFICE_TIME_ZONE } from "@/lib/officeTime";
+import { formatOfficeDate } from "@/lib/officeTime";
 import {
   COMPLETED_STALE_DAYS,
   canMoveTo,
@@ -64,14 +64,6 @@ type TimePrompt = DragCard & {
   timeOnly?: boolean;
   logs?: BoardTimeLog[];
 };
-
-// On the office clock, so the server render and the browser agree on the day.
-const completedFormatter = new Intl.DateTimeFormat("en", {
-  timeZone: OFFICE_TIME_ZONE,
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-});
 
 /** The dot beside a column heading, and the tint of its cards' left edge. */
 const COLUMN_ACCENT: Record<BoardStatus, { dot: string; edge: string }> = {
@@ -165,7 +157,7 @@ function Card({
             card.completedStale ? "font-medium text-red-600" : "text-emerald-700"
           }`}
         >
-          Completed {completedFormatter.format(new Date(card.completedAt))}
+          Completed {formatOfficeDate(card.completedAt)}
           {card.completedStale
             ? ` · over ${COMPLETED_STALE_DAYS} days, close it`
             : null}

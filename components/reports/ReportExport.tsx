@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { CHART_IDS } from "@/components/reports/ReportCharts";
 import { formatDuration } from "@/lib/duration";
+import { formatOfficeDate } from "@/lib/officeTime";
 import type { ReportAnalytics } from "@/lib/reportAnalytics";
 import type { ReopenTotal, ReportGroup } from "@/lib/reports";
 
@@ -23,6 +24,11 @@ export type ReportExportProps = {
 
 const BRAND = "770FC2";
 const BRAND_TINT = "F3E8FF";
+
+/** The first completion date for an export cell; blank while there is none. */
+function completedOn(completedAt: string | null) {
+  return completedAt ? formatOfficeDate(completedAt) : "";
+}
 
 function decimalHours(minutes: number) {
   return Math.round((minutes / 60) * 100) / 100;
@@ -141,6 +147,7 @@ async function exportExcel(props: ReportExportProps) {
     "Hours",
     "Rework hours",
     "Reopens",
+    "Completed On",
   ];
   const breakdown = workbook.addWorksheet("Breakdown", {
     views: [{ state: "frozen", ySplit: 4 }],
@@ -164,6 +171,7 @@ async function exportExcel(props: ReportExportProps) {
       decimalHours(group.minutes),
       decimalHours(group.reopenMinutes),
       "",
+      "",
     ]);
     groupRow.eachCell((cell) => {
       cell.font = { bold: true, color: { argb: `FF${BRAND}` } };
@@ -182,6 +190,7 @@ async function exportExcel(props: ReportExportProps) {
         decimalHours(task.minutes),
         decimalHours(task.reopenMinutes),
         task.reopenCount,
+        completedOn(task.completedAt),
       ]);
     }
   }
@@ -211,29 +220,31 @@ async function exportExcel(props: ReportExportProps) {
     { width: 32 },
     { width: 24 },
     { width: 10 },
+    { width: 16 },
     { width: 14 },
     { width: 14 },
     { width: 14 },
     { width: 60 },
   ];
-  addTitle(reopened, "Reopened tasks", 7);
+  addTitle(reopened, "Reopened tasks", 8);
   reopened.addRow([]);
-  reopened.addRow(["Task", "Client", "Reopens", "Original (h)", "Rework (h)", "Total (h)", "Reopen history"]);
+  reopened.addRow(["Task", "Client", "Reopens", "First completed", "Original (h)", "Rework (h)", "Total (h)", "Reopen history"]);
   styleHeader(reopened, 4);
   for (const task of props.reopened) {
     const row = reopened.addRow([
       task.title,
       task.client,
       task.reopenCount,
+      completedOn(task.completedAt),
       decimalHours(task.originalMinutes),
       decimalHours(task.reopenMinutes),
       decimalHours(task.minutes),
       cycleNotes(task, props.reasons),
     ]);
-    row.getCell(7).alignment = { wrapText: true, vertical: "top" };
+    row.getCell(8).alignment = { wrapText: true, vertical: "top" };
     row.alignment = { vertical: "top" };
   }
-  [4, 5, 6].forEach((column) => (reopened.getColumn(column).numFmt = "0.00"));
+  [5, 6, 7].forEach((column) => (reopened.getColumn(column).numFmt = "0.00"));
 
   // Raw entries
   const entries = workbook.addWorksheet("Time entries", {
@@ -474,7 +485,11 @@ async function exportPdf(props: ReportExportProps) {
 
     for (const task of group.tasks) {
       body.push([
-        { content: `   ${task.title}${task.reopenCount > 0 ? ` (reopened ${task.reopenCount}x)` : ""}` },
+        {
+          content: `   ${task.title}${task.reopenCount > 0 ? ` (reopened ${task.reopenCount}x)` : ""}${
+            task.completedAt ? `\n   Completed ${completedOn(task.completedAt)}` : ""
+          }`,
+        },
         ...task.details.map((detail) => ({ content: detail ?? "Not mapped" })),
         ...(props.showPeople
           ? [{ content: task.people.map((person) => `${person.name} ${formatDuration(person.minutes)}`).join("\n") }]
@@ -515,7 +530,9 @@ async function exportPdf(props: ReportExportProps) {
       margin: { left: margin, right: margin },
       head: [["Task", "Client", "Reopens", "Original", "Rework", "Total", "History"]],
       body: props.reopened.map((task) => [
-        task.title,
+        task.completedAt
+          ? `${task.title}\nFirst completed ${completedOn(task.completedAt)}`
+          : task.title,
         task.client,
         String(task.reopenCount),
         formatDuration(task.originalMinutes),
