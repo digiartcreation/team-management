@@ -34,9 +34,13 @@ export const INK = {
   surface: "#FFFFFF",
 };
 
-/** Minutes -> hours with one decimal, for axes. */
+/**
+ * Minutes -> hours, exactly. Not rounded: labels and tooltips turn the value
+ * back into minutes, and a rounded 1.8h would come back as 1h 48m for 1h 45m.
+ * Axes round their own tick labels.
+ */
 export function hours(minutes: number) {
-  return Math.round((minutes / 60) * 10) / 10;
+  return minutes / 60;
 }
 
 /** Every chart plots hours but reads them back as "7h 30m". */
