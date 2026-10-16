@@ -15,6 +15,13 @@ import {
   previousPeriod,
 } from "@/lib/reportAnalytics";
 import {
+  UNMAPPED_SERVICE,
+  describeRange,
+  endOfDay,
+  parseDateInput,
+  todayUtcMidnight,
+} from "@/lib/reportFilters";
+import {
   DEFAULT_REPORT_VIEW,
   INTERNAL_LABEL,
   REPORT_VIEWS,
@@ -40,9 +47,6 @@ type ReportsPageProps = {
   searchParams: Promise<ReportFilters>;
 };
 
-/** Marks the "no service mapped" choice in the service filter. */
-const UNMAPPED_SERVICE = "__unmapped__";
-
 /** What the ranking chart is called on each tab. */
 const RANKING_COPY = {
   client: {
@@ -58,33 +62,6 @@ const RANKING_COPY = {
     subtitle: "Hours per service, first pass and rework",
   },
 };
-
-const displayDate = new Intl.DateTimeFormat("en-GB", {
-  day: "numeric",
-  month: "short",
-  year: "numeric",
-  timeZone: "UTC",
-});
-
-/** Accepts only the "YYYY-MM-DD" a date input produces. */
-function parseDateInput(raw: string | undefined) {
-  if (!raw || !/^\d{4}-\d{2}-\d{2}$/.test(raw)) {
-    return null;
-  }
-
-  const date = new Date(`${raw}T00:00:00.000Z`);
-
-  return Number.isNaN(date.getTime()) ? null : date;
-}
-
-function endOfDay(raw: string) {
-  return new Date(`${raw}T23:59:59.999Z`);
-}
-
-/** Today in the server's local calendar, as the date inputs use it. */
-function todayUtcMidnight() {
-  return new Date(`${new Date().toLocaleDateString("en-CA")}T00:00:00.000Z`);
-}
 
 /** Keeps the current filters on a link, dropping the ones left blank. */
 function reportHref(filters: ReportFilters) {
@@ -359,15 +336,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   );
 
   // A one-line description of the slice, for the page and the exports.
-  const rangeText =
-    from && to
-      ? `${displayDate.format(from)} – ${displayDate.format(to)}`
-      : from
-        ? `From ${displayDate.format(from)}`
-        : to
-          ? `Up to ${displayDate.format(to)}`
-          : "All time";
-  const scopeParts = [rangeText];
+  const scopeParts = [describeRange(from, to)];
 
   if (filters.clientId) {
     scopeParts.push(

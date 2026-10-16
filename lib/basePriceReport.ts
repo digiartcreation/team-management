@@ -1,3 +1,4 @@
+import { monthKeyOf, monthLabel } from "@/lib/attendance";
 import { formatDuration } from "@/lib/duration";
 import {
   INCLUDED,
@@ -52,9 +53,11 @@ export function ratioBand(ratio: number) {
   return RATIO_BANDS[4];
 }
 
-/** One time log of the month, with what pricing it needs. */
+/** One time log in the report's range, with what pricing it needs. */
 export type ReportLog = {
   minutes: number;
+  /** The work day, stored as its UTC midnight. */
+  date: Date;
   user: {
     id: string;
     name: string;
@@ -81,11 +84,12 @@ export type ReportBasePrice = {
 
 export type ReportMapping = ServiceMapping & { clientId: string };
 
-/** Minutes ever logged on one task, whichever month they fell in. */
+/** Minutes logged on one task on one day, whoever logged them. */
 export type TaskHistory = {
   taskId: string;
   clientId: string | null;
   clientWork: string | null;
+  date: Date;
   minutes: number;
 };
 
@@ -145,13 +149,23 @@ export type BasePriceReport = {
 };
 
 type ReportInput = {
-  /** The month's time logs. */
+  /** The time logs in the chosen range, client, service and employee. */
   logs: ReportLog[];
-  /** Service payments of every client in the month. */
+  /** Service payments of every client in the logs. */
   mappings: ReportMapping[];
   basePrices: ReportBasePrice[];
-  /** Every task of the clients in the month, for amounts shared across months. */
+  /**
+   * Every minute ever logged on those clients' tasks, by anyone. Amounts are
+   * shared over all the hours they pay for, not only the ones on screen.
+   */
   history: TaskHistory[];
+};
+
+/** Minutes the amounts are shared over, from the whole history. */
+type Pools = {
+  task: Map<string, number>;
+  service: Map<string, number>;
+  serviceMonth: Map<string, number>;
 };
 
 function serviceNameOf(work: string | null) {
@@ -162,18 +176,26 @@ function poolKey(clientId: string, service: string) {
   return `${clientId}\u0000${service}`;
 }
 
+function monthPoolKey(clientId: string, service: string, month: string) {
+  return `${poolKey(clientId, service)}\u0000${month}`;
+}
+
 function rateKey(service: string, sector: string, designation: string) {
   return `${service}\u0000${sector}\u0000${designation}`;
+}
+
+function add(map: Map<string, number>, key: string, minutes: number) {
+  map.set(key, (map.get(key) ?? 0) + minutes);
 }
 
 type Income = { amount: number; rule: string } | { issue: string };
 
 /**
- * An amount that belongs to more hours than this month's: the month takes its
- * share by hours. `part` is this task's minutes in the month and `whole` the
- * minutes the amount is spread over.
+ * An amount that pays for more hours than the ones on screen takes their
+ * share by hours: `part` is this task's minutes in the report and `whole`
+ * the minutes the amount is spread over.
  */
-function shared(full: number, rule: string, part: number, whole: number, wholeLabel = ""): Income {
+function shared(full: number, rule: string, part: number, whole: number, wholeLabel = "") {
   if (whole <= part) {
     return { amount: full, rule };
   }
@@ -186,12 +208,12 @@ function shared(full: number, rule: string, part: number, whole: number, wholeLa
 
 function incomeFor(
   task: ReportLog["task"],
+  clientId: string,
   service: string,
   mapping: ServiceMapping,
-  monthMinutes: number,
-  taskMinutes: number,
-  monthPoolMinutes: number,
-  allTimePoolMinutes: number
+  logs: ReportLog[],
+  minutes: number,
+  pools: Pools
 ): Income {
   if (mapping.paymentType === INCLUDED) {
     return { amount: 0, rule: "Included, no charge" };
@@ -221,8 +243,8 @@ function incomeFor(
     return shared(
       count * mapping.perUnitAmount,
       `${countText} × ${formatInr(mapping.perUnitAmount)}`,
-      monthMinutes,
-      taskMinutes
+      minutes,
+      pools.task.get(task.id) ?? minutes
     );
   }
 
@@ -238,32 +260,52 @@ function incomeFor(
     return shared(
       (task.digitalMarketingAmount * mapping.percentage) / 100,
       `${formatInr(task.digitalMarketingAmount)} × ${formatPercentage(mapping.percentage)}`,
-      monthMinutes,
-      taskMinutes
+      minutes,
+      pools.task.get(task.id) ?? minutes
     );
   }
 
   if (mapping.paymentType === PACKAGE) {
-    if (mapping.packageAmount === null) {
+    const amount = mapping.packageAmount;
+
+    if (amount === null) {
       return { issue: "Package amount not set on the client" };
     }
 
     if (mapping.billingCycle === "One-time") {
       return shared(
-        mapping.packageAmount,
-        `${formatInr(mapping.packageAmount)} one-time`,
-        monthMinutes,
-        allTimePoolMinutes,
+        amount,
+        `${formatInr(amount)} one-time`,
+        minutes,
+        pools.service.get(poolKey(clientId, service)) ?? minutes,
         " all time"
       );
     }
 
-    return shared(
-      mapping.packageAmount,
-      `${formatInr(mapping.packageAmount)} monthly`,
-      monthMinutes,
-      monthPoolMinutes
+    // Each calendar month pays its own package, shared by that month's hours.
+    const byMonth = new Map<string, number>();
+
+    for (const log of logs) {
+      add(byMonth, monthKeyOf(log.date), log.minutes);
+    }
+
+    const months = [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
+    const pieces = months.map(([month, part]) =>
+      shared(
+        amount,
+        `${formatInr(amount)} monthly`,
+        part,
+        pools.serviceMonth.get(monthPoolKey(clientId, service, month)) ?? part
+      )
     );
+
+    return {
+      amount: pieces.reduce((sum, piece) => sum + piece.amount, 0),
+      rule:
+        pieces.length === 1
+          ? pieces[0].rule
+          : pieces.map((piece, index) => `${monthLabel(months[index][0])}: ${piece.rule}`).join(" + "),
+    };
   }
 
   return { issue: `Payment type "${mapping.paymentType}" cannot be billed` };
@@ -277,11 +319,12 @@ const STATUS_ORDER: Record<TaskRowStatus, number> = {
 };
 
 /**
- * Prices a month of work. Income comes from each client's service payment and
+ * Prices the logged work. Income comes from each client's service payment and
  * effort from hours times the base price for the task's service and the
- * employee's domain and designation. Amounts that cover more than one month's
- * hours -- a per-count task worked over two months, a one-time package, a
- * monthly package shared by several tasks -- are split by hours logged.
+ * employee's domain and designation. An amount that pays for more hours than
+ * the ones in the report -- a per-count task worked over two months, a one-time
+ * package, a monthly package shared by several tasks or several people -- goes
+ * to them by their share of those hours.
  */
 export function buildBasePriceReport(input: ReportInput): BasePriceReport {
   const rates = new Map(
@@ -294,21 +337,23 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
     input.mappings.map((mapping) => [poolKey(mapping.clientId, mapping.service), mapping])
   );
 
-  const taskMinutes = new Map<string, number>();
-  const allTimePools = new Map<string, number>();
+  const pools: Pools = { task: new Map(), service: new Map(), serviceMonth: new Map() };
 
   for (const item of input.history) {
-    taskMinutes.set(item.taskId, (taskMinutes.get(item.taskId) ?? 0) + item.minutes);
+    add(pools.task, item.taskId, item.minutes);
     const service = serviceNameOf(item.clientWork);
 
     if (item.clientId && service) {
-      const key = poolKey(item.clientId, service);
-      allTimePools.set(key, (allTimePools.get(key) ?? 0) + item.minutes);
+      add(pools.service, poolKey(item.clientId, service), item.minutes);
+      add(
+        pools.serviceMonth,
+        monthPoolKey(item.clientId, service, monthKeyOf(item.date)),
+        item.minutes
+      );
     }
   }
 
   const tasks = new Map<string, { task: ReportLog["task"]; logs: ReportLog[]; minutes: number }>();
-  const monthPools = new Map<string, number>();
 
   for (const log of input.logs) {
     let entry = tasks.get(log.task.id);
@@ -320,13 +365,6 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
 
     entry.logs.push(log);
     entry.minutes += log.minutes;
-
-    const service = serviceNameOf(log.task.clientWork);
-
-    if (log.task.client && service) {
-      const key = poolKey(log.task.client.id, service);
-      monthPools.set(key, (monthPools.get(key) ?? 0) + log.minutes);
-    }
   }
 
   const rows: TaskRow[] = [...tasks.values()].map(({ task, logs, minutes }) => {
@@ -388,22 +426,13 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
     if (!service) {
       row.issues.push("No service chosen on the task");
     } else {
-      const key = poolKey(task.client.id, service);
-      const mapping = mappings.get(key) ?? null;
+      const mapping = mappings.get(poolKey(task.client.id, service)) ?? null;
 
       if (!mapping) {
         row.issues.push(`${service} is not set up for this client`);
       } else {
         row.payment = mapping;
-        const income = incomeFor(
-          task,
-          service,
-          mapping,
-          minutes,
-          taskMinutes.get(task.id) ?? minutes,
-          monthPools.get(key) ?? minutes,
-          allTimePools.get(key) ?? minutes
-        );
+        const income = incomeFor(task, task.client.id, service, mapping, logs, minutes, pools);
 
         if ("issue" in income) {
           row.issues.push(income.issue);

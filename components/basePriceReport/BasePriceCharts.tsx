@@ -73,7 +73,7 @@ function AmountsChart({ clients }: { clients: ClientTotal[] }) {
       title="Income and work effort by client"
       subtitle="Income from service payments · effort is hours × base price"
       empty={clients.length === 0}
-      emptyText="No priced client work in this month"
+      emptyText="No priced client work for these filters"
       table={
         <TwinTable
           headings={["Client", "Income", "Work effort", "Hours"]}
@@ -185,7 +185,7 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
       title="Ratio by client"
       subtitle="Income ÷ work effort, coloured on the five-step scale"
       empty={clients.length === 0}
-      emptyText="No priced client work in this month"
+      emptyText="No priced client work for these filters"
       table={
         <TwinTable
           headings={["Client", "Ratio", "Band"]}
