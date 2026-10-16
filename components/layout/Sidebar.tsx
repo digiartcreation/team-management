@@ -54,7 +54,12 @@ function getNavItems(role?: string, isSuperAdmin = false) {
   ];
 
   if (isSuperAdmin) {
-    adminItems.splice(4, 0, { label: "Base Price", href: "/base-prices" });
+    adminItems.splice(
+      4,
+      0,
+      { label: "Base Price", href: "/base-prices" },
+      { label: "Base Price Report", href: "/base-price-report" }
+    );
   }
 
   return adminItems;

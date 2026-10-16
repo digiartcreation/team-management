@@ -42,13 +42,14 @@ function percent(part: number, whole: number) {
 /* Card chrome                                                          */
 /* ------------------------------------------------------------------ */
 
-function ChartCard({
+export function ChartCard({
   title,
   subtitle,
   table,
   children,
   className = "",
   empty,
+  emptyText = "No time logged in this range",
 }: {
   title: string;
   subtitle: string;
@@ -57,6 +58,7 @@ function ChartCard({
   children: React.ReactNode;
   className?: string;
   empty?: boolean;
+  emptyText?: string;
 }) {
   const [mode, setMode] = useState<"chart" | "table">("chart");
 
@@ -98,7 +100,7 @@ function ChartCard({
       <div className="mt-4 flex-1">
         {empty ? (
           <div className="flex h-full min-h-[200px] items-center justify-center rounded-lg border border-dashed border-slate-200 text-sm text-slate-400">
-            No time logged in this range
+            {emptyText}
           </div>
         ) : mode === "chart" ? (
           children
@@ -110,7 +112,7 @@ function ChartCard({
   );
 }
 
-function TwinTable({
+export function TwinTable({
   headings,
   rows,
 }: {

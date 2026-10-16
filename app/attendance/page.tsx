@@ -440,6 +440,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             <MonthFilter
               months={months.map((key) => ({ value: key, label: monthLabel(key) }))}
               selected={selectedMonth}
+              path="/attendance"
             />
           </div>
 
