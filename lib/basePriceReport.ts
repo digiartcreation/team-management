@@ -34,6 +34,9 @@ export const RATIO_BANDS: RatioBand[] = [
   { colorName: "Dark green", label: "Strong", range: "Above 1.6", color: "#1E7F45" },
 ];
 
+/** Where each band starts and ends; the last is open-ended, drawn up to 3. */
+const SCALE_EDGES = [0, 0.9, 1, 1.29, 1.6, 3];
+
 /** Two decimals, the precision every ratio is shown at. */
 export function roundRatio(ratio: number) {
   return Math.round(ratio * 100) / 100;
@@ -51,6 +54,19 @@ export function ratioBand(ratio: number) {
   if (shown < 1.29) return RATIO_BANDS[2];
   if (shown <= 1.6) return RATIO_BANDS[3];
   return RATIO_BANDS[4];
+}
+
+/**
+ * Where a ratio sits on a scale drawn as five equal bands, as a percentage of
+ * its width: the band it falls in, then how far into that band.
+ */
+export function scalePosition(ratio: number) {
+  const index = RATIO_BANDS.indexOf(ratioBand(ratio));
+  const low = SCALE_EDGES[index];
+  const high = SCALE_EDGES[index + 1];
+  const within = Math.min(1, Math.max(0, (roundRatio(ratio) - low) / (high - low)));
+
+  return ((index + within) * 100) / RATIO_BANDS.length;
 }
 
 /** One time log in the report's range, with what pricing it needs. */
@@ -96,11 +112,60 @@ export type TaskHistory = {
 export type EmployeeLine = {
   userId: string;
   name: string;
+  /** The employee's domain. */
+  sector: string | null;
   designation: string | null;
   minutes: number;
   /** Base price per hour, or null when none is set for this employee and service. */
   rate: number | null;
   effort: number | null;
+};
+
+/**
+ * The report's minutes of an amount that pays for more hours: `part` are the
+ * ones on screen, `whole` all the hours the amount is shared over.
+ */
+export type HoursShare = { part: number; whole: number };
+
+export type MonthShare = {
+  /** "2026-10". */
+  month: string;
+  part: number;
+  whole: number;
+  income: number;
+};
+
+/** Each step of a task's income, so the page can show the working. */
+export type IncomeBreakdown =
+  | { kind: "included" }
+  | {
+      kind: "perCount";
+      unit: "poster" | "video" | "item";
+      count: number;
+      rate: number;
+      full: number;
+      /** Null when the report holds all of the task's hours. */
+      share: HoursShare | null;
+    }
+  | {
+      kind: "percentage";
+      /** The Digital Marketing amount recorded on the task. */
+      base: number;
+      percentage: number;
+      full: number;
+      share: HoursShare | null;
+    }
+  | { kind: "oneTime"; amount: number; share: HoursShare | null }
+  | { kind: "monthly"; amount: number; months: MonthShare[] };
+
+/** Where missing data is fixed. */
+export type FixPlace = "task" | "client" | "employee" | "basePrice";
+
+export type RowIssue = {
+  message: string;
+  fix: FixPlace;
+  /** The employee to fix, when `fix` is "employee". */
+  userId?: string;
 };
 
 /**
@@ -116,9 +181,12 @@ export type TaskRow = {
   title: string;
   clientId: string | null;
   clientName: string | null;
+  /** The service, without its focus area: "Digital Marketing". */
+  service: string | null;
   /** The task's work as stored, focus area included. */
   work: string | null;
   payment: ServiceMapping | null;
+  breakdown: IncomeBreakdown | null;
   incomeRule: string | null;
   income: number | null;
   minutes: number;
@@ -126,23 +194,31 @@ export type TaskRow = {
   employees: EmployeeLine[];
   ratio: number | null;
   status: TaskRowStatus;
-  issues: string[];
+  issues: RowIssue[];
 };
 
-export type ClientTotal = {
-  clientId: string;
+/** A client's or a service's share of the totals. */
+export type GroupTotal = {
+  /** Client id, or the service name. */
+  key: string;
   name: string;
   income: number;
   effort: number;
   minutes: number;
-  /** Null only if the client's effort is zero. */
+  tasks: number;
+  /**
+   * Only Client Management work, which is never billed: there is effort but
+   * nothing to set it against, so there is no ratio.
+   */
+  costOnly: boolean;
   ratio: number | null;
 };
 
 export type BasePriceReport = {
   rows: TaskRow[];
   /** Highest income first. */
-  clients: ClientTotal[];
+  byClient: GroupTotal[];
+  byService: GroupTotal[];
   totals: { income: number; effort: number; minutes: number; ratio: number | null; tasks: number };
   leftOut: { tasks: number; minutes: number };
   internal: { tasks: number; minutes: number };
@@ -188,25 +264,71 @@ function add(map: Map<string, number>, key: string, minutes: number) {
   map.set(key, (map.get(key) ?? 0) + minutes);
 }
 
-type Income = { amount: number; rule: string } | { issue: string };
-
-/**
- * An amount that pays for more hours than the ones on screen takes their
- * share by hours: `part` is this task's minutes in the report and `whole`
- * the minutes the amount is spread over.
- */
-function shared(full: number, rule: string, part: number, whole: number, wholeLabel = "") {
-  if (whole <= part) {
-    return { amount: full, rule };
-  }
-
-  return {
-    amount: (full * part) / whole,
-    rule: `${rule} × ${formatDuration(part)} ÷ ${formatDuration(whole)}${wholeLabel}`,
-  };
+/** Null when the report already holds every hour the amount pays for. */
+function shareOf(part: number, whole: number): HoursShare | null {
+  return whole <= part ? null : { part, whole };
 }
 
-function incomeFor(
+function shareOfAmount(amount: number, share: HoursShare | null) {
+  return share ? (amount * share.part) / share.whole : amount;
+}
+
+export function incomeOf(breakdown: IncomeBreakdown) {
+  switch (breakdown.kind) {
+    case "included":
+      return 0;
+    case "perCount":
+    case "percentage":
+      return shareOfAmount(breakdown.full, breakdown.share);
+    case "oneTime":
+      return shareOfAmount(breakdown.amount, breakdown.share);
+    case "monthly":
+      return breakdown.months.reduce((sum, month) => sum + month.income, 0);
+  }
+}
+
+export function countLabel(unit: "poster" | "video" | "item", count: number) {
+  if (unit === "poster") return `${count} ${count === 1 ? "poster" : "posters"}`;
+  if (unit === "video") return `weightage ${count}`;
+  return `${count}`;
+}
+
+function withShare(rule: string, share: HoursShare | null, wholeLabel = "") {
+  return share
+    ? `${rule} × ${formatDuration(share.part)} ÷ ${formatDuration(share.whole)}${wholeLabel}`
+    : rule;
+}
+
+/** The income as one line: "1 poster × ₹1,000", "₹7,978 monthly × 10h ÷ 16h". */
+export function describeIncome(breakdown: IncomeBreakdown) {
+  switch (breakdown.kind) {
+    case "included":
+      return "Included, no charge";
+    case "perCount":
+      return withShare(
+        `${countLabel(breakdown.unit, breakdown.count)} × ${formatInr(breakdown.rate)}`,
+        breakdown.share
+      );
+    case "percentage":
+      return withShare(
+        `${formatInr(breakdown.base)} × ${formatPercentage(breakdown.percentage)}`,
+        breakdown.share
+      );
+    case "oneTime":
+      return withShare(`${formatInr(breakdown.amount)} one-time`, breakdown.share, " all time");
+    case "monthly": {
+      const pieces = breakdown.months.map((month) =>
+        withShare(`${formatInr(breakdown.amount)} monthly`, shareOf(month.part, month.whole))
+      );
+
+      return pieces.length === 1
+        ? pieces[0]
+        : pieces.map((piece, index) => `${monthLabel(breakdown.months[index].month)}: ${piece}`).join(" + ");
+    }
+  }
+}
+
+function breakdownFor(
   task: ReportLog["task"],
   clientId: string,
   service: string,
@@ -214,72 +336,73 @@ function incomeFor(
   logs: ReportLog[],
   minutes: number,
   pools: Pools
-): Income {
+): IncomeBreakdown | RowIssue {
   if (mapping.paymentType === INCLUDED) {
-    return { amount: 0, rule: "Included, no charge" };
+    return { kind: "included" };
   }
 
   if (mapping.paymentType === PER_COUNT) {
     if (mapping.perUnitAmount === null) {
-      return { issue: "Per-count rate not set on the client" };
+      return { message: "Per-count rate not set on the client", fix: "client" };
     }
 
+    let unit: "poster" | "video" | "item" = "item";
     let count = 1;
-    let countText = "1";
 
     if (service === POSTER_DESIGN) {
       if (!task.posterCount) {
-        return { issue: "Poster count not set on the task" };
+        return { message: "Poster count not set on the task", fix: "task" };
       }
 
+      unit = "poster";
       count = task.posterCount;
-      countText = `${count} ${count === 1 ? "poster" : "posters"}`;
     } else if (service === VIDEO_EDITING) {
       // A video's weightage is how many videos it bills as.
+      unit = "video";
       count = task.videoWeightage ?? 1;
-      countText = `weightage ${count}`;
     }
 
-    return shared(
-      count * mapping.perUnitAmount,
-      `${countText} × ${formatInr(mapping.perUnitAmount)}`,
-      minutes,
-      pools.task.get(task.id) ?? minutes
-    );
+    return {
+      kind: "perCount",
+      unit,
+      count,
+      rate: mapping.perUnitAmount,
+      full: count * mapping.perUnitAmount,
+      share: shareOf(minutes, pools.task.get(task.id) ?? minutes),
+    };
   }
 
   if (mapping.paymentType === PERCENTAGE) {
     if (mapping.percentage === null) {
-      return { issue: "Percentage not set on the client" };
+      return { message: "Percentage not set on the client", fix: "client" };
     }
 
     if (task.digitalMarketingAmount === null) {
-      return { issue: "Digital Marketing amount not set on the task" };
+      return { message: "Digital Marketing amount not set on the task", fix: "task" };
     }
 
-    return shared(
-      (task.digitalMarketingAmount * mapping.percentage) / 100,
-      `${formatInr(task.digitalMarketingAmount)} × ${formatPercentage(mapping.percentage)}`,
-      minutes,
-      pools.task.get(task.id) ?? minutes
-    );
+    return {
+      kind: "percentage",
+      base: task.digitalMarketingAmount,
+      percentage: mapping.percentage,
+      full: (task.digitalMarketingAmount * mapping.percentage) / 100,
+      share: shareOf(minutes, pools.task.get(task.id) ?? minutes),
+    };
   }
 
   if (mapping.paymentType === PACKAGE) {
     const amount = mapping.packageAmount;
 
     if (amount === null) {
-      return { issue: "Package amount not set on the client" };
+      return { message: "Package amount not set on the client", fix: "client" };
     }
 
     if (mapping.billingCycle === "One-time") {
-      return shared(
+      return {
+        kind: "oneTime",
         amount,
-        `${formatInr(amount)} one-time`,
-        minutes,
-        pools.service.get(poolKey(clientId, service)) ?? minutes,
-        " all time"
-      );
+        share: shareOf(minutes, pools.service.get(poolKey(clientId, service)) ?? minutes),
+      };
     }
 
     // Each calendar month pays its own package, shared by that month's hours.
@@ -289,26 +412,23 @@ function incomeFor(
       add(byMonth, monthKeyOf(log.date), log.minutes);
     }
 
-    const months = [...byMonth.entries()].sort(([a], [b]) => a.localeCompare(b));
-    const pieces = months.map(([month, part]) =>
-      shared(
-        amount,
-        `${formatInr(amount)} monthly`,
-        part,
-        pools.serviceMonth.get(monthPoolKey(clientId, service, month)) ?? part
-      )
-    );
-
     return {
-      amount: pieces.reduce((sum, piece) => sum + piece.amount, 0),
-      rule:
-        pieces.length === 1
-          ? pieces[0].rule
-          : pieces.map((piece, index) => `${monthLabel(months[index][0])}: ${piece.rule}`).join(" + "),
+      kind: "monthly",
+      amount,
+      months: [...byMonth.entries()]
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([month, part]) => {
+          const whole = Math.max(
+            part,
+            pools.serviceMonth.get(monthPoolKey(clientId, service, month)) ?? part
+          );
+
+          return { month, part, whole, income: (amount * part) / whole };
+        }),
     };
   }
 
-  return { issue: `Payment type "${mapping.paymentType}" cannot be billed` };
+  return { message: `Payment type "${mapping.paymentType}" cannot be billed`, fix: "client" };
 }
 
 const STATUS_ORDER: Record<TaskRowStatus, number> = {
@@ -317,6 +437,39 @@ const STATUS_ORDER: Record<TaskRowStatus, number> = {
   issue: 1,
   internal: 2,
 };
+
+/** Totals per client or per service, from the rows in the totals. */
+function groupRows(rows: TaskRow[], keyOf: (row: TaskRow) => [string, string]) {
+  const groups = new Map<string, GroupTotal & { billed: boolean }>();
+
+  for (const row of rows) {
+    if (row.status !== "counted" && row.status !== "included") {
+      continue;
+    }
+
+    const [key, name] = keyOf(row);
+    let group = groups.get(key);
+
+    if (!group) {
+      group = { key, name, income: 0, effort: 0, minutes: 0, tasks: 0, costOnly: false, ratio: null, billed: false };
+      groups.set(key, group);
+    }
+
+    group.income += row.income ?? 0;
+    group.effort += row.effort ?? 0;
+    group.minutes += row.minutes;
+    group.tasks += 1;
+    group.billed ||= row.status === "counted";
+  }
+
+  return [...groups.values()]
+    .map(({ billed, ...group }) => ({
+      ...group,
+      costOnly: !billed,
+      ratio: billed && group.effort > 0 ? group.income / group.effort : null,
+    }))
+    .sort((a, b) => b.income - a.income || b.effort - a.effort || a.name.localeCompare(b.name));
+}
 
 /**
  * Prices the logged work. Income comes from each client's service payment and
@@ -383,6 +536,7 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
         line = {
           userId: log.user.id,
           name: log.user.name,
+          sector,
           designation,
           minutes: 0,
           rate,
@@ -400,14 +554,19 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
         effort: line.rate === null ? null : (line.minutes / 60) * line.rate,
       }))
       .sort((a, b) => b.minutes - a.minutes || a.name.localeCompare(b.name));
+    const pricedEffort = employees.every((line) => line.effort !== null)
+      ? employees.reduce((sum, line) => sum + (line.effort ?? 0), 0)
+      : null;
 
     const row: TaskRow = {
       taskId: task.id,
       title: task.title,
       clientId: task.client?.id ?? null,
       clientName: task.client?.name ?? null,
+      service,
       work: task.clientWork,
       payment: null,
+      breakdown: null,
       incomeRule: null,
       income: null,
       minutes,
@@ -419,26 +578,29 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
     };
 
     if (!task.client) {
+      // Its cost is shown for reference; internal work stays out of the totals.
       row.status = "internal";
+      row.effort = pricedEffort;
       return row;
     }
 
     if (!service) {
-      row.issues.push("No service chosen on the task");
+      row.issues.push({ message: "No service chosen on the task", fix: "task" });
     } else {
       const mapping = mappings.get(poolKey(task.client.id, service)) ?? null;
 
       if (!mapping) {
-        row.issues.push(`${service} is not set up for this client`);
+        row.issues.push({ message: `${service} is not set up for this client`, fix: "client" });
       } else {
         row.payment = mapping;
-        const income = incomeFor(task, task.client.id, service, mapping, logs, minutes, pools);
+        const result = breakdownFor(task, task.client.id, service, mapping, logs, minutes, pools);
 
-        if ("issue" in income) {
-          row.issues.push(income.issue);
+        if ("message" in result) {
+          row.issues.push(result);
         } else {
-          row.income = income.amount;
-          row.incomeRule = income.rule;
+          row.breakdown = result;
+          row.income = incomeOf(result);
+          row.incomeRule = describeIncome(result);
         }
 
         if (mapping.paymentType === INCLUDED) {
@@ -446,15 +608,22 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
         }
       }
 
-      const unpriced = employees.filter((line) => line.rate === null);
+      for (const line of employees) {
+        if (line.rate !== null) {
+          continue;
+        }
 
-      if (unpriced.length > 0) {
-        row.issues.push(
-          `No base price for ${unpriced.map((line) => line.name).join(", ")}`
-        );
-      } else {
-        row.effort = employees.reduce((sum, line) => sum + (line.effort ?? 0), 0);
+        const issue: RowIssue =
+          !line.sector || !line.designation
+            ? { message: `${line.name} has no domain or designation`, fix: "employee", userId: line.userId }
+            : { message: `No base price for ${service} · ${line.sector} · ${line.designation}`, fix: "basePrice" };
+
+        if (!row.issues.some((existing) => existing.message === issue.message)) {
+          row.issues.push(issue);
+        }
       }
+
+      row.effort = pricedEffort;
     }
 
     if (row.issues.length > 0) {
@@ -473,7 +642,6 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
       a.title.localeCompare(b.title)
   );
 
-  const clients = new Map<string, ClientTotal>();
   const totals = { income: 0, effort: 0, minutes: 0, ratio: null as number | null, tasks: 0 };
   const leftOut = { tasks: 0, minutes: 0 };
   const internal = { tasks: 0, minutes: 0 };
@@ -482,44 +650,23 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
     if (row.status === "internal") {
       internal.tasks += 1;
       internal.minutes += row.minutes;
-      continue;
-    }
-
-    if (row.status === "issue") {
+    } else if (row.status === "issue") {
       leftOut.tasks += 1;
       leftOut.minutes += row.minutes;
-      continue;
+    } else {
+      totals.income += row.income ?? 0;
+      totals.effort += row.effort ?? 0;
+      totals.minutes += row.minutes;
+      totals.tasks += 1;
     }
-
-    const income = row.income ?? 0;
-    const effort = row.effort ?? 0;
-    let client = clients.get(row.clientId!);
-
-    if (!client) {
-      client = { clientId: row.clientId!, name: row.clientName!, income: 0, effort: 0, minutes: 0, ratio: null };
-      clients.set(row.clientId!, client);
-    }
-
-    client.income += income;
-    client.effort += effort;
-    client.minutes += row.minutes;
-    totals.income += income;
-    totals.effort += effort;
-    totals.minutes += row.minutes;
-    totals.tasks += 1;
-  }
-
-  for (const client of clients.values()) {
-    client.ratio = client.effort > 0 ? client.income / client.effort : null;
   }
 
   totals.ratio = totals.effort > 0 ? totals.income / totals.effort : null;
 
   return {
     rows,
-    clients: [...clients.values()].sort(
-      (a, b) => b.income - a.income || a.name.localeCompare(b.name)
-    ),
+    byClient: groupRows(rows, (row) => [row.clientId!, row.clientName!]),
+    byService: groupRows(rows, (row) => [row.service!, row.service!]),
     totals,
     leftOut,
     internal,

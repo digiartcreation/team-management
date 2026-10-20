@@ -3,12 +3,12 @@
 import type { ApexOptions } from "apexcharts";
 import ApexChart from "@/components/reports/ApexChart";
 import { ChartCard, TwinTable } from "@/components/reports/ReportCharts";
-import { INK, OTHER_COLOR, baseOptions } from "@/components/reports/chartTheme";
+import { INK, baseOptions } from "@/components/reports/chartTheme";
 import {
   RATIO_BANDS,
   ratioBand,
   roundRatio,
-  type ClientTotal,
+  type GroupTotal,
 } from "@/lib/basePriceReport";
 import { formatDuration } from "@/lib/duration";
 import { formatInr } from "@/lib/services";
@@ -20,6 +20,8 @@ export const EFFORT_COLOR = "#4B5567";
 /** Where the scale changes colour, drawn as guides on the ratio chart. */
 const BAND_EDGES = [0.9, 1, 1.29, 1.6];
 
+export type GroupNoun = "client" | "service";
+
 /** Axis ticks only: "₹15K", "₹1.2L". Tooltips and tables carry exact rupees. */
 function compactInr(value: number) {
   if (value >= 100000) return `₹${Number((value / 100000).toFixed(1))}L`;
@@ -27,27 +29,32 @@ function compactInr(value: number) {
   return `₹${Math.round(value)}`;
 }
 
-function AmountsChart({ clients }: { clients: ClientTotal[] }) {
-  const id = "base-price-amounts";
+function marginText(group: GroupTotal) {
+  const margin = group.income - group.effort;
+  return `${margin < 0 ? "−" : "+"}${formatInr(Math.abs(margin))}`;
+}
+
+function AmountsChart({ groups, noun }: { groups: GroupTotal[]; noun: GroupNoun }) {
+  const id = `base-price-amounts-${noun}`;
   const base = baseOptions(id);
-  const height = Math.max(240, clients.length * 64 + 80);
+  const height = Math.max(260, groups.length * 62 + 90);
 
   const options: ApexOptions = {
     ...base,
     chart: { ...base.chart, type: "bar" },
     colors: [INCOME_COLOR, EFFORT_COLOR],
-    // The 2px surface gap between a client's two bars.
+    // The 2px surface gap between a row's two bars.
     stroke: { show: true, width: 2, colors: [INK.surface] },
     plotOptions: {
       bar: {
         horizontal: true,
-        barHeight: clients.length <= 2 ? "50%" : "72%",
+        barHeight: groups.length <= 2 ? "50%" : "74%",
         borderRadius: 4,
         borderRadiusApplication: "end",
       },
     },
     xaxis: {
-      categories: clients.map((client) => client.name),
+      categories: groups.map((group) => group.name),
       axisBorder: { show: false },
       axisTicks: { show: false },
       labels: {
@@ -56,7 +63,7 @@ function AmountsChart({ clients }: { clients: ClientTotal[] }) {
       },
     },
     yaxis: {
-      labels: { maxWidth: 140, style: { fontSize: "12px", colors: INK.primary } },
+      labels: { maxWidth: 150, style: { fontSize: "12px", colors: INK.primary } },
     },
     grid: { ...base.grid, xaxis: { lines: { show: true } }, yaxis: { lines: { show: false } } },
     legend: { ...base.legend, position: "top", horizontalAlign: "right" },
@@ -70,18 +77,19 @@ function AmountsChart({ clients }: { clients: ClientTotal[] }) {
 
   return (
     <ChartCard
-      title="Income and work effort by client"
+      title={`Income and work effort by ${noun}`}
       subtitle="Income from service payments · effort is hours × base price"
-      empty={clients.length === 0}
+      empty={groups.length === 0}
       emptyText="No priced client work for these filters"
       table={
         <TwinTable
-          headings={["Client", "Income", "Work effort", "Hours"]}
-          rows={clients.map((client) => [
-            client.name,
-            formatInr(client.income),
-            formatInr(client.effort),
-            formatDuration(client.minutes),
+          headings={[noun === "client" ? "Client" : "Service", "Income", "Work effort", "Margin", "Hours"]}
+          rows={groups.map((group) => [
+            group.name,
+            formatInr(group.income),
+            formatInr(group.effort),
+            marginText(group),
+            formatDuration(group.minutes),
           ])}
         />
       }
@@ -91,21 +99,27 @@ function AmountsChart({ clients }: { clients: ClientTotal[] }) {
         height={height}
         options={options}
         series={[
-          { name: "Income", data: clients.map((client) => client.income) },
-          { name: "Work effort", data: clients.map((client) => client.effort) },
+          { name: "Income", data: groups.map((group) => Math.round(group.income)) },
+          { name: "Work effort", data: groups.map((group) => Math.round(group.effort)) },
         ]}
       />
     </ChartCard>
   );
 }
 
-function RatioChart({ clients }: { clients: ClientTotal[] }) {
-  const id = "base-price-ratio";
+function RatioChart({ groups, noun }: { groups: GroupTotal[]; noun: GroupNoun }) {
+  const id = `base-price-ratio-${noun}`;
   const base = baseOptions(id);
-  const height = Math.max(240, clients.length * 44 + 80);
-  const ratios = clients.map((client) => roundRatio(client.ratio ?? 0));
-  const colors = clients.map((client) =>
-    client.ratio === null ? OTHER_COLOR : ratioBand(client.ratio).color
+  // Client Management alone has effort and nothing billed, so no ratio to draw.
+  const rated = groups
+    .filter((group) => group.ratio !== null)
+    .sort((a, b) => (b.ratio ?? 0) - (a.ratio ?? 0));
+  const costOnly = groups.filter((group) => group.costOnly);
+  const height = Math.max(260, rated.length * 44 + 90);
+  const ratios = rated.map((group) => roundRatio(group.ratio!));
+  const colors = rated.map((group) => ratioBand(group.ratio!).color);
+  const bandCounts = RATIO_BANDS.map(
+    (band) => rated.filter((group) => ratioBand(group.ratio!) === band).length
   );
   // Room past the longest bar for its label, on a scale that keeps 1.6 in view.
   const highest = Math.max(0, ...ratios);
@@ -122,7 +136,7 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
     plotOptions: {
       bar: {
         horizontal: true,
-        barHeight: clients.length <= 2 ? "40%" : "62%",
+        barHeight: rated.length <= 2 ? "40%" : "62%",
         borderRadius: 4,
         borderRadiusApplication: "end",
         borderRadiusWhenStacked: "last",
@@ -145,7 +159,7 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
       })),
     },
     xaxis: {
-      categories: clients.map((client) => client.name),
+      categories: rated.map((group) => group.name),
       min: 0,
       max,
       tickAmount: max <= 3 ? max * 2 : max,
@@ -157,7 +171,7 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
       },
     },
     yaxis: {
-      labels: { maxWidth: 140, style: { fontSize: "12px", colors: INK.primary } },
+      labels: { maxWidth: 150, style: { fontSize: "12px", colors: INK.primary } },
     },
     grid: { ...base.grid, xaxis: { lines: { show: false } }, yaxis: { lines: { show: false } } },
     legend: { show: false },
@@ -166,15 +180,13 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
       y: {
         title: { formatter: () => "Ratio" },
         formatter: (value, opts) => {
-          const client = clients[opts?.dataPointIndex ?? -1];
+          const group = rated[opts?.dataPointIndex ?? -1];
 
-          if (!client || client.ratio === null) {
-            return "No effort to compare";
+          if (!group) {
+            return value.toFixed(2);
           }
 
-          const band = ratioBand(client.ratio);
-
-          return `${value.toFixed(2)} · ${band.colorName} (${formatInr(client.income)} ÷ ${formatInr(client.effort)})`;
+          return `${value.toFixed(2)} · ${ratioBand(group.ratio!).colorName} (${formatInr(group.income)} ÷ ${formatInr(group.effort)})`;
         },
       },
     },
@@ -182,17 +194,21 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
 
   return (
     <ChartCard
-      title="Ratio by client"
+      title={`Ratio by ${noun}`}
       subtitle="Income ÷ work effort, coloured on the five-step scale"
-      empty={clients.length === 0}
-      emptyText="No priced client work for these filters"
+      empty={rated.length === 0}
+      emptyText={
+        costOnly.length > 0 ? "Only unbilled Client Management work here" : "No priced client work for these filters"
+      }
       table={
         <TwinTable
-          headings={["Client", "Ratio", "Band"]}
-          rows={clients.map((client) => [
-            client.name,
-            client.ratio === null ? "—" : roundRatio(client.ratio).toFixed(2),
-            client.ratio === null ? "—" : ratioBand(client.ratio).colorName,
+          headings={[noun === "client" ? "Client" : "Service", "Income", "Work effort", "Ratio", "Band"]}
+          rows={rated.map((group) => [
+            group.name,
+            formatInr(group.income),
+            formatInr(group.effort),
+            roundRatio(group.ratio!).toFixed(2),
+            ratioBand(group.ratio!).colorName,
           ])}
         />
       }
@@ -203,24 +219,44 @@ function RatioChart({ clients }: { clients: ClientTotal[] }) {
         options={options}
         series={[{ name: "Ratio", data: ratios }]}
       />
-      <ul className="mt-2 flex flex-wrap gap-x-4 gap-y-1.5 text-xs text-slate-600">
-        {RATIO_BANDS.map((band) => (
-          <li key={band.colorName} className="flex items-center gap-1.5">
-            <span aria-hidden className="h-2.5 w-2.5 rounded-sm" style={{ background: band.color }} />
-            <span className="font-medium text-slate-800">{band.colorName}</span>
-            <span className="text-slate-500">{band.range}</span>
+      <ul className="mt-3 grid grid-cols-2 gap-x-4 gap-y-2 border-t border-slate-100 pt-3 text-xs sm:grid-cols-5">
+        {RATIO_BANDS.map((band, index) => (
+          <li key={band.colorName} className="flex items-start gap-1.5">
+            <span aria-hidden className="mt-0.5 h-2.5 w-2.5 shrink-0 rounded-sm" style={{ background: band.color }} />
+            <span className="leading-tight">
+              <span className="block font-medium text-slate-800">{band.colorName}</span>
+              <span className="text-slate-500">{band.range}</span>
+              <span className="block font-semibold text-slate-700 tabular-nums">
+                {bandCounts[index]} {noun === "client" ? (bandCounts[index] === 1 ? "client" : "clients") : bandCounts[index] === 1 ? "service" : "services"}
+              </span>
+            </span>
           </li>
         ))}
       </ul>
+      {costOnly.length > 0 ? (
+        <p className="mt-3 rounded-md bg-slate-50 px-3 py-2 text-xs text-slate-600">
+          <span className="font-semibold text-slate-800">Cost only, no ratio: </span>
+          {costOnly
+            .map((group) => `${group.name} (${formatInr(group.effort)} of effort)`)
+            .join(", ")}
+          . Client Management is never billed, so its effort only adds cost.
+        </p>
+      ) : null}
     </ChartCard>
   );
 }
 
-export default function BasePriceCharts({ clients }: { clients: ClientTotal[] }) {
+export default function BasePriceCharts({
+  groups,
+  noun,
+}: {
+  groups: GroupTotal[];
+  noun: GroupNoun;
+}) {
   return (
-    <div className="grid gap-4 lg:grid-cols-2">
-      <AmountsChart clients={clients} />
-      <RatioChart clients={clients} />
+    <div className="grid gap-4 xl:grid-cols-2">
+      <AmountsChart groups={groups} noun={noun} />
+      <RatioChart groups={groups} noun={noun} />
     </div>
   );
 }

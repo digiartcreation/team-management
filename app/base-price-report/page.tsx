@@ -4,13 +4,10 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import BasePriceCharts from "@/components/basePriceReport/BasePriceCharts";
-import {
-  buildBasePriceReport,
-  ratioBand,
-  roundRatio,
-  type TaskRow,
-} from "@/lib/basePriceReport";
+import BasePriceCharts, { type GroupNoun } from "@/components/basePriceReport/BasePriceCharts";
+import CalculationFlow from "@/components/basePriceReport/CalculationFlow";
+import { GroupSummaryTable, ReportKpis } from "@/components/basePriceReport/ReportSummary";
+import { buildBasePriceReport, type FixPlace } from "@/lib/basePriceReport";
 import { toServiceMapping } from "@/lib/clientServices";
 import { formatDuration } from "@/lib/duration";
 import { datePresets } from "@/lib/reportAnalytics";
@@ -22,9 +19,9 @@ import {
   todayUtcMidnight,
 } from "@/lib/reportFilters";
 import { INTERNAL_LABEL, UNMAPPED_SERVICE_LABEL, serviceNameOf } from "@/lib/reports";
-import { formatInr, formatPaymentTerms } from "@/lib/services";
 
 type ReportFilters = {
+  view?: string;
   from?: string;
   to?: string;
   clientId?: string;
@@ -35,6 +32,11 @@ type ReportFilters = {
 type BasePriceReportPageProps = {
   searchParams: Promise<ReportFilters>;
 };
+
+const VIEWS: { key: GroupNoun; tab: string }[] = [
+  { key: "client", tab: "Client wise" },
+  { key: "service", tab: "Service wise" },
+];
 
 /** Keeps the current filters on a link, dropping the ones left blank. */
 function reportHref(filters: ReportFilters) {
@@ -56,64 +58,21 @@ const inputClass =
 
 const labelClass = "text-xs font-medium uppercase tracking-wide text-slate-500";
 
+/** Where the banner sends people to fix each kind of gap. */
+const FIX_PAGES: Record<FixPlace, { href: string; label: string } | null> = {
+  // Tasks and clients are fixed one at a time, from the rows below.
+  task: null,
+  client: null,
+  employee: { href: "/employees", label: "Employees" },
+  basePrice: { href: "/base-prices", label: "Base Price" },
+};
+
 function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
 function decimal(value: { toString(): string } | null) {
   return value === null ? null : Number(value.toString());
-}
-
-function BandChip({ ratio }: { ratio: number }) {
-  const band = ratioBand(ratio);
-
-  return (
-    <span
-      title={band.label}
-      className="inline-flex items-center gap-1.5 whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-semibold text-slate-800"
-    >
-      <span aria-hidden className="h-2.5 w-2.5 rounded-sm" style={{ background: band.color }} />
-      {band.colorName}
-    </span>
-  );
-}
-
-function RatioCell({ row }: { row: TaskRow }) {
-  if (row.status === "issue") {
-    return (
-      <ul className="flex flex-col gap-1">
-        {row.issues.map((issue) => (
-          <li
-            key={issue}
-            className="w-fit rounded-md bg-amber-50 px-2 py-0.5 text-xs font-medium text-amber-800 ring-1 ring-amber-200"
-          >
-            {issue}
-          </li>
-        ))}
-      </ul>
-    );
-  }
-
-  if (row.status === "internal") {
-    return <span className="text-xs text-slate-500">Not billed</span>;
-  }
-
-  if (row.status === "included") {
-    return (
-      <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-        Included · cost only
-      </span>
-    );
-  }
-
-  return row.ratio === null ? (
-    <span className="text-slate-400">—</span>
-  ) : (
-    <span className="flex items-center gap-2 whitespace-nowrap">
-      <span className="font-semibold text-slate-950">{roundRatio(row.ratio).toFixed(2)}</span>
-      <BandChip ratio={row.ratio} />
-    </span>
-  );
 }
 
 export default async function BasePriceReportPage({
@@ -134,6 +93,7 @@ export default async function BasePriceReportPage({
   }
 
   const filters = await searchParams;
+  const view: GroupNoun = filters.view === "service" ? "service" : "client";
   const from = parseDateInput(filters.from);
   const to = parseDateInput(filters.to);
 
@@ -287,7 +247,21 @@ export default async function BasePriceReportPage({
       minutes: row._sum.minutes ?? 0,
     })),
   });
-  const { totals, leftOut, internal } = report;
+  const { leftOut } = report;
+  const groups = view === "client" ? report.byClient : report.byService;
+
+  // What keeps tasks out of the totals, most common first.
+  const gaps = new Map<string, { fix: FixPlace; tasks: number }>();
+
+  for (const row of report.rows) {
+    for (const issue of row.issues) {
+      const gap = gaps.get(issue.message) ?? { fix: issue.fix, tasks: 0 };
+      gap.tasks += 1;
+      gaps.set(issue.message, gap);
+    }
+  }
+
+  const gapList = [...gaps.entries()].sort((a, b) => b[1].tasks - a[1].tasks);
 
   // A one-line description of the slice, as the Reports page writes it.
   const scopeParts = [describeRange(from, to)];
@@ -324,82 +298,73 @@ export default async function BasePriceReportPage({
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         {/* Header */}
-        <header className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
-          <div>
-            <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#770FC2]">
-              Base Price Report
-            </p>
-            <h1 className="mt-1.5 text-2xl font-semibold text-slate-950 sm:text-3xl">
-              Income vs Work Effort
-            </h1>
-            <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
-                <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 text-[#770FC2]" fill="none" stroke="currentColor" strokeWidth="1.8">
-                  <rect x="3" y="4" width="14" height="13" rx="2" />
-                  <path d="M3 8h14M7 2.5v3M13 2.5v3" />
-                </svg>
-                {scope}
-              </span>
-            </p>
-          </div>
-          <dl className="flex flex-wrap items-end gap-x-6 gap-y-2 text-sm">
-            <div>
-              <dt className="text-xs font-medium text-slate-500">Income</dt>
-              <dd className="text-lg font-semibold text-slate-950 tabular-nums">
-                {formatInr(totals.income)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-slate-500">Work effort</dt>
-              <dd className="text-lg font-semibold text-slate-950 tabular-nums">
-                {formatInr(totals.effort)}
-              </dd>
-            </div>
-            <div>
-              <dt className="text-xs font-medium text-slate-500">Ratio</dt>
-              <dd className="flex items-center gap-2 text-lg font-semibold text-slate-950 tabular-nums">
-                {totals.ratio === null ? (
-                  "—"
-                ) : (
-                  <>
-                    {roundRatio(totals.ratio).toFixed(2)}
-                    <BandChip ratio={totals.ratio} />
-                  </>
-                )}
-              </dd>
-            </div>
-          </dl>
+        <header>
+          <p className="text-xs font-semibold uppercase tracking-[0.14em] text-[#770FC2]">
+            Base Price Report
+          </p>
+          <h1 className="mt-1.5 text-2xl font-semibold text-slate-950 sm:text-3xl">
+            Income vs Work Effort {view === "client" ? "by Client" : "by Service"}
+          </h1>
+          <p className="mt-1.5 flex flex-wrap items-center gap-2 text-sm text-slate-500">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+              <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5 text-[#770FC2]" fill="none" stroke="currentColor" strokeWidth="1.8">
+                <rect x="3" y="4" width="14" height="13" rx="2" />
+                <path d="M3 8h14M7 2.5v3M13 2.5v3" />
+              </svg>
+              {scope}
+            </span>
+          </p>
         </header>
 
-        {/* Quick ranges */}
-        <div className="flex flex-wrap gap-1.5">
-          <Link
-            href={reportHref({ ...filters, from: undefined, to: undefined })}
-            className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-              !filters.from && !filters.to
-                ? "bg-slate-900 text-white ring-slate-900"
-                : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
-            }`}
-          >
-            All time
-          </Link>
-          {presets.map((preset) => (
+        {/* View tabs + quick ranges */}
+        <div className="flex flex-col gap-3 lg:flex-row lg:items-center lg:justify-between">
+          <nav className="inline-flex w-fit rounded-xl border border-slate-200 bg-white p-1 shadow-sm">
+            {VIEWS.map((option) => (
+              <Link
+                key={option.key}
+                href={reportHref({ ...filters, view: option.key })}
+                className={`rounded-lg px-4 py-2 text-sm font-medium transition ${
+                  option.key === view
+                    ? "bg-[#770FC2] text-white shadow-sm"
+                    : "text-slate-600 hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+                }`}
+              >
+                {option.tab}
+              </Link>
+            ))}
+          </nav>
+
+          <div className="flex flex-wrap gap-1.5">
             <Link
-              key={preset.label}
-              href={reportHref({ ...filters, from: preset.from, to: preset.to })}
+              href={reportHref({ ...filters, from: undefined, to: undefined })}
               className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                activePreset?.label === preset.label
+                !filters.from && !filters.to
                   ? "bg-slate-900 text-white ring-slate-900"
                   : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
               }`}
             >
-              {preset.label}
+              All time
             </Link>
-          ))}
+            {presets.map((preset) => (
+              <Link
+                key={preset.label}
+                href={reportHref({ ...filters, from: preset.from, to: preset.to })}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
+                  activePreset?.label === preset.label
+                    ? "bg-slate-900 text-white ring-slate-900"
+                    : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
+                }`}
+              >
+                {preset.label}
+              </Link>
+            ))}
+          </div>
         </div>
 
         {/* Filters: one row that scopes everything below */}
         <form className="grid gap-3 rounded-xl border border-slate-200 bg-white p-4 shadow-sm sm:grid-cols-2 lg:grid-cols-6">
+          <input type="hidden" name="view" value={view} />
+
           <label className="grid gap-1.5">
             <span className={labelClass}>From</span>
             <input name="from" type="date" defaultValue={filters.from ?? ""} className={inputClass} />
@@ -456,7 +421,7 @@ export default async function BasePriceReportPage({
               Apply
             </button>
             <Link
-              href={reportHref({})}
+              href={reportHref({ view })}
               className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Reset
@@ -464,158 +429,41 @@ export default async function BasePriceReportPage({
           </div>
         </form>
 
+        <ReportKpis report={report} />
+
         {leftOut.tasks > 0 ? (
-          <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
-            <p className="font-medium">
-              {plural(leftOut.tasks, "task")} ({formatDuration(leftOut.minutes)}) left
-              out of the totals
+          <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
+            <p className="font-semibold">
+              {plural(leftOut.tasks, "task")} ({formatDuration(leftOut.minutes)}) left out of
+              the totals
             </p>
-            <p className="mt-1 text-amber-800">
-              Each is missing a price or a payment, named on its row below. Most
-              often the employee has no domain or designation on the Employees
-              page, or there is no rate for it on the Base Price page.
-            </p>
+            <ul className="mt-2 grid gap-1.5 md:grid-cols-2">
+              {gapList.map(([message, gap]) => {
+                const page = FIX_PAGES[gap.fix];
+
+                return (
+                  <li key={message} className="flex flex-wrap items-baseline gap-x-2 text-amber-800">
+                    <span className="font-semibold tabular-nums">{gap.tasks}×</span>
+                    <span>{message}</span>
+                    {page ? (
+                      <Link href={page.href} className="font-semibold text-[#770FC2] hover:underline">
+                        {page.label} page →
+                      </Link>
+                    ) : (
+                      <span className="text-amber-700">· fix from the task below</span>
+                    )}
+                  </li>
+                );
+              })}
+            </ul>
           </div>
         ) : null}
 
-        <BasePriceCharts clients={report.clients} />
+        <BasePriceCharts groups={groups} noun={view} />
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 border-b border-slate-200 px-4 py-3">
-            <h2 className="text-base font-semibold text-slate-950">
-              Task-by-task calculation
-            </h2>
-            <p className="text-xs text-slate-500">
-              Effort = hours × base price for the task&apos;s service and the
-              employee&apos;s domain and designation
-              {internal.tasks > 0
-                ? ` · ${plural(internal.tasks, "internal task")} (${formatDuration(internal.minutes)}) not billed`
-                : ""}
-            </p>
-          </div>
+        <GroupSummaryTable groups={groups} noun={view} totals={report.totals} />
 
-          {report.rows.length === 0 ? (
-            <div className="p-8 text-center">
-              <p className="text-sm font-medium text-slate-700">
-                No time logged for these filters.
-              </p>
-              <p className="mt-1 text-sm text-slate-500">
-                Choose another date range, client, service or employee.
-              </p>
-            </div>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-275 text-left text-sm">
-                <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
-                  <tr>
-                    <th className="px-4 py-3 font-semibold">Task · client</th>
-                    <th className="px-4 py-3 font-semibold">Service · payment</th>
-                    <th className="px-4 py-3 font-semibold">Income rule</th>
-                    <th className="px-4 py-3 text-right font-semibold">Income</th>
-                    <th className="px-4 py-3 font-semibold">Employee · base price</th>
-                    <th className="px-4 py-3 text-right font-semibold">Hours</th>
-                    <th className="px-4 py-3 text-right font-semibold">Work effort</th>
-                    <th className="px-4 py-3 font-semibold">Ratio</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-200 tabular-nums">
-                  {report.rows.map((row) => {
-                    const muted = row.status === "internal" || row.status === "issue";
-
-                    return (
-                      <tr key={row.taskId} className="align-top hover:bg-slate-50">
-                        <td className="px-4 py-3">
-                          <p className={`font-medium ${muted ? "text-slate-600" : "text-slate-950"}`}>
-                            {row.title}
-                          </p>
-                          <p className="text-xs text-slate-500">
-                            {row.clientName ?? INTERNAL_LABEL}
-                          </p>
-                        </td>
-                        <td className="px-4 py-3">
-                          <p className="text-slate-800">{row.work ?? "—"}</p>
-                          {row.payment ? (
-                            <p className="text-xs text-slate-500">
-                              {formatPaymentTerms(row.payment)}
-                            </p>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-3 font-mono text-xs whitespace-nowrap text-slate-700">
-                          {row.incomeRule ?? "—"}
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap text-slate-900">
-                          {row.income === null ? "—" : formatInr(row.income)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <ul className="flex flex-col gap-1">
-                            {row.employees.map((line) => (
-                              <li key={line.userId}>
-                                <p className="text-slate-800">
-                                  {line.name}
-                                  {line.designation ? (
-                                    <span className="text-slate-500"> · {line.designation}</span>
-                                  ) : null}
-                                </p>
-                                <p
-                                  className={`text-xs ${
-                                    line.rate === null && row.status !== "internal"
-                                      ? "text-amber-700"
-                                      : "text-slate-500"
-                                  }`}
-                                >
-                                  {formatDuration(line.minutes)}
-                                  {line.rate === null
-                                    ? row.status === "internal"
-                                      ? ""
-                                      : " · no base price"
-                                    : ` × ${formatInr(line.rate)}/hr`}
-                                </p>
-                              </li>
-                            ))}
-                          </ul>
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap text-slate-700">
-                          {formatDuration(row.minutes)}
-                        </td>
-                        <td className="px-4 py-3 text-right whitespace-nowrap text-slate-900">
-                          {row.effort === null ? "—" : formatInr(row.effort)}
-                        </td>
-                        <td className="px-4 py-3">
-                          <RatioCell row={row} />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-                <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-950 tabular-nums">
-                  <tr>
-                    <td className="px-4 py-3" colSpan={3}>
-                      Total · {plural(totals.tasks, "task")} counted
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {formatInr(totals.income)}
-                    </td>
-                    <td className="px-4 py-3" />
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {formatDuration(totals.minutes)}
-                    </td>
-                    <td className="px-4 py-3 text-right whitespace-nowrap">
-                      {formatInr(totals.effort)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {totals.ratio === null ? null : (
-                        <span className="flex items-center gap-2 whitespace-nowrap">
-                          {roundRatio(totals.ratio).toFixed(2)}
-                          <BandChip ratio={totals.ratio} />
-                        </span>
-                      )}
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
-            </div>
-          )}
-        </section>
+        <CalculationFlow rows={report.rows} groups={groups} noun={view} />
       </div>
     </DashboardLayout>
   );
