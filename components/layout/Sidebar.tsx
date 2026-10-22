@@ -39,11 +39,11 @@ function getNavItems(role?: string, isSuperAdmin = false) {
 
   const adminItems = [
     { label: "Dashboard", href: "/" },
+    { label: "Tasks", href: "/tasks" },
+    { label: "Attendance", href: "/attendance" },
     { label: "Employees", href: "/employees" },
     { label: "Teams", href: "/teams" },
     { label: "Client Management", href: "/clients" },
-    { label: "Tasks", href: "/tasks" },
-    { label: "Attendance", href: "/attendance" },
     { label: "Daily Updates", href: "/updates" },
     { label: "Learnings", href: "/learnings" },
     { label: "AI Tools", href: "/tools" },
@@ -53,12 +53,13 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Search", href: "/search" },
   ];
 
+  // Straight after Attendance, the report before the prices it reads.
   if (isSuperAdmin) {
     adminItems.splice(
-      4,
+      3,
       0,
-      { label: "Base Price", href: "/base-prices" },
-      { label: "Base Price Report", href: "/base-price-report" }
+      { label: "Base Price Report", href: "/base-price-report" },
+      { label: "Base Price", href: "/base-prices" }
     );
   }
 
