@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { useCallback, useRef, useState, useTransition } from "react";
+import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import Avatar from "@/components/ui/Avatar";
 import { formatDuration } from "@/lib/duration";
@@ -207,6 +207,44 @@ function Card({
         </div>
       ) : null}
     </article>
+  );
+}
+
+/**
+ * A confirmation in the browser's top layer, like the log time dialog, so it
+ * opens over whatever part of the page is on screen. A fixed overlay would be
+ * pinned to the board instead: the board lifts on hover with a transform, and
+ * a transformed parent holds its fixed children, centring the prompt on the
+ * whole board -- often off screen.
+ */
+function PromptDialog({
+  labelledBy,
+  onClose,
+  children,
+}: {
+  labelledBy: string;
+  onClose: () => void;
+  children: React.ReactNode;
+}) {
+  const dialogRef = useRef<HTMLDialogElement>(null);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+
+    if (dialog && !dialog.open) {
+      dialog.showModal();
+    }
+  }, []);
+
+  return (
+    <dialog
+      ref={dialogRef}
+      onClose={onClose}
+      aria-labelledby={labelledBy}
+      className="m-auto w-[calc(100vw-2rem)] max-w-md rounded-lg border border-slate-200 bg-white p-6 text-left shadow-xl backdrop:bg-slate-950/40"
+    >
+      {children}
+    </dialog>
   );
 }
 
@@ -537,96 +575,88 @@ export default function TaskBoard({
       )}
 
       {reopenPrompt ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="reopen-prompt-heading"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+        <PromptDialog
+          labelledBy="reopen-prompt-heading"
+          onClose={() => setReopenPrompt(null)}
         >
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
-            <h2
-              id="reopen-prompt-heading"
-              className="text-lg font-semibold text-slate-950"
+          <h2
+            id="reopen-prompt-heading"
+            className="text-lg font-semibold text-slate-950"
+          >
+            Reopen task
+          </h2>
+          <p className="mt-1 break-words text-sm text-slate-500">
+            {reopenPrompt.title}
+          </p>
+
+          <label className="mt-4 grid gap-1">
+            <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
+              Reason (optional)
+            </span>
+            <textarea
+              value={reopenReason}
+              onChange={(event) => setReopenReason(event.target.value)}
+              rows={2}
+              placeholder="Eg: client asked for a different thumbnail"
+              className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <div className="mt-5 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setReopenPrompt(null)}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Cancel
+            </button>
+            <button
+              type="button"
+              onClick={confirmReopen}
+              className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
             >
               Reopen task
-            </h2>
-            <p className="mt-1 break-words text-sm text-slate-500">
-              {reopenPrompt.title}
-            </p>
-
-            <label className="mt-4 grid gap-1">
-              <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
-                Reason (optional)
-              </span>
-              <textarea
-                value={reopenReason}
-                onChange={(event) => setReopenReason(event.target.value)}
-                rows={2}
-                placeholder="Eg: client asked for a different thumbnail"
-                className="w-full resize-none rounded-md border border-slate-300 px-3 py-2 text-sm"
-              />
-            </label>
-
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setReopenPrompt(null)}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                Cancel
-              </button>
-              <button
-                type="button"
-                onClick={confirmReopen}
-                className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
-              >
-                Reopen task
-              </button>
-            </div>
+            </button>
           </div>
-        </div>
+        </PromptDialog>
       ) : null}
 
       {closePrompt ? (
-        <div
-          role="dialog"
-          aria-modal="true"
-          aria-labelledby="close-prompt-heading"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-slate-950/40 p-4"
+        <PromptDialog
+          labelledBy="close-prompt-heading"
+          onClose={() => setClosePrompt(null)}
         >
-          <div className="w-full max-w-md rounded-lg border border-slate-200 bg-white p-6 shadow-xl">
-            <h2
-              id="close-prompt-heading"
-              className="text-lg font-semibold text-slate-950"
-            >
-              Close task
-            </h2>
-            <p className="mt-1 break-words text-sm text-slate-500">
-              {closePrompt.title}
-            </p>
-            <p className="mt-4 text-sm text-slate-700">
-              Are you sure you want to close this task? It will leave the
-              dashboard and only show in Task Management.
-            </p>
+          <h2
+            id="close-prompt-heading"
+            className="text-lg font-semibold text-slate-950"
+          >
+            Close task
+          </h2>
+          <p className="mt-1 break-words text-sm text-slate-500">
+            {closePrompt.title}
+          </p>
+          <p className="mt-4 text-sm text-slate-700">
+            Are you sure you want to close this task? It will leave the
+            dashboard and only show in Task Management.
+          </p>
 
-            <div className="mt-5 flex justify-end gap-3">
-              <button
-                type="button"
-                onClick={() => setClosePrompt(null)}
-                className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-              >
-                No
-              </button>
-              <button
-                type="button"
-                onClick={confirmClose}
-                className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
-              >
-                Yes, close
-              </button>
-            </div>
+          <div className="mt-5 flex justify-end gap-3">
+            <button
+              type="button"
+              onClick={() => setClosePrompt(null)}
+              className="rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              No
+            </button>
+            <button
+              type="button"
+              onClick={confirmClose}
+              className="rounded-md bg-[#770FC2] px-4 py-2 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
+            >
+              Yes, close
+            </button>
           </div>
-        </div>
+        </PromptDialog>
       ) : null}
 
       {timePrompt ? (
