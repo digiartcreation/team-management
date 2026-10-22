@@ -6,10 +6,12 @@ import { useTransition } from "react";
 type MonthFilterProps = {
   months: { value: string; label: string }[];
   selected: string;
+  /** The page the filter reloads, e.g. "/attendance". */
+  path: string;
 };
 
-/** Switches the attendance page to another month as soon as one is picked. */
-export default function MonthFilter({ months, selected }: MonthFilterProps) {
+/** Switches the page to another month as soon as one is picked. */
+export default function MonthFilter({ months, selected, path }: MonthFilterProps) {
   const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
@@ -23,7 +25,7 @@ export default function MonthFilter({ months, selected }: MonthFilterProps) {
         disabled={isPending}
         onChange={(event) => {
           const month = event.target.value;
-          startTransition(() => router.push(`/attendance?month=${month}`));
+          startTransition(() => router.push(`${path}?month=${month}`));
         }}
         className="rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200 disabled:opacity-60"
       >
