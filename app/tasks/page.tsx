@@ -19,6 +19,7 @@ import ActionMenu from "@/components/ui/ActionMenu";
 import { formatInr } from "@/lib/services";
 import {
   TASK_STATUS_OPTIONS,
+  formatReopenCause,
   formatTaskStatus,
   isTaskStatus,
 } from "@/lib/taskStatus";
@@ -143,6 +144,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
           select: {
             cycle: true,
             reason: true,
+            cause: true,
             createdAt: true,
             user: { select: { name: true } },
           },
@@ -389,6 +391,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                                       : " -- nothing logged yet"}
                                     {cycle.reopenedBy
                                       ? ` -- by ${cycle.reopenedBy}`
+                                      : ""}
+                                    {formatReopenCause(cycle.cause)
+                                      ? ` -- ${formatReopenCause(cycle.cause)}`
                                       : ""}
                                   </p>
                                   {cycle.reason ? (

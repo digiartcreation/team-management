@@ -21,6 +21,7 @@ import {
   parseDateInput,
   todayUtcMidnight,
 } from "@/lib/reportFilters";
+import { formatReopenCause } from "@/lib/taskStatus";
 import {
   DEFAULT_REPORT_VIEW,
   INTERNAL_LABEL,
@@ -318,12 +319,13 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const reopenReasons = await prisma.taskReopen.findMany({
     where: {
       taskId: { in: reopenedTasks.map((task) => task.taskId) },
-      reason: { not: null },
+      OR: [{ reason: { not: null } }, { cause: { not: null } }],
     },
     select: {
       taskId: true,
       cycle: true,
       reason: true,
+      cause: true,
       user: { select: { name: true } },
     },
   });
@@ -331,7 +333,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const reasons = Object.fromEntries(
     reopenReasons.map((row) => [
       `${row.taskId}:${row.cycle}`,
-      { reason: row.reason, by: row.user.name },
+      { reason: row.reason, cause: formatReopenCause(row.cause), by: row.user.name },
     ])
   );
 
@@ -677,6 +679,11 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
                                     {formatDuration(cycle.minutes)}
                                     {sentBack ? (
                                       <span className="font-normal text-slate-500">sent back by {sentBack.by}</span>
+                                    ) : null}
+                                    {sentBack?.cause ? (
+                                      <span className="rounded bg-slate-100 px-1.5 py-0.5 font-medium text-slate-600">
+                                        {sentBack.cause}
+                                      </span>
                                     ) : null}
                                   </p>
                                   {sentBack?.reason ? (

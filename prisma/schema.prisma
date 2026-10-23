@@ -208,6 +208,10 @@ model TaskReopen {
   /// Why the task was sent back. Optional, because a status edit from the task
   /// form has nowhere to ask for one.
   reason    String?  @db.Text
+  /// Whose side it was: "client" or "team", one of REOPEN_CAUSES in
+  /// lib/taskStatus.ts. Null for reopens from the task form, and for those
+  /// recorded before the question was asked.
+  cause     String?
   createdAt DateTime @default(now())
   task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)

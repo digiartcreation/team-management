@@ -2,9 +2,15 @@
 
 import { useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
+import ReopenCauseField from "@/components/tasks/ReopenCauseField";
 import { useActionMenu } from "@/components/ui/ActionMenu";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
-import { TASK_STATUS_OPTIONS, allowedNextStatuses } from "@/lib/taskStatus";
+import {
+  DEFAULT_REOPEN_CAUSE,
+  TASK_STATUS_OPTIONS,
+  allowedNextStatuses,
+  type ReopenCause,
+} from "@/lib/taskStatus";
 
 type TaskStatusControlProps = {
   taskId: string;
@@ -15,13 +21,20 @@ type TaskStatusControlProps = {
   reopenCount: number;
 };
 
-function formDataFor(taskId: string, status: string, reopenReason?: string) {
+/** What the reopen fields asked: whose side it was, and optionally why. */
+type ReopenAnswer = { cause: ReopenCause; reason?: string };
+
+function formDataFor(taskId: string, status: string, reopen?: ReopenAnswer) {
   const formData = new FormData();
   formData.set("id", taskId);
   formData.set("status", status);
 
-  if (reopenReason) {
-    formData.set("reopenReason", reopenReason);
+  if (reopen) {
+    formData.set("reopenCause", reopen.cause);
+
+    if (reopen.reason) {
+      formData.set("reopenReason", reopen.reason);
+    }
   }
 
   return formData;
@@ -38,6 +51,7 @@ export default function TaskStatusControl({
   const [completing, setCompleting] = useState(false);
   const [selectedStatus, setSelectedStatus] = useState(status);
   const [reopenReason, setReopenReason] = useState("");
+  const [reopenCause, setReopenCause] = useState<ReopenCause>(DEFAULT_REOPEN_CAUSE);
   const [isPending, startTransition] = useTransition();
   const menu = useActionMenu();
 
@@ -61,9 +75,9 @@ export default function TaskStatusControl({
   // Called rather than handed to the form's action so the menu can be closed
   // once the update has actually landed, instead of vanishing while it is still
   // in flight.
-  function updateStatus(next: string, reason?: string) {
+  function updateStatus(next: string, reopen?: ReopenAnswer) {
     startTransition(async () => {
-      await updateOwnTaskStatus(formDataFor(taskId, next, reason));
+      await updateOwnTaskStatus(formDataFor(taskId, next, reopen));
       menu?.close();
     });
   }
@@ -80,7 +94,10 @@ export default function TaskStatusControl({
       return;
     }
 
-    updateStatus(selectedStatus, reopening ? reopenReason : undefined);
+    updateStatus(
+      selectedStatus,
+      reopening ? { cause: reopenCause, reason: reopenReason.trim() || undefined } : undefined
+    );
   }
 
   function handleTimeSaved() {
@@ -119,6 +136,10 @@ export default function TaskStatusControl({
             </option>
           ))}
         </select>
+
+        {reopening ? (
+          <ReopenCauseField value={reopenCause} onChange={setReopenCause} />
+        ) : null}
 
         {reopening ? (
           <label className="grid gap-1">

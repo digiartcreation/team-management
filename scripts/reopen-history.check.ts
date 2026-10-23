@@ -20,11 +20,12 @@ const reopens = [
   {
     cycle: 1,
     reason: "Client wanted a different thumbnail",
+    cause: "client",
     createdAt: day("2026-09-10"),
     user: { name: "Mubarak Ali" },
   },
-  // Reopened from the task form, which has nowhere to ask for a reason.
-  { cycle: 2, reason: null, createdAt: day("2026-09-18"), user: { name: "Sara R" } },
+  // Reopened from the task form, which has nowhere to ask for a reason or cause.
+  { cycle: 2, reason: null, cause: null, createdAt: day("2026-09-18"), user: { name: "Sara R" } },
 ];
 
 const logs = [
@@ -43,6 +44,8 @@ assert.deepEqual(
   "cycles ascend"
 );
 assert.equal(history[0].reason, "Client wanted a different thumbnail");
+assert.equal(history[0].cause, "client");
+assert.equal(history[1].cause, null, "a reopen from the task form has no cause");
 assert.equal(history[0].reopenedBy, "Mubarak Ali");
 assert.equal(history[0].minutes, 150, "cycle 1 sums its own logs only");
 assert.deepEqual(
@@ -56,7 +59,7 @@ assert.equal(countReopenNotes(history), 4, "one reason plus three notes");
 
 // A task reopened today, with nothing logged against the new cycle yet.
 const fresh = buildReopenHistory(
-  [{ cycle: 1, reason: "Needs subtitles", createdAt: day("2026-09-22"), user: { name: "Mubarak Ali" } }],
+  [{ cycle: 1, reason: "Needs subtitles", cause: "team", createdAt: day("2026-09-22"), user: { name: "Mubarak Ali" } }],
   []
 );
 assert.equal(fresh.length, 1, "a cycle with no hours is still shown");

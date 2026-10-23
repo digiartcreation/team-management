@@ -20,6 +20,8 @@ export type ReopenCycleHistory = {
   cycle: number;
   /** Why the task was sent back, where whoever reopened it said so. */
   reason: string | null;
+  /** "client" or "team", where it was asked; see REOPEN_CAUSES. */
+  cause: string | null;
   reopenedBy: string | null;
   reopenedAt: Date | null;
   /** Hours logged against this cycle. */
@@ -30,6 +32,7 @@ export type ReopenCycleHistory = {
 type ReopenRow = {
   cycle: number;
   reason: string | null;
+  cause: string | null;
   createdAt: Date;
   user: { name: string } | null;
 };
@@ -56,6 +59,7 @@ export function buildReopenHistory(
       existing = {
         cycle,
         reason: null,
+        cause: null,
         reopenedBy: null,
         reopenedAt: null,
         minutes: 0,
@@ -70,6 +74,7 @@ export function buildReopenHistory(
   for (const reopen of reopens) {
     const entry = cycleFor(reopen.cycle);
     entry.reason = reopen.reason;
+    entry.cause = reopen.cause;
     entry.reopenedBy = reopen.user?.name ?? null;
     entry.reopenedAt = reopen.createdAt;
   }
