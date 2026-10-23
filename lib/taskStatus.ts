@@ -94,6 +94,29 @@ export function isOnReopenCycle(reopenCount: number) {
 }
 
 /**
+ * Whose side sent a task back, asked whenever it is reopened. Stored on the
+ * TaskReopen row as the value; the client is the usual case, so it is the
+ * default.
+ */
+export const REOPEN_CAUSES = [
+  { value: "client", label: "Because of client" },
+  { value: "team", label: "Because of us" },
+] as const;
+
+export type ReopenCause = (typeof REOPEN_CAUSES)[number]["value"];
+
+export const DEFAULT_REOPEN_CAUSE: ReopenCause = "client";
+
+export function isReopenCause(value: string | undefined | null): value is ReopenCause {
+  return REOPEN_CAUSES.some((cause) => cause.value === value);
+}
+
+/** "Because of client", or null for a reopen recorded without one. */
+export function formatReopenCause(value: string | null | undefined) {
+  return REOPEN_CAUSES.find((cause) => cause.value === value)?.label ?? null;
+}
+
+/**
  * How many days a task may sit in Completed, counted from when it was first
  * completed, before its board card is outlined in red as due to be closed.
  */

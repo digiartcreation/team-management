@@ -4,12 +4,15 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
+import ReopenCauseField from "@/components/tasks/ReopenCauseField";
 import Avatar from "@/components/ui/Avatar";
 import { formatDuration } from "@/lib/duration";
 import { formatOfficeDate } from "@/lib/officeTime";
 import {
   COMPLETED_STALE_DAYS,
+  DEFAULT_REOPEN_CAUSE,
   canMoveTo,
+  type ReopenCause,
   type TaskStatus,
 } from "@/lib/taskStatus";
 import { updateOwnTaskStatus } from "@/app/tasks/actions";
@@ -248,13 +251,20 @@ function PromptDialog({
   );
 }
 
-function statusFormData(id: string, status: TaskStatus, reopenReason?: string) {
+/** What the reopen prompt asked: whose side it was, and optionally why. */
+type ReopenAnswer = { cause: ReopenCause; reason?: string };
+
+function statusFormData(id: string, status: TaskStatus, reopen?: ReopenAnswer) {
   const formData = new FormData();
   formData.set("id", id);
   formData.set("status", status);
 
-  if (reopenReason) {
-    formData.set("reopenReason", reopenReason);
+  if (reopen) {
+    formData.set("reopenCause", reopen.cause);
+
+    if (reopen.reason) {
+      formData.set("reopenReason", reopen.reason);
+    }
   }
 
   return formData;
@@ -275,19 +285,20 @@ export default function TaskBoard({
   const [error, setError] = useState<string | null>(null);
   const [reopenPrompt, setReopenPrompt] = useState<DragCard | null>(null);
   const [reopenReason, setReopenReason] = useState("");
+  const [reopenCause, setReopenCause] = useState<ReopenCause>(DEFAULT_REOPEN_CAUSE);
   const [closePrompt, setClosePrompt] = useState<DragCard | null>(null);
   const [timePrompt, setTimePrompt] = useState<TimePrompt | null>(null);
   // Read by the save handler, which has to stay stable for the dialog's effect.
   const timePromptRef = useRef<TimePrompt | null>(null);
   timePromptRef.current = timePrompt;
 
-  function submitStatus(id: string, status: TaskStatus, reopenReason?: string) {
+  function submitStatus(id: string, status: TaskStatus, reopen?: ReopenAnswer) {
     setError(null);
     setMovingCardId(id);
 
     startTransition(async () => {
       try {
-        await updateOwnTaskStatus(statusFormData(id, status, reopenReason));
+        await updateOwnTaskStatus(statusFormData(id, status, reopen));
         router.refresh();
       } catch (submitError) {
         setError(
@@ -348,6 +359,7 @@ export default function TaskBoard({
 
       if (target === "reopened") {
         setReopenReason("");
+        setReopenCause(DEFAULT_REOPEN_CAUSE);
         setReopenPrompt(source);
         return;
       }
@@ -368,7 +380,10 @@ export default function TaskBoard({
       return;
     }
 
-    submitStatus(reopenPrompt.id, "reopened", reopenReason.trim() || undefined);
+    submitStatus(reopenPrompt.id, "reopened", {
+      cause: reopenCause,
+      reason: reopenReason.trim() || undefined,
+    });
     setReopenPrompt(null);
   }
 
@@ -588,6 +603,10 @@ export default function TaskBoard({
           <p className="mt-1 break-words text-sm text-slate-500">
             {reopenPrompt.title}
           </p>
+
+          <div className="mt-4">
+            <ReopenCauseField value={reopenCause} onChange={setReopenCause} />
+          </div>
 
           <label className="mt-4 grid gap-1">
             <span className="text-xs font-medium uppercase tracking-normal text-slate-500">

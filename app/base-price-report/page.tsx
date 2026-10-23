@@ -94,8 +94,13 @@ export default async function BasePriceReportPage({
 
   const filters = await searchParams;
   const view: GroupNoun = filters.view === "service" ? "service" : "client";
-  const from = parseDateInput(filters.from);
-  const to = parseDateInput(filters.to);
+  // With no dates chosen the report opens on this month.
+  const presets = datePresets(todayUtcMidnight());
+  const thisMonth = presets.find((preset) => preset.label === "This month")!;
+  const dates: { from?: string; to?: string } =
+    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisMonth;
+  const from = parseDateInput(dates.from);
+  const to = parseDateInput(dates.to);
 
   // Every service a task has actually been mapped to. It both fills the filter
   // and turns the chosen service back into the exact stored values, since
@@ -148,7 +153,7 @@ export default async function BasePriceReportPage({
     where.date = {
       ...(from ? { gte: from } : {}),
       // Inclusive of the chosen day, whatever time the entry carries.
-      ...(to && filters.to ? { lte: endOfDay(filters.to) } : {}),
+      ...(to && dates.to ? { lte: endOfDay(dates.to) } : {}),
     };
   }
 
@@ -289,9 +294,8 @@ export default async function BasePriceReportPage({
   }
 
   const scope = scopeParts.join(" · ");
-  const presets = datePresets(todayUtcMidnight());
   const activePreset = presets.find(
-    (preset) => preset.from === filters.from && preset.to === filters.to
+    (preset) => preset.from === dates.from && preset.to === dates.to
   );
 
   return (
@@ -335,16 +339,6 @@ export default async function BasePriceReportPage({
           </nav>
 
           <div className="flex flex-wrap gap-1.5">
-            <Link
-              href={reportHref({ ...filters, from: undefined, to: undefined })}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                !filters.from && !filters.to
-                  ? "bg-slate-900 text-white ring-slate-900"
-                  : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
-              }`}
-            >
-              All time
-            </Link>
             {presets.map((preset) => (
               <Link
                 key={preset.label}
@@ -367,12 +361,12 @@ export default async function BasePriceReportPage({
 
           <label className="grid gap-1.5">
             <span className={labelClass}>From</span>
-            <input name="from" type="date" defaultValue={filters.from ?? ""} className={inputClass} />
+            <input name="from" type="date" defaultValue={dates.from ?? ""} className={inputClass} />
           </label>
 
           <label className="grid gap-1.5">
             <span className={labelClass}>To</span>
-            <input name="to" type="date" defaultValue={filters.to ?? ""} className={inputClass} />
+            <input name="to" type="date" defaultValue={dates.to ?? ""} className={inputClass} />
           </label>
 
           <label className="grid gap-1.5">

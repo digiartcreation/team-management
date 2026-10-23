@@ -23,6 +23,7 @@ import {
   canReopenFrom,
   formatTaskStatus,
   isOnReopenCycle,
+  isReopenCause,
   isTaskStatus,
 } from "@/lib/taskStatus";
 
@@ -767,6 +768,7 @@ export async function updateOwnTaskStatus(formData: FormData) {
   const id = getValue(formData, "id");
   const status = getValue(formData, "status");
   const reopenReason = getValue(formData, "reopenReason");
+  const reopenCause = getValue(formData, "reopenCause");
 
   if (!id || !isTaskStatus(status)) {
     throw new Error("Invalid task status.");
@@ -823,6 +825,7 @@ export async function updateOwnTaskStatus(formData: FormData) {
             userId: sessionUser.id,
             cycle: reopenCycle,
             reason: reopenReason || null,
+            cause: isReopenCause(reopenCause) ? reopenCause : null,
           },
         }),
       ]);

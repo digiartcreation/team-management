@@ -26,7 +26,9 @@ export const DIGITAL_MARKETING_OPTIONS = [
 export const VIDEO_EDITING = "Video Editing";
 
 /** Effort weights a Video Editing task can carry. The first is the default. */
-export const VIDEO_WEIGHTAGE_OPTIONS = ["1", "1.5", "2", "2.5", "3"];
+export const VIDEO_WEIGHTAGE_OPTIONS = [
+  "1", "1.5", "2", "2.5", "3", "3.5", "4", "4.5", "5", "5.5", "6",
+];
 
 export const DEFAULT_VIDEO_WEIGHTAGE = VIDEO_WEIGHTAGE_OPTIONS[0];
 

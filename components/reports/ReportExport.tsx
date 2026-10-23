@@ -18,7 +18,7 @@ export type ReportExportProps = {
   groups: ReportGroup[];
   reopened: ReopenTotal[];
   /** Reopen reasons keyed "taskId:cycle". */
-  reasons: Record<string, { reason: string | null; by: string }>;
+  reasons: Record<string, { reason: string | null; cause: string | null; by: string }>;
   analytics: ReportAnalytics;
 };
 
@@ -78,6 +78,10 @@ function cycleNotes(task: ReopenTotal, reasons: ReportExportProps["reasons"]) {
       const lines = [
         `Reopen ${cycle.cycle} (${formatDuration(cycle.minutes)})${sentBack ? ` by ${sentBack.by}` : ""}`,
       ];
+
+      if (sentBack?.cause) {
+        lines.push(sentBack.cause);
+      }
 
       if (sentBack?.reason) {
         lines.push(`Reason: ${sentBack.reason}`);
