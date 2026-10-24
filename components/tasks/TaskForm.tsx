@@ -4,6 +4,7 @@ import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ClientWorkField, {
   type TaskClientOption,
 } from "@/components/tasks/ClientWorkField";
+import WatchersField from "@/components/tasks/WatchersField";
 import { TASK_STATUS_OPTIONS, allowedNextStatuses } from "@/lib/taskStatus";
 
 /**
@@ -27,6 +28,11 @@ type TaskFormProps = {
     id: string;
     name: string;
   }[];
+  /** Everyone who can be added as a watcher, from any team. */
+  watcherOptions: {
+    id: string;
+    name: string;
+  }[];
   clients: TaskClientOption[];
   /** Where a new task's save lands, when it was added from a dashboard. */
   returnTo?: string;
@@ -46,6 +52,7 @@ type TaskFormProps = {
     posterCount: number | null;
     status: string;
     priority: string;
+    watcherIds: string[];
   };
 };
 
@@ -61,6 +68,7 @@ export default function TaskForm({
   pendingLabel,
   employees,
   teams,
+  watcherOptions,
   clients,
   returnTo,
   defaultAssigneeId,
@@ -144,6 +152,11 @@ export default function TaskForm({
             </select>
           </label>
         </div>
+
+        <WatchersField
+          people={watcherOptions}
+          selectedIds={task?.watcherIds ?? []}
+        />
 
         <ClientWorkField
           clients={clients}

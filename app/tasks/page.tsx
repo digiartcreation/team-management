@@ -149,6 +149,10 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             user: { select: { name: true } },
           },
         },
+        watchers: {
+          orderBy: { createdAt: "asc" },
+          select: { user: { select: { name: true } } },
+        },
       },
     }),
     prisma.task.count({ where }),
@@ -422,6 +426,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                       </td>
                       <td className="px-4 py-4 text-slate-600">
                         {task.assignedTo?.name ?? "Unassigned"}
+                        {task.watchers.length > 0 ? (
+                          <div className="mt-1 text-xs text-slate-500">
+                            Watchers:{" "}
+                            {task.watchers
+                              .map((watcher) => watcher.user.name)
+                              .join(", ")}
+                          </div>
+                        ) : null}
                       </td>
                       <td className="px-4 py-4 text-slate-600">
                         {task.team?.name ?? "No team"}

@@ -7,7 +7,7 @@ import ActionMenu from "@/components/ui/ActionMenu";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteBasePrice } from "@/app/base-prices/actions";
 import { SECTOR_OPTIONS, getSectorDesignations } from "@/lib/designations";
-import { SERVICE_OPTIONS, formatInr } from "@/lib/services";
+import { ALL_SERVICE_OPTIONS, formatInr } from "@/lib/services";
 
 /** Orders rows the way the dropdowns list them, not alphabetically. */
 function rank(options: string[], value: string) {
@@ -42,7 +42,7 @@ export default async function BasePricesPage() {
     })
   ).sort(
     (a, b) =>
-      rank(SERVICE_OPTIONS, a.service) - rank(SERVICE_OPTIONS, b.service) ||
+      rank(ALL_SERVICE_OPTIONS, a.service) - rank(ALL_SERVICE_OPTIONS, b.service) ||
       rank(SECTOR_OPTIONS, a.sector) - rank(SECTOR_OPTIONS, b.sector) ||
       rank(getSectorDesignations(a.sector), a.designation) -
         rank(getSectorDesignations(b.sector), b.designation)

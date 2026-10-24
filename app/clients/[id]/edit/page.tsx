@@ -9,6 +9,7 @@ import {
   seedMappingsFromLegacy,
   toServiceMappings,
 } from "@/lib/clientServices";
+import { getClientPeopleSuggestions } from "@/lib/clientPeople";
 
 type EditClientPageProps = {
   params: Promise<{
@@ -33,31 +34,39 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
 
   const { id } = await params;
 
-  const client = await prisma.client.findUnique({
-    where: { id },
-    select: {
-      id: true,
-      name: true,
-      contactPerson: true,
-      email: true,
-      phone: true,
-      services: true,
-      status: true,
-      notes: true,
-      serviceMappings: {
-        orderBy: { service: "asc" },
-        select: {
-          service: true,
-          focus: true,
-          paymentType: true,
-          percentage: true,
-          packageAmount: true,
-          perUnitAmount: true,
-          billingCycle: true,
+  const [client, people] = await Promise.all([
+    prisma.client.findUnique({
+      where: { id },
+      select: {
+        id: true,
+        name: true,
+        contactPerson: true,
+        owner: true,
+        communicationPerson: true,
+        email: true,
+        phone: true,
+        services: true,
+        status: true,
+        notes: true,
+        serviceMappings: {
+          orderBy: { service: "asc" },
+          select: {
+            service: true,
+            focus: true,
+            paymentType: true,
+            percentage: true,
+            packageAmount: true,
+            perUnitAmount: true,
+            billingCycle: true,
+          },
+        },
+        sop: {
+          select: { fileName: true, size: true },
         },
       },
-    },
-  });
+    }),
+    getClientPeopleSuggestions(),
+  ]);
 
   if (!client) {
     notFound();
@@ -88,6 +97,7 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
         <ClientForm
           action={updateClient}
           submitLabel="Update Client"
+          people={people}
           client={{ ...client, serviceMappings }}
         />
       </div>

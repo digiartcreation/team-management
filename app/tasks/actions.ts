@@ -9,14 +9,14 @@ import { logActivity } from "@/lib/activity";
 import { createNotification } from "@/lib/notifications";
 import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import {
+  ALL_SERVICE_OPTIONS,
   DEFAULT_VIDEO_WEIGHTAGE,
   DIGITAL_MARKETING,
   POSTER_DESIGN,
-  SERVICE_OPTIONS,
   VIDEO_EDITING,
   VIDEO_WEIGHTAGE_OPTIONS,
-  formatServiceLabel,
 } from "@/lib/services";
+import { clientWorkLabels } from "@/lib/clientServices";
 import { formatDuration } from "@/lib/duration";
 import {
   canMoveTo,
@@ -242,6 +242,52 @@ async function getManagerTeamId(userId: string) {
   return user.teamId;
 }
 
+/**
+ * The watchers posted with the task form: each person once, and never the
+ * assignee, who has the task on their own board already.
+ */
+async function resolveWatcherIds(formData: FormData, assignedToId: string | null) {
+  const ids = [
+    ...new Set(
+      formData
+        .getAll("watcherIds")
+        .filter((value): value is string => typeof value === "string" && value !== "")
+    ),
+  ].filter((id) => id !== assignedToId);
+
+  if (ids.length === 0) {
+    return ids;
+  }
+
+  const found = await prisma.user.count({ where: { id: { in: ids } } });
+
+  if (found !== ids.length) {
+    throw new Error("A selected watcher was not found.");
+  }
+
+  return ids;
+}
+
+async function notifyNewWatchers(
+  watcherIds: string[],
+  previousIds: string[],
+  actorUserId: string,
+  title: string
+) {
+  const previous = new Set(previousIds);
+
+  for (const userId of watcherIds) {
+    if (!previous.has(userId) && userId !== actorUserId) {
+      await createNotification({
+        userId,
+        title: "Added as watcher",
+        message: `You were added as a watcher on: ${title}`,
+        type: "TASK_ASSIGNED",
+      });
+    }
+  }
+}
+
 function handlePrismaTaskError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2025") {
@@ -258,7 +304,7 @@ async function resolveClientMapping(
 ) {
   if (!clientId) {
     // An internal task may name any service as its work, or none at all.
-    if (clientWork && !SERVICE_OPTIONS.includes(clientWork)) {
+    if (clientWork && !ALL_SERVICE_OPTIONS.includes(clientWork)) {
       throw new Error("Selected work is not a known service.");
     }
 
@@ -278,12 +324,8 @@ async function resolveClientMapping(
     throw new Error("Client not found.");
   }
 
-  const available = client.serviceMappings.map(formatServiceLabel);
-
-  if (available.length === 0) {
-    // Nothing to map against yet; keep the client link, drop the work.
-    return { clientId, clientWork: null };
-  }
+  // Never empty: every client has the always-included services.
+  const available = clientWorkLabels(client.serviceMappings);
 
   if (!clientWork) {
     throw new Error("Select which work this task is for.");
@@ -387,6 +429,7 @@ export async function createTask(formData: FormData) {
     requestedVideoWeightage
   );
   const posterCount = resolvePosterCount(clientWork, requestedPosterCount);
+  const watcherIds = await resolveWatcherIds(formData, assignedToId);
 
   try {
     const task = await prisma.task.create({
@@ -402,6 +445,9 @@ export async function createTask(formData: FormData) {
         posterCount,
         status,
         priority,
+        watchers: {
+          create: watcherIds.map((userId) => ({ userId })),
+        },
       },
       select: { id: true },
     });
@@ -428,6 +474,7 @@ export async function createTask(formData: FormData) {
         type: "TASK_ASSIGNED",
       });
     }
+    await notifyNewWatchers(watcherIds, [], sessionUser.id, title);
   } catch (error) {
     handlePrismaTaskError(error);
   }
@@ -487,6 +534,7 @@ export async function updateTask(formData: FormData) {
     requestedVideoWeightage
   );
   const posterCount = resolvePosterCount(clientWork, requestedPosterCount);
+  const watcherIds = await resolveWatcherIds(formData, assignedToId);
 
   try {
     const previous = await prisma.task.findUnique({
@@ -497,6 +545,7 @@ export async function updateTask(formData: FormData) {
         teamId: true,
         reopenCount: true,
         completedAt: true,
+        watchers: { select: { userId: true } },
       },
     });
 
@@ -544,6 +593,11 @@ export async function updateTask(formData: FormData) {
         posterCount,
         status,
         priority,
+        // The form posts the whole list, so it replaces the saved one.
+        watchers: {
+          deleteMany: {},
+          create: watcherIds.map((userId) => ({ userId })),
+        },
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
         ...completionStamp(previous.status, status, previous.completedAt),
       },
@@ -584,6 +638,12 @@ export async function updateTask(formData: FormData) {
         type: "TASK_UPDATED",
       });
     }
+    await notifyNewWatchers(
+      watcherIds,
+      previous.watchers.map((watcher) => watcher.userId),
+      sessionUser.id,
+      title
+    );
     // Nobody needs telling about a change they made to their own task.
     if (assignedToId && assignedToId !== sessionUser.id) {
       if (assignedToId !== previous.assignedToId) {
@@ -922,19 +982,28 @@ function parseLogDate(raw: string) {
 
 /**
  * Anyone on the team that owns the task may log against it, not just the
- * assignee. Tasks with no team fall back to the assignee, so a personal task
- * is not left unloggable.
+ * assignee, and so may its watchers, whatever their team. Tasks with no team
+ * fall back to the assignee and watchers, so a personal task is not left
+ * unloggable.
  */
 async function canLogTaskTime(
   userId: string,
   role: string | undefined,
-  task: { teamId: string | null; assignedToId: string | null }
+  task: { id: string; teamId: string | null; assignedToId: string | null }
 ) {
   if (role === "admin") {
     return true;
   }
 
   if (task.assignedToId === userId) {
+    return true;
+  }
+
+  const watching = await prisma.taskWatcher.count({
+    where: { taskId: task.id, userId },
+  });
+
+  if (watching > 0) {
     return true;
   }
 
@@ -1005,6 +1074,7 @@ export async function logTaskTime(
   const task = await prisma.task.findUnique({
     where: { id: taskId },
     select: {
+      id: true,
       title: true,
       teamId: true,
       assignedToId: true,

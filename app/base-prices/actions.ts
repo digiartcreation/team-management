@@ -7,7 +7,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { isDesignationInSector, isSector } from "@/lib/designations";
-import { SERVICE_OPTIONS } from "@/lib/services";
+import { ALL_SERVICE_OPTIONS } from "@/lib/services";
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -56,7 +56,7 @@ function readBasePrice(formData: FormData) {
   const designation = getValue(formData, "designation");
   const basePrice = getValue(formData, "basePrice");
 
-  if (!SERVICE_OPTIONS.includes(service)) {
+  if (!ALL_SERVICE_OPTIONS.includes(service)) {
     throw new Error("Choose a service.");
   }
 

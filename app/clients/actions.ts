@@ -8,6 +8,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { CLIENT_STATUS_OPTIONS } from "@/lib/services";
 import { parseServiceMappings } from "@/lib/clientServices";
+import { readSopUpload } from "@/lib/uploads";
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -58,6 +59,8 @@ export async function createClient(formData: FormData) {
 
   const name = getValue(formData, "name");
   const contactPerson = getValue(formData, "contactPerson");
+  const owner = getValue(formData, "owner");
+  const communicationPerson = getValue(formData, "communicationPerson");
   const email = getValue(formData, "email");
   const phone = getValue(formData, "phone");
   const notes = getValue(formData, "notes");
@@ -68,11 +71,15 @@ export async function createClient(formData: FormData) {
     throw new Error("Client name is required.");
   }
 
+  const sop = await readSopUpload(formData.get("sop"));
+
   try {
     const client = await prisma.client.create({
       data: {
         name,
         contactPerson: contactPerson || null,
+        owner: owner || null,
+        communicationPerson: communicationPerson || null,
         email: email || null,
         phone: phone || null,
         status,
@@ -81,6 +88,9 @@ export async function createClient(formData: FormData) {
         serviceMappings: {
           create: serviceMappings,
         },
+        ...(sop
+          ? { sop: { create: { ...sop, uploadedById: sessionUser.id } } }
+          : {}),
       },
       select: {
         id: true,
@@ -108,26 +118,35 @@ export async function updateClient(formData: FormData) {
   const id = getValue(formData, "id");
   const name = getValue(formData, "name");
   const contactPerson = getValue(formData, "contactPerson");
+  const owner = getValue(formData, "owner");
+  const communicationPerson = getValue(formData, "communicationPerson");
   const email = getValue(formData, "email");
   const phone = getValue(formData, "phone");
   const notes = getValue(formData, "notes");
   const serviceMappings = parseServiceMappings(formData);
   const status = getStatus(formData);
+  // A newly picked file replaces the SOP; ticking Remove with none picked
+  // deletes it; doing neither leaves the saved one alone.
+  const removeSop = getValue(formData, "removeSop") === "on";
 
   if (!id || !name) {
     throw new Error("Client name is required.");
   }
 
+  const sop = await readSopUpload(formData.get("sop"));
+
   try {
     // Replace the mapping wholesale in one transaction: a service can be
     // unticked, and its payment terms must not survive as an orphan row.
-    await prisma.$transaction([
+    const operations: Prisma.PrismaPromise<unknown>[] = [
       prisma.clientService.deleteMany({ where: { clientId: id } }),
       prisma.client.update({
         where: { id },
         data: {
           name,
           contactPerson: contactPerson || null,
+          owner: owner || null,
+          communicationPerson: communicationPerson || null,
           email: email || null,
           phone: phone || null,
           status,
@@ -137,7 +156,21 @@ export async function updateClient(formData: FormData) {
           },
         },
       }),
-    ]);
+    ];
+
+    if (sop) {
+      operations.push(
+        prisma.clientSop.upsert({
+          where: { clientId: id },
+          create: { ...sop, clientId: id, uploadedById: sessionUser.id },
+          update: { ...sop, uploadedById: sessionUser.id },
+        })
+      );
+    } else if (removeSop) {
+      operations.push(prisma.clientSop.deleteMany({ where: { clientId: id } }));
+    }
+
+    await prisma.$transaction(operations);
 
     await logActivity({
       userId: sessionUser.id,
@@ -152,6 +185,32 @@ export async function updateClient(formData: FormData) {
 
   revalidatePath("/clients");
   redirect("/clients");
+}
+
+/** Takes the SOP off a client, leaving the client itself as it is. */
+export async function deleteClientSop(clientId: string) {
+  const sessionUser = await requireAdmin();
+
+  const client = await prisma.client.findUnique({
+    where: { id: clientId },
+    select: { name: true },
+  });
+
+  if (!client) {
+    throw new Error("Client not found.");
+  }
+
+  await prisma.clientSop.deleteMany({ where: { clientId } });
+
+  await logActivity({
+    userId: sessionUser.id,
+    action: "deleted",
+    entityType: "client",
+    entityId: clientId,
+    description: `Deleted the SOP of client ${client.name}`,
+  });
+
+  revalidatePath("/clients");
 }
 
 export async function deleteClient(id: string) {

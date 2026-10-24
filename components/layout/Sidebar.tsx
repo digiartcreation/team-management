@@ -20,6 +20,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      { label: "Documentation", href: "/documentation" },
     ];
   }
 
@@ -34,6 +35,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      { label: "Documentation", href: "/documentation" },
     ];
   }
 
@@ -51,6 +53,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Reports", href: "/reports" },
     { label: "Activity", href: "/activity" },
     { label: "Search", href: "/search" },
+    { label: "Documentation", href: "/documentation" },
   ];
 
   // Straight after Attendance, the report before the prices it reads.

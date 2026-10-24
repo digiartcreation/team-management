@@ -166,6 +166,38 @@ function toBoardCard(task: BoardTask): BoardCard {
   };
 }
 
+/** A task in someone's Watching section: a board card that names its status. */
+export type WatchedCard = BoardCard & {
+  status: string;
+  statusLabel: string;
+};
+
+/** How many watched tasks the dashboard lists, most recently touched first. */
+const WATCHING_LIMIT = 30;
+
+/**
+ * The tasks a person has been added to as a watcher, for the Watching section
+ * of their dashboard. Closed tasks are left out: time cannot be logged on them,
+ * and logging time is what the section is for.
+ */
+export async function loadWatchedTasks(userId: string): Promise<WatchedCard[]> {
+  const tasks = await prisma.task.findMany({
+    where: {
+      watchers: { some: { userId } },
+      status: { not: "closed" },
+    },
+    orderBy: { updatedAt: "desc" },
+    take: WATCHING_LIMIT,
+    select: BOARD_CARD_SELECT,
+  });
+
+  return tasks.map((task) => ({
+    ...toBoardCard(task),
+    status: task.status,
+    statusLabel: formatTaskStatus(task.status),
+  }));
+}
+
 /** One person's board, for the admin dashboard's board-per-member view. */
 export type BoardGroup = {
   /** The assignee's id, or "unassigned". */
