@@ -1,12 +1,11 @@
 import { prisma } from "@/lib/prisma";
 
 /**
- * Names offered while typing a client's Owner or Communication Person. Only a
- * suggestion: the fields stay free text, so someone outside the team can be
- * named too. One person can hold more than one account (one per role), hence
- * the de-duplication.
+ * Everyone who can be picked as a client's Owner or Communication Person, by
+ * name, since that is what the client keeps. One person can hold more than
+ * one account (one per role), hence the de-duplication.
  */
-export async function getClientPeopleSuggestions() {
+export async function getClientPeopleOptions() {
   const users = await prisma.user.findMany({
     orderBy: { name: "asc" },
     select: { name: true },

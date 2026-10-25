@@ -100,7 +100,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
   // Need the task itself, so they cannot join the Promise.all above.
   const [clients, watcherOptions] = await Promise.all([
     getTaskClientOptions(task.clientId),
-    getWatcherOptions(watcherIds),
+    getWatcherOptions(),
   ]);
 
   return (

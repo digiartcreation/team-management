@@ -262,26 +262,35 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                           )}
                         </td>
                         <td className="px-4 py-4 text-slate-600">
+                          {client.sopContent ? (
+                            <Link
+                              href={`/clients/${client.id}/sop`}
+                              className="font-medium text-[#770FC2] hover:underline"
+                            >
+                              View SOP
+                            </Link>
+                          ) : null}
                           {client.sop ? (
-                            <>
+                            <div className={client.sopContent ? "mt-1.5" : undefined}>
                               <a
                                 href={`/api/clients/${client.id}/sop`}
                                 target="_blank"
                                 rel="noreferrer"
                                 title={client.sop.fileName}
-                                className="block max-w-48 truncate font-medium text-[#770FC2] hover:underline"
+                                className="block max-w-48 truncate text-xs font-medium text-[#770FC2] hover:underline"
                               >
                                 {client.sop.fileName}
                               </a>
-                              <div className="mt-1 text-xs text-slate-500">
+                              <div className="mt-0.5 text-xs text-slate-500">
                                 {formatFileSize(client.sop.size)}
                               </div>
-                            </>
-                          ) : (
+                            </div>
+                          ) : null}
+                          {!client.sopContent && !client.sop ? (
                             <span className="text-xs text-slate-400">
                               No SOP
                             </span>
-                          )}
+                          ) : null}
                         </td>
                         <td className="px-4 py-4">
                           <span
@@ -308,12 +317,20 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                             >
                               Edit
                             </Link>
+                            {client.sopContent || client.sop ? (
+                              <Link
+                                href={`/clients/${client.id}/sop`}
+                                className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+                              >
+                                View SOP
+                              </Link>
+                            ) : null}
                             {client.sop ? (
                               <DeleteMenuAction
                                 id={client.id}
                                 action={deleteClientSop}
-                                label="Delete SOP"
-                                message="Are you sure you want to delete this client’s SOP?"
+                                label="Delete SOP file"
+                                message="Are you sure you want to delete this client’s uploaded SOP file? The SOP text stays."
                               />
                             ) : null}
                             <DeleteMenuAction

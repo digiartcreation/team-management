@@ -8,6 +8,7 @@ import {
   canManageDocumentation,
   sanitizeDocumentationHtml,
 } from "@/lib/documentation";
+import { formatFileSize, isImageType } from "@/lib/uploads";
 import "ckeditor5/ckeditor5-content.css";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -50,6 +51,9 @@ export default async function DocumentationViewPage({
         createdAt: true,
         updatedAt: true,
         createdBy: { select: { name: true } },
+        attachment: {
+          select: { fileName: true, mimeType: true, size: true },
+        },
       },
     }),
     prisma.documentation.findMany({
@@ -136,6 +140,44 @@ export default async function DocumentationViewPage({
               className="ck-content doc-content mt-6"
               dangerouslySetInnerHTML={{ __html: html }}
             />
+
+            {doc.attachment ? (
+              <section className="mt-8 border-t border-slate-200 pt-5">
+                <h2 className="text-xs font-semibold uppercase tracking-wide text-slate-500">
+                  Attachment
+                </h2>
+                {isImageType(doc.attachment.mimeType) ? (
+                  <a
+                    href={`/api/documentation/${doc.id}/attachment`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="mt-3 block w-fit max-w-full"
+                  >
+                    {/* Served from the database with the session cookie, so
+                        next/image's optimiser cannot fetch it. */}
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={`/api/documentation/${doc.id}/attachment`}
+                      alt={doc.attachment.fileName}
+                      className="max-h-[32rem] max-w-full rounded-md border border-slate-200"
+                    />
+                  </a>
+                ) : null}
+                <p className="mt-3 text-sm">
+                  <a
+                    href={`/api/documentation/${doc.id}/attachment`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="break-all font-medium text-[#770FC2] hover:underline"
+                  >
+                    {doc.attachment.fileName}
+                  </a>
+                  <span className="ml-2 text-xs text-slate-500">
+                    {formatFileSize(doc.attachment.size)}
+                  </span>
+                </p>
+              </section>
+            ) : null}
           </article>
         </div>
       </div>

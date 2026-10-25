@@ -191,10 +191,11 @@
 }
 
 /*
-  Documentation pages, both in the editor and when read. Tailwind's reset takes
-  heading sizes and list markers away, and CKEditor's content styles leave
-  those to the browser, so they are put back here. Unlayered and two classes
-  deep, so they win over the reset and match CKEditor's own rules.
+  Documentation pages and client SOPs, both in the editor and when read.
+  Tailwind's reset takes heading sizes and list markers away, and CKEditor's
+  content styles leave those to the browser, so they are put back here.
+  Unlayered and two classes deep, so they win over the reset and match
+  CKEditor's own rules.
 */
 :is(.doc-editor .ck-content, .ck-content.doc-content) {
   font-family: inherit;

@@ -2,6 +2,7 @@
 
 import { revalidatePath } from "next/cache";
 import { redirect } from "next/navigation";
+import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
@@ -10,6 +11,7 @@ import {
   hasDocumentationContent,
   sanitizeDocumentationHtml,
 } from "@/lib/documentation";
+import { readUpload, type FileUpload } from "@/lib/uploads";
 
 /** The title column is a VARCHAR(191). */
 const MAX_TITLE_LENGTH = 191;
@@ -41,9 +43,12 @@ async function getSessionUser() {
   return sessionUser as typeof sessionUser & { id: string };
 }
 
-function readPage(
+async function readPage(
   formData: FormData
-): { error: string } | { title: string; content: string } {
+): Promise<
+  | { error: string }
+  | { title: string; content: string; attachment: FileUpload | null }
+> {
   const title = getValue(formData, "title");
   const content = sanitizeDocumentationHtml(getValue(formData, "content"));
 
@@ -61,7 +66,15 @@ function readPage(
     return { error: "Write something on the page before saving it." };
   }
 
-  return { title, content };
+  try {
+    const attachment = await readUpload("attachment", formData.get("attachment"));
+    return { title, content, attachment };
+  } catch (error) {
+    return {
+      error:
+        error instanceof Error ? error.message : "Could not read the attachment.",
+    };
+  }
 }
 
 export async function createDocumentation(
@@ -69,7 +82,7 @@ export async function createDocumentation(
   formData: FormData
 ): Promise<DocumentationFormState> {
   const sessionUser = await getSessionUser();
-  const page = readPage(formData);
+  const page = await readPage(formData);
 
   if ("error" in page) {
     return { error: page.error };
@@ -83,6 +96,13 @@ export async function createDocumentation(
         title: page.title,
         content: page.content,
         createdById: sessionUser.id,
+        ...(page.attachment
+          ? {
+              attachment: {
+                create: { ...page.attachment, uploadedById: sessionUser.id },
+              },
+            }
+          : {}),
       },
       select: { id: true },
     });
@@ -109,7 +129,10 @@ export async function updateDocumentation(
 ): Promise<DocumentationFormState> {
   const sessionUser = await getSessionUser();
   const id = getValue(formData, "id");
-  const page = readPage(formData);
+  const page = await readPage(formData);
+  // A newly picked file replaces the attachment; ticking Remove with none
+  // picked deletes it; doing neither leaves the saved one alone.
+  const removeAttachment = getValue(formData, "removeAttachment") === "on";
 
   if ("error" in page) {
     return { error: page.error };
@@ -129,10 +152,32 @@ export async function updateDocumentation(
   }
 
   try {
-    await prisma.documentation.update({
-      where: { id },
-      data: { title: page.title, content: page.content },
-    });
+    const operations: Prisma.PrismaPromise<unknown>[] = [
+      prisma.documentation.update({
+        where: { id },
+        data: { title: page.title, content: page.content },
+      }),
+    ];
+
+    if (page.attachment) {
+      const file = { ...page.attachment, uploadedById: sessionUser.id };
+
+      operations.push(
+        prisma.documentationAttachment.upsert({
+          where: { documentationId: id },
+          create: { ...file, documentationId: id },
+          update: file,
+        })
+      );
+    } else if (removeAttachment) {
+      operations.push(
+        prisma.documentationAttachment.deleteMany({
+          where: { documentationId: id },
+        })
+      );
+    }
+
+    await prisma.$transaction(operations);
 
     await logActivity({
       userId: sessionUser.id,
@@ -167,6 +212,7 @@ export async function deleteDocumentation(id: string) {
   }
 
   // Its images stay: the same upload can have been pasted into another page.
+  // Its attachment belongs to it alone and goes with it.
   await prisma.documentation.delete({ where: { id } });
 
   await logActivity({

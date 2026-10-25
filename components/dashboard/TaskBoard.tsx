@@ -36,8 +36,17 @@ type TaskBoardProps = {
   groups?: BoardGroup[];
   /** Today as "YYYY-MM-DD", for the log time dialog. */
   today: string;
-  /** The dashboard the board sits on, so an added task comes back to it. */
-  dashboardPath: "/" | "/manager" | "/member";
+  /**
+   * The dashboard the board sits on, so an added task comes back to it. Left
+   * out on the Watching board, which has no Add Task.
+   */
+  dashboardPath?: "/" | "/manager" | "/member";
+  /**
+   * Tasks the viewer watches rather than works on. Their status is the
+   * assignee's to move, so the cards do not drag; every card has Log time
+   * instead, and says whose task it is.
+   */
+  watching?: boolean;
 };
 
 /** The card currently being dragged, and the column it started in. */
@@ -108,6 +117,7 @@ function Card({
   moving,
   onDragStart,
   onDragEnd,
+  watching = false,
   showCompletedAt = false,
   actions = [],
 }: {
@@ -116,18 +126,21 @@ function Card({
   moving: boolean;
   onDragStart: (event: React.DragEvent<HTMLElement>) => void;
   onDragEnd: () => void;
+  /** On the Watching board: not draggable, and names the assignee. */
+  watching?: boolean;
   /** The first completion date, shown on the Completed column only. */
   showCompletedAt?: boolean;
   /**
    * The buttons along the foot of the card: Log time and Close on completed
    * work. None on the other columns -- their time is logged when the card is
-   * dragged to Completed, or from Task Management.
+   * dragged to Completed, or from Task Management. Every card on the Watching
+   * board has Log time.
    */
   actions?: { label: string; onClick: () => void }[];
 }) {
   return (
     <article
-      draggable={!moving}
+      draggable={!moving && !watching}
       onDragStart={onDragStart}
       onDragEnd={onDragEnd}
       className={`rounded-md border border-l-4 bg-white p-3 shadow-sm transition ${
@@ -135,7 +148,13 @@ function Card({
         card.completedStale
           ? "border-red-500 ring-1 ring-red-200"
           : `border-slate-200 ${edge}`
-      } ${moving ? "opacity-50" : "cursor-grab active:cursor-grabbing"}`}
+      } ${
+        moving
+          ? "opacity-50"
+          : watching
+            ? ""
+            : "cursor-grab active:cursor-grabbing"
+      }`}
     >
       <h3 className="break-words text-sm font-medium leading-snug text-slate-950">
         {card.title}
@@ -151,8 +170,20 @@ function Card({
         <span className="min-w-0 truncate text-xs text-slate-500">
           {card.clientName ?? "Internal"}
         </span>
-        <Avatar name={card.assigneeName} />
+        {watching ? null : <Avatar name={card.assigneeName} />}
       </div>
+
+      {/* Someone else's task, so whose it is is spelled out. */}
+      {watching ? (
+        <div className="mt-2 flex items-center gap-2">
+          <Avatar name={card.assigneeName} />
+          <span className="min-w-0 truncate text-xs font-medium text-slate-700">
+            {card.assigneeName
+              ? `Assigned to ${card.assigneeName}`
+              : "Unassigned"}
+          </span>
+        </div>
+      ) : null}
 
       {showCompletedAt && card.completedAt ? (
         <p
@@ -195,7 +226,11 @@ function Card({
       </div>
 
       {actions.length > 0 ? (
-        <div className="mt-3 grid grid-cols-2 gap-2">
+        <div
+          className={`mt-3 grid gap-2 ${
+            actions.length > 1 ? "grid-cols-2" : "grid-cols-1"
+          }`}
+        >
           {actions.map((action) => (
             <button
               key={action.label}
@@ -277,6 +312,7 @@ export default function TaskBoard({
   groups,
   today,
   dashboardPath,
+  watching = false,
 }: TaskBoardProps) {
   const router = useRouter();
   const [, startTransition] = useTransition();
@@ -459,9 +495,10 @@ export default function TaskBoard({
                         moving={movingCardId === card.id}
                         onDragStart={handleDragStart(card, column.status, group)}
                         onDragEnd={() => setDragCard(null)}
+                        watching={watching}
                         showCompletedAt={column.status === "completed"}
                         actions={
-                          column.status === "completed"
+                          watching
                             ? [
                                 {
                                   label: "Log time",
@@ -473,23 +510,39 @@ export default function TaskBoard({
                                       reopenCount: card.reopenCount,
                                       group,
                                       completing: false,
-                                      timeOnly: true,
                                       logs: card.timeLogs,
                                     }),
                                 },
-                                {
-                                  label: "Close",
-                                  onClick: () =>
-                                    setClosePrompt({
-                                      id: card.id,
-                                      title: card.title,
-                                      status: column.status,
-                                      reopenCount: card.reopenCount,
-                                      group,
-                                    }),
-                                },
                               ]
-                            : undefined
+                            : column.status === "completed"
+                              ? [
+                                  {
+                                    label: "Log time",
+                                    onClick: () =>
+                                      setTimePrompt({
+                                        id: card.id,
+                                        title: card.title,
+                                        status: column.status,
+                                        reopenCount: card.reopenCount,
+                                        group,
+                                        completing: false,
+                                        timeOnly: true,
+                                        logs: card.timeLogs,
+                                      }),
+                                  },
+                                  {
+                                    label: "Close",
+                                    onClick: () =>
+                                      setClosePrompt({
+                                        id: card.id,
+                                        title: card.title,
+                                        status: column.status,
+                                        reopenCount: card.reopenCount,
+                                        group,
+                                      }),
+                                  },
+                                ]
+                              : undefined
                         }
                       />
                     ))
@@ -515,20 +568,22 @@ export default function TaskBoard({
           <h2 className="text-lg font-semibold text-slate-950">{heading}</h2>
           <p className="mt-1 text-sm text-slate-500">{description}</p>
         </div>
-        <div className="flex items-center gap-4">
-          <Link
-            href="/tasks"
-            className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
-          >
-            View all
-          </Link>
-          <Link
-            href={`/tasks/new?from=${encodeURIComponent(dashboardPath)}`}
-            className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-          >
-            Add Task
-          </Link>
-        </div>
+        {dashboardPath ? (
+          <div className="flex items-center gap-4">
+            <Link
+              href="/tasks"
+              className="text-sm font-medium text-slate-600 transition hover:text-slate-950"
+            >
+              View all
+            </Link>
+            <Link
+              href={`/tasks/new?from=${encodeURIComponent(dashboardPath)}`}
+              className="inline-flex items-center justify-center rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
+            >
+              Add Task
+            </Link>
+          </div>
+        ) : null}
       </div>
 
       {error ? (

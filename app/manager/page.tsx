@@ -3,9 +3,9 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
-import WatchingTasks from "@/components/dashboard/WatchingTasks";
+import WatchingBoard from "@/components/dashboard/WatchingBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { loadTaskBoard, loadWatchedTasks } from "@/lib/taskBoard";
+import { loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
 
 // Only used by the welcome header, which is commented out for now.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -34,7 +34,7 @@ export default async function ManagerDashboardPage() {
   }
 
   // A manager can be added as a watcher on any team’s task, team or not.
-  const watched = await loadWatchedTasks(sessionUser.id ?? "__no_user__");
+  const watched = await loadWatchedBoard(sessionUser.id ?? "__no_user__");
 
   const manager = await prisma.user.findUnique({
     where: { id: sessionUser.id },
@@ -76,7 +76,7 @@ export default async function ManagerDashboardPage() {
               You are not assigned to a team yet.
             </p>
           </section>
-          <WatchingTasks cards={watched} today={todayInputValue()} />
+          <WatchingBoard columns={watched} today={todayInputValue()} />
         </div>
       </DashboardLayout>
     );
@@ -151,7 +151,7 @@ export default async function ManagerDashboardPage() {
           dashboardPath="/manager"
         />
 
-        <WatchingTasks cards={watched} today={todayInputValue()} />
+        <WatchingBoard columns={watched} today={todayInputValue()} />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard

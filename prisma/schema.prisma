@@ -42,7 +42,8 @@ model User {
   clientSops           ClientSop[]
   documentations       Documentation[]
   documentationImages  DocumentationImage[]
-  team                 Team?              @relation(fields: [teamId], references: [id])
+  documentationAttachments DocumentationAttachment[]
+  team                Team?              @relation(fields: [teamId], references: [id])
 
   @@index([teamId], map: "User_teamId_fkey")
   @@unique([email, role])
@@ -62,9 +63,10 @@ model Client {
   id            String   @id @default(cuid())
   name          String   @unique
   contactPerson String?
-  /// Who owns the client relationship. Free text, like contactPerson.
+  /// Who owns the client relationship: an employee's name, picked on the client
+  /// form. Kept as text, so a name saved before the picker stays as it was.
   owner         String?
-  /// Who handles day-to-day communication with the client. Free text.
+  /// Who handles day-to-day communication with the client. Same as owner.
   communicationPerson String?
   email         String?
   phone         String?
@@ -74,21 +76,26 @@ model Client {
   services      String?  @db.Text
   status        String   @default("Active")
   notes         String?  @db.Text
+  /// The SOP written in the editor on the client form, as HTML sanitised on
+  /// save (lib/documentation.ts). Null when none was written.
+  sopContent    String?  @db.LongText
   createdById   String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   tasks         Task[]
   serviceMappings ClientService[]
+  /// The file uploaded alongside the SOP, if any.
   sop           ClientSop?
 
   @@index([createdById], map: "Client_createdById_fkey")
   @@index([status])
 }
 
-/// The client's SOP document, uploaded from the client form. Kept in its own
-/// table rather than as a column on Client so listing clients never drags the
-/// file's bytes along. Served by app/api/clients/[id]/sop.
+/// The file uploaded with a client's SOP, from the client form's File Upload
+/// field (the SOP's text is Client.sopContent). Kept in its own table rather
+/// than as a column on Client so listing clients never drags the file's bytes
+/// along. Served by app/api/clients/[id]/sop.
 model ClientSop {
   id           String   @id @default(cuid())
   clientId     String   @unique
@@ -453,8 +460,31 @@ model Documentation {
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  attachment  DocumentationAttachment?
 
   @@index([createdById], map: "Documentation_createdById_fkey")
+}
+
+/// The one file a documentation page can carry, of any type: an image or a
+/// PDF opens in the browser, anything else downloads. Its own table, like
+/// ClientSop, so listing pages never loads the bytes. Served by
+/// app/api/documentation/[id]/attachment.
+model DocumentationAttachment {
+  id              String        @id @default(cuid())
+  documentationId String        @unique
+  fileName        String
+  /// Decided on upload (lib/uploads.ts), never the browser's word.
+  mimeType        String
+  size            Int
+  data            Bytes
+  /// Null once the uploader's account is deleted; the file stays on the page.
+  uploadedById    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  documentation   Documentation @relation(fields: [documentationId], references: [id], onDelete: Cascade)
+  uploadedBy      User?         @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([uploadedById], map: "DocumentationAttachment_uploadedById_fkey")
 }
 
 /// An image uploaded from the documentation editor. Stored in the database, not

@@ -28,7 +28,13 @@ export default async function EditDocumentationPage({
   const { id } = await params;
   const doc = await prisma.documentation.findUnique({
     where: { id },
-    select: { id: true, title: true, content: true, createdById: true },
+    select: {
+      id: true,
+      title: true,
+      content: true,
+      createdById: true,
+      attachment: { select: { fileName: true, size: true } },
+    },
   });
 
   if (!doc) {
@@ -59,7 +65,12 @@ export default async function EditDocumentationPage({
           submitLabel="Save Changes"
           pendingLabel="Saving..."
           cancelHref={`/documentation/${doc.id}`}
-          page={{ id: doc.id, title: doc.title, content: doc.content }}
+          page={{
+            id: doc.id,
+            title: doc.title,
+            content: doc.content,
+            attachment: doc.attachment,
+          }}
         />
       </div>
     </DashboardLayout>

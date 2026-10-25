@@ -1,18 +1,12 @@
 import { prisma } from "@/lib/prisma";
-import { ADMIN_ROLES, formatRole } from "@/lib/roles";
+import { formatRole } from "@/lib/roles";
 
 /**
- * Everyone who can be added as a watcher: employees and managers from every
- * team. Admins are left out -- they see and can log time on every task
- * already. Anyone in `keepIds` stays listed whatever their role, so re-saving a
- * task never quietly drops a watcher it already has.
+ * Everyone who can be added as a watcher: every user, from every team and in
+ * every role, admins included.
  */
-export async function getWatcherOptions(keepIds: string[] = []) {
+export async function getWatcherOptions() {
   const people = await prisma.user.findMany({
-    where:
-      keepIds.length > 0
-        ? { OR: [{ role: { notIn: ADMIN_ROLES } }, { id: { in: keepIds } }] }
-        : { role: { notIn: ADMIN_ROLES } },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
   });

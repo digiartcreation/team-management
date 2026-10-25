@@ -4,7 +4,7 @@ import { auth } from "@/auth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ClientForm from "@/components/clients/ClientForm";
 import { createClient } from "@/app/clients/actions";
-import { getClientPeopleSuggestions } from "@/lib/clientPeople";
+import { getClientPeopleOptions } from "@/lib/clientPeople";
 
 export default async function NewClientPage() {
   const session = await auth();
@@ -21,7 +21,7 @@ export default async function NewClientPage() {
     redirect("/");
   }
 
-  const people = await getClientPeopleSuggestions();
+  const people = await getClientPeopleOptions();
 
   return (
     <DashboardLayout>

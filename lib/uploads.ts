@@ -1,8 +1,9 @@
 /**
- * Files people upload: a client's SOP document and the images in documentation
- * pages. Both are kept in the database (see ClientSop and DocumentationImage in
- * prisma/schema.prisma) and only ever served with a type decided here, never
- * the one the browser claimed, so an upload cannot pass itself off as a page.
+ * Files people upload: a client's SOP file, and a documentation page's images
+ * and attachment. All are kept in the database (see ClientSop,
+ * DocumentationImage and DocumentationAttachment in prisma/schema.prisma) and
+ * only ever served with a type decided here, never the one the browser
+ * claimed, so an upload cannot pass itself off as a page.
  *
  * The size limits sit under next.config.ts's serverActions.bodySizeLimit and
  * middlewareClientMaxBodySize, which have to stay above them.
@@ -11,6 +12,14 @@
 export const MAX_SOP_BYTES = 10 * 1024 * 1024;
 
 export const MAX_IMAGE_BYTES = 5 * 1024 * 1024;
+
+export const MAX_ATTACHMENT_BYTES = 10 * 1024 * 1024;
+
+/**
+ * The file fields: a client's SOP file, held to the document types below, and
+ * a documentation page's attachment, which may be anything.
+ */
+export type UploadKind = "sop" | "attachment";
 
 /** What an SOP may be, by extension. */
 const SOP_TYPES: Record<string, string> = {
@@ -25,10 +34,16 @@ const SOP_TYPES: Record<string, string> = {
   txt: "text/plain",
 };
 
-/** For the file input's accept attribute: ".pdf,.doc,.docx,...". */
-export const SOP_ACCEPT = Object.keys(SOP_TYPES)
-  .map((extension) => `.${extension}`)
-  .join(",");
+/**
+ * For the file input's accept attribute: ".pdf,.doc,.docx,..." for an SOP
+ * file, and no filter for an attachment.
+ */
+export const UPLOAD_ACCEPT: Record<UploadKind, string | undefined> = {
+  sop: Object.keys(SOP_TYPES)
+    .map((extension) => `.${extension}`)
+    .join(","),
+  attachment: undefined,
+};
 
 /** "PDF, DOC, DOCX, ..." for the hint under the file input. */
 export const SOP_TYPE_LABEL = Object.keys(SOP_TYPES)
@@ -46,17 +61,19 @@ function extensionOf(fileName: string) {
  */
 function cleanFileName(fileName: string) {
   const base = fileName.split(/[\\/]/).pop() ?? "";
-  const cleaned = base.replace(/[\u0000-\u001f\u007f"]/g, "").trim();
+  const cleaned = base.replace(/[\u0000-\u001f\u007f"]/g, "").trim() || "file";
 
   if (cleaned.length <= 150) {
     return cleaned;
   }
 
   const extension = extensionOf(cleaned);
-  return `${cleaned.slice(0, 140)}.${extension}`;
+  return extension
+    ? `${cleaned.slice(0, 140)}.${extension}`
+    : cleaned.slice(0, 150);
 }
 
-export type SopUpload = {
+export type FileUpload = {
   fileName: string;
   mimeType: string;
   size: number;
@@ -64,49 +81,85 @@ export type SopUpload = {
 };
 
 /**
- * The SOP picked on the client form, or null when none was. A file input left
- * empty still posts an empty, nameless file, which counts as none.
+ * What is wrong with a picked file, or null when it will do. Shared by the
+ * server and the file input (components/ui/FileInput), which says so the
+ * moment the file is picked -- in a production build the server's own message
+ * never reaches the page.
  */
-/**
- * What is wrong with a file picked as an SOP, or null when it will do. Shared
- * by the server and the file input (components/clients/SopFileInput), which
- * says so the moment the file is picked -- in a production build the server's
- * own message never reaches the page.
- */
-export function sopFileProblem(fileName: string, size: number) {
-  if (!SOP_TYPES[extensionOf(cleanFileName(fileName))]) {
-    return `The SOP must be one of: ${SOP_TYPE_LABEL}.`;
+export function uploadProblem(kind: UploadKind, fileName: string, size: number) {
+  if (kind === "sop") {
+    if (!SOP_TYPES[extensionOf(cleanFileName(fileName))]) {
+      return `The file must be one of: ${SOP_TYPE_LABEL}.`;
+    }
+
+    if (size > MAX_SOP_BYTES) {
+      return `The file must be ${formatFileSize(MAX_SOP_BYTES)} or smaller.`;
+    }
+
+    return null;
   }
 
-  if (size > MAX_SOP_BYTES) {
-    return `The SOP must be ${formatFileSize(MAX_SOP_BYTES)} or smaller.`;
+  if (size > MAX_ATTACHMENT_BYTES) {
+    return `The attachment must be ${formatFileSize(MAX_ATTACHMENT_BYTES)} or smaller.`;
   }
 
   return null;
 }
 
-export async function readSopUpload(
+/**
+ * The file picked in one of the file fields, or null when none was. A file
+ * input left empty still posts an empty, nameless file, which counts as none.
+ */
+export async function readUpload(
+  kind: UploadKind,
   value: FormDataEntryValue | null
-): Promise<SopUpload | null> {
+): Promise<FileUpload | null> {
   if (!value || typeof value === "string" || value.size === 0) {
     return null;
   }
 
-  const problem = sopFileProblem(value.name, value.size);
+  const problem = uploadProblem(kind, value.name, value.size);
 
   if (problem) {
     throw new Error(problem);
   }
 
   const fileName = cleanFileName(value.name);
-  const mimeType = SOP_TYPES[extensionOf(fileName)];
+  const data = new Uint8Array(await value.arrayBuffer());
 
   return {
     fileName,
-    mimeType,
+    mimeType:
+      kind === "sop"
+        ? SOP_TYPES[extensionOf(fileName)]
+        : attachmentType(fileName, data),
     size: value.size,
-    data: new Uint8Array(await value.arrayBuffer()),
+    data,
   };
+}
+
+/**
+ * The type an attachment is served with. An image or a PDF is taken only on
+ * its own bytes, since those two open in the browser; a document type goes by
+ * its extension; anything else is plain bytes, which only ever downloads.
+ */
+function attachmentType(fileName: string, data: Uint8Array) {
+  const image = detectImageType(data);
+
+  if (image) {
+    return image;
+  }
+
+  // "%PDF-"
+  if ([0x25, 0x50, 0x44, 0x46, 0x2d].every((byte, index) => data[index] === byte)) {
+    return "application/pdf";
+  }
+
+  const byExtension = SOP_TYPES[extensionOf(fileName)];
+
+  return byExtension && byExtension !== "application/pdf"
+    ? byExtension
+    : "application/octet-stream";
 }
 
 /**
@@ -156,8 +209,25 @@ export function formatFileSize(bytes: number) {
 }
 
 /**
- * Headers for sending a stored file back. A PDF opens in the browser's own
- * viewer; everything else downloads. nosniff holds the browser to the type.
+ * What opens in the browser rather than downloading. The image types are only
+ * ever stored after detectImageType has read them from the bytes.
+ */
+const INLINE_TYPES = new Set([
+  "application/pdf",
+  "image/png",
+  "image/jpeg",
+  "image/gif",
+  "image/webp",
+]);
+
+/** Whether an attachment shows as a picture on its page. */
+export function isImageType(mimeType: string) {
+  return mimeType.startsWith("image/") && INLINE_TYPES.has(mimeType);
+}
+
+/**
+ * Headers for sending a stored file back. A PDF or an image opens in the
+ * browser; everything else downloads. nosniff holds the browser to the type.
  */
 export function fileResponseHeaders(
   mimeType: string,
@@ -172,7 +242,7 @@ export function fileResponseHeaders(
   });
 
   if (fileName) {
-    const disposition = mimeType === "application/pdf" ? "inline" : "attachment";
+    const disposition = INLINE_TYPES.has(mimeType) ? "inline" : "attachment";
     // An ASCII fallback for old clients, and the real name in UTF-8.
     const ascii = fileName.replace(/[^\x20-\x7e]/g, "_");
 

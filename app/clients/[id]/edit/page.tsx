@@ -9,7 +9,7 @@ import {
   seedMappingsFromLegacy,
   toServiceMappings,
 } from "@/lib/clientServices";
-import { getClientPeopleSuggestions } from "@/lib/clientPeople";
+import { getClientPeopleOptions } from "@/lib/clientPeople";
 
 type EditClientPageProps = {
   params: Promise<{
@@ -48,6 +48,7 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
         services: true,
         status: true,
         notes: true,
+        sopContent: true,
         serviceMappings: {
           orderBy: { service: "asc" },
           select: {
@@ -65,7 +66,7 @@ export default async function EditClientPage({ params }: EditClientPageProps) {
         },
       },
     }),
-    getClientPeopleSuggestions(),
+    getClientPeopleOptions(),
   ]);
 
   if (!client) {

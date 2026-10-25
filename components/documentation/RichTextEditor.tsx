@@ -41,6 +41,13 @@ type RichTextEditorProps = {
   /** The page's saved HTML; empty for a new page. */
   initialData: string;
   onChange: (html: string) => void;
+  /**
+   * Whether images can be put in. Off for a client's SOP: its images would be
+   * stored with the documentation's, which everyone can open, and a file for
+   * the SOP has its own field on the client form.
+   */
+  images?: boolean;
+  placeholder?: string;
 };
 
 /**
@@ -146,9 +153,49 @@ const EDITOR_CONFIG: EditorConfig = {
   placeholder: "Write the page here. Paste or drop images straight in.",
 };
 
-export default function RichTextEditor({ initialData, onChange }: RichTextEditorProps) {
+const IMAGE_PLUGINS = new Set<unknown>([
+  Image,
+  ImageCaption,
+  ImageResize,
+  ImageStyle,
+  ImageTextAlternative,
+  ImageToolbar,
+  ImageUpload,
+  SimpleUploadAdapter,
+]);
+
+/** The same editor with every way of adding an image taken out. */
+const TEXT_ONLY_CONFIG: EditorConfig = {
+  ...EDITOR_CONFIG,
+  plugins: EDITOR_CONFIG.plugins?.filter(
+    (plugin) => typeof plugin === "string" || !IMAGE_PLUGINS.has(plugin)
+  ),
+  toolbar: {
+    items: (EDITOR_CONFIG.toolbar as { items: string[] }).items.filter(
+      (item) => item !== "uploadImage"
+    ),
+    shouldNotGroupWhenFull: false,
+  },
+  image: undefined,
+  simpleUpload: undefined,
+  placeholder: "Write here.",
+};
+
+export default function RichTextEditor({
+  initialData,
+  onChange,
+  images = true,
+  placeholder,
+}: RichTextEditorProps) {
   // Built once: the editor reads its config when it starts and not after.
-  const config = useMemo(() => ({ ...EDITOR_CONFIG, initialData }), [initialData]);
+  const config = useMemo(
+    () => ({
+      ...(images ? EDITOR_CONFIG : TEXT_ONLY_CONFIG),
+      initialData,
+      ...(placeholder ? { placeholder } : {}),
+    }),
+    [initialData, images, placeholder]
+  );
 
   return (
     <div className="doc-editor">

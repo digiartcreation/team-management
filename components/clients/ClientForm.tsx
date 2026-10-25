@@ -1,13 +1,14 @@
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ServicesField from "@/components/clients/ServicesField";
+import SopField from "@/components/clients/SopField";
+import FileInput from "@/components/ui/FileInput";
 import { CLIENT_STATUS_OPTIONS, type ServiceMapping } from "@/lib/services";
-import SopFileInput from "@/components/clients/SopFileInput";
 import { MAX_SOP_BYTES, SOP_TYPE_LABEL, formatFileSize } from "@/lib/uploads";
 
 type ClientFormProps = {
   action: (formData: FormData) => void | Promise<void>;
   submitLabel: string;
-  /** Employee names offered as suggestions for Owner and Communication Person. */
+  /** Employee names to pick Owner and Communication Person from. */
   people?: string[];
   client?: {
     id: string;
@@ -19,6 +20,7 @@ type ClientFormProps = {
     phone: string | null;
     status: string;
     notes: string | null;
+    sopContent: string | null;
     serviceMappings: ServiceMapping[];
     sop: { fileName: string; size: number } | null;
   };
@@ -26,6 +28,37 @@ type ClientFormProps = {
 
 const inputClass =
   "rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200";
+
+/**
+ * Owner or Communication Person, picked from the employees. A name saved
+ * before these were dropdowns, or of someone no longer listed, stays an option
+ * so saving the form does not quietly clear it.
+ */
+function PersonSelect({
+  name,
+  value,
+  people,
+}: {
+  name: string;
+  value: string | null | undefined;
+  people: string[];
+}) {
+  const options =
+    value && !people.includes(value)
+      ? [...people, value].sort((a, b) => a.localeCompare(b))
+      : people;
+
+  return (
+    <select name={name} defaultValue={value ?? ""} className={inputClass}>
+      <option value="">Not set</option>
+      {options.map((person) => (
+        <option key={person} value={person}>
+          {person}
+        </option>
+      ))}
+    </select>
+  );
+}
 
 export default function ClientForm({
   action,
@@ -85,25 +118,17 @@ export default function ClientForm({
 
           <label className="grid gap-2">
             <span className="text-sm font-medium text-slate-700">Owner</span>
-            <input
-              name="owner"
-              type="text"
-              list="client-people"
-              defaultValue={client?.owner ?? ""}
-              className={inputClass}
-            />
+            <PersonSelect name="owner" value={client?.owner} people={people} />
           </label>
 
           <label className="grid gap-2">
             <span className="text-sm font-medium text-slate-700">
               Communication Person
             </span>
-            <input
+            <PersonSelect
               name="communicationPerson"
-              type="text"
-              list="client-people"
-              defaultValue={client?.communicationPerson ?? ""}
-              className={inputClass}
+              value={client?.communicationPerson}
+              people={people}
             />
           </label>
 
@@ -128,16 +153,15 @@ export default function ClientForm({
           </label>
         </div>
 
-        <datalist id="client-people">
-          {people.map((name) => (
-            <option key={name} value={name} />
-          ))}
-        </datalist>
-
         <ServicesField mappings={client?.serviceMappings ?? []} />
 
+        <SopField initialContent={client?.sopContent ?? ""} />
+
         <fieldset className="grid gap-2">
-          <legend className="text-sm font-medium text-slate-700">SOP</legend>
+          <legend className="text-sm font-medium text-slate-700">
+            File Upload{" "}
+            <span className="font-normal text-slate-400">(optional)</span>
+          </legend>
           {client?.sop ? (
             <div className="flex flex-col gap-3 rounded-md border border-slate-200 bg-slate-50 p-3 sm:flex-row sm:items-center sm:justify-between">
               <div className="min-w-0 text-sm">
@@ -159,14 +183,14 @@ export default function ClientForm({
                   type="checkbox"
                   className="h-4 w-4 rounded border-slate-300"
                 />
-                Remove the current SOP
+                Remove the current file
               </label>
             </div>
           ) : null}
-          <SopFileInput />
+          <FileInput name="sop" kind="sop" />
           <span className="text-xs text-slate-500">
             {client?.sop
-              ? "Choose a file to replace the current SOP. "
+              ? "Choose a file to replace the current one. "
               : ""}
             {SOP_TYPE_LABEL}, up to {formatFileSize(MAX_SOP_BYTES)}.
           </span>
