@@ -56,11 +56,12 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Documentation", href: "/documentation" },
   ];
 
-  // Straight after Attendance, the report before the prices it reads.
+  // Straight after Attendance, the reports before the prices they read.
   if (isSuperAdmin) {
     adminItems.splice(
       3,
       0,
+      { label: "Services Count", href: "/services-count" },
       { label: "Base Price Report", href: "/base-price-report" },
       { label: "Base Price", href: "/base-prices" }
     );
