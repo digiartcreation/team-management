@@ -19,6 +19,7 @@ import {
 import { clientWorkLabels } from "@/lib/clientServices";
 import { formatDuration } from "@/lib/duration";
 import {
+  canCloseFrom,
   canMoveTo,
   canReopenFrom,
   formatTaskStatus,
@@ -753,6 +754,14 @@ export async function deleteTask(id: string) {
   revalidatePath("/member");
 }
 
+async function isTaskWatcher(taskId: string, userId: string) {
+  const watching = await prisma.taskWatcher.count({
+    where: { taskId, userId },
+  });
+
+  return watching > 0;
+}
+
 /**
  * Who may move a task's status. Admins anywhere, managers within their own
  * team, everyone else only on a task assigned to them.
@@ -850,7 +859,18 @@ export async function updateOwnTaskStatus(formData: FormData) {
     throw new Error("Task not found.");
   }
 
-  if (!(await canUpdateTaskStatus(sessionUser.id, sessionUser.role, task))) {
+  // The status is the assignee's, with one exception for watchers: once the
+  // work is completed they may close it, so finished work they followed does
+  // not sit waiting on the assignee to sign it off.
+  const closingAsWatcher =
+    status === "closed" &&
+    canCloseFrom(task.status) &&
+    (await isTaskWatcher(id, sessionUser.id));
+
+  if (
+    !closingAsWatcher &&
+    !(await canUpdateTaskStatus(sessionUser.id, sessionUser.role, task))
+  ) {
     redirect("/tasks");
   }
 
@@ -918,6 +938,17 @@ export async function updateOwnTaskStatus(formData: FormData) {
         message: `${user?.name ?? "An employee"} marked task "${task.title}" as ${formatTaskStatus(status)}.`,
         type: "TASK_UPDATED",
       });
+
+      // An employee can only move someone else's task by closing it as a
+      // watcher, and the assignee should hear their task was signed off.
+      if (task.assignedToId && task.assignedToId !== sessionUser.id) {
+        await createNotification({
+          userId: task.assignedToId,
+          title: "Task closed",
+          message: `${user?.name ?? "A watcher"} closed your task: ${task.title}`,
+          type: "TASK_UPDATED",
+        });
+      }
     } else if (task.assignedToId && task.assignedToId !== sessionUser.id) {
       if (status === "completed" && task.status !== "completed") {
         await createNotification({
@@ -999,11 +1030,7 @@ async function canLogTaskTime(
     return true;
   }
 
-  const watching = await prisma.taskWatcher.count({
-    where: { taskId: task.id, userId },
-  });
-
-  if (watching > 0) {
+  if (await isTaskWatcher(task.id, userId)) {
     return true;
   }
 

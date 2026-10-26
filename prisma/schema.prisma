@@ -43,6 +43,7 @@ model User {
   documentations       Documentation[]
   documentationImages  DocumentationImage[]
   documentationAttachments DocumentationAttachment[]
+  calendarEvents       CalendarEvent[]
   team                Team?              @relation(fields: [teamId], references: [id])
 
   @@index([teamId], map: "User_teamId_fkey")
@@ -501,6 +502,33 @@ model DocumentationImage {
   uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
 
   @@index([uploadedById], map: "DocumentationImage_uploadedById_fkey")
+}
+
+/// An entry on the dashboard calendar: a meeting, a client meeting, a training
+/// session, or anything else someone wants noted against a day. A private
+/// entry is seen by its author alone; a shared one by everyone, and admins can
+/// change or delete it too (canManageCalendarEvent in lib/calendar.ts).
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String
+  /// One of CALENDAR_EVENT_TYPES in lib/calendar.ts.
+  type        String
+  /// The day it falls on. A DATE column, so no time zone can move it.
+  date        DateTime @db.Date
+  /// "HH:MM" on the office clock. Null for an all-day entry.
+  startTime   String?
+  /// "HH:MM", later than startTime. Only ever set alongside it.
+  endTime     String?
+  notes       String?  @db.Text
+  /// "private" or "everyone", one of CALENDAR_VISIBILITIES in lib/calendar.ts.
+  visibility  String   @default("private")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+
+  @@index([date])
+  @@index([createdById], map: "CalendarEvent_createdById_fkey")
 }
 
 model PushSubscription {

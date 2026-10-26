@@ -20,7 +20,7 @@ export default function WatchingBoard({ columns, today }: WatchingBoardProps) {
   return (
     <TaskBoard
       heading="Watching"
-      description="Tasks you were added to as a watcher. Log the time you spend on them here; the assignee moves the status."
+      description="Tasks you were added to as a watcher. Log the time you spend on them here, and close them once completed; the assignee moves the rest."
       columns={columns}
       today={today}
       watching

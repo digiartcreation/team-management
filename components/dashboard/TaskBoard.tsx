@@ -44,7 +44,8 @@ type TaskBoardProps = {
   /**
    * Tasks the viewer watches rather than works on. Their status is the
    * assignee's to move, so the cards do not drag; every card has Log time
-   * instead, and says whose task it is.
+   * instead, and says whose task it is. The one move a watcher may make is
+   * closing completed work.
    */
   watching?: boolean;
 };
@@ -134,7 +135,7 @@ function Card({
    * The buttons along the foot of the card: Log time and Close on completed
    * work. None on the other columns -- their time is logged when the card is
    * dragged to Completed, or from Task Management. Every card on the Watching
-   * board has Log time.
+   * board has Log time, and its completed cards have Close too.
    */
   actions?: { label: string; onClick: () => void }[];
 }) {
@@ -513,6 +514,21 @@ export default function TaskBoard({
                                       logs: card.timeLogs,
                                     }),
                                 },
+                                ...(column.status === "completed"
+                                  ? [
+                                      {
+                                        label: "Close",
+                                        onClick: () =>
+                                          setClosePrompt({
+                                            id: card.id,
+                                            title: card.title,
+                                            status: column.status,
+                                            reopenCount: card.reopenCount,
+                                            group,
+                                          }),
+                                      },
+                                    ]
+                                  : []),
                               ]
                             : column.status === "completed"
                               ? [
@@ -710,8 +726,9 @@ export default function TaskBoard({
             {closePrompt.title}
           </p>
           <p className="mt-4 text-sm text-slate-700">
-            Are you sure you want to close this task? It will leave the
-            dashboard and only show in Task Management.
+            {watching
+              ? "Are you sure you want to close this task? It closes for the assignee too: it will leave every dashboard and only show in Task Management."
+              : "Are you sure you want to close this task? It will leave the dashboard and only show in Task Management."}
           </p>
 
           <div className="mt-5 flex justify-end gap-3">
