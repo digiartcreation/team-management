@@ -5,10 +5,8 @@ import { auth } from "@/auth";
 // import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import WatchingBoard from "@/components/dashboard/WatchingBoard";
-import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { loadTaskBoardsByAssignee, loadWatchedBoard } from "@/lib/taskBoard";
-import { loadCalendarProps } from "@/lib/calendarEvents";
 import { createBroadcastNotification } from "@/app/notifications/actions";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 
@@ -50,12 +48,11 @@ export default async function Home() {
     role?: string;
   };
 
-  // Every team's work, split into a board per person, the tasks this admin
-  // was added to as a watcher, and this month's calendar.
-  const [boards, watched, calendar] = await Promise.all([
+  // Every team's work, split into a board per person, and the tasks this
+  // admin was added to as a watcher.
+  const [boards, watched] = await Promise.all([
     loadTaskBoardsByAssignee(),
     loadWatchedBoard(sessionUser.id ?? "__no_user__"),
-    loadCalendarProps({ id: sessionUser.id ?? "__no_user__", role: sessionUser.role }),
   ]);
 
   if (sessionUser.role === "manager") {
@@ -102,8 +99,6 @@ export default async function Home() {
         />
 
         <WatchingBoard columns={watched} today={todayInputValue()} />
-
-        <DashboardCalendar {...calendar} />
 
         {/* Stat cards hidden so the board carries the dashboard.
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

@@ -174,9 +174,9 @@ function ConfirmDeleteDialog({
 }
 
 /**
- * A month calendar on every dashboard for meetings, client meetings, training
- * sessions and anything else worth noting against a day. Each person sees
- * their own entries and those shared with everyone.
+ * The month calendar on the Calendar page, for meetings, client meetings,
+ * training sessions and anything else worth noting against a day. Each person
+ * sees their own entries and those shared with them or with everyone.
  */
 export default function DashboardCalendar({
   today,

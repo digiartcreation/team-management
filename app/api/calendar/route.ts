@@ -4,7 +4,7 @@ import { isCalendarMonth } from "@/lib/calendar";
 import { loadCalendarMonth } from "@/lib/calendarEvents";
 
 /**
- * One month of the dashboard calendar, for when it is paged to another month:
+ * One month of the calendar, for when it is paged to another month:
  * GET /api/calendar?month=2026-11. The month it opens on comes with the page.
  */
 export async function GET(request: NextRequest) {

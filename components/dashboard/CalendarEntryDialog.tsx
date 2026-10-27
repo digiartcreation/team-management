@@ -48,7 +48,7 @@ const secondaryButtonClass =
 
 /**
  * Adds, edits or shows one calendar entry, in the browser's top layer like the
- * task board's dialogs: the dashboard's cards lift on hover with a transform,
+ * task board's dialogs: the page's cards lift on hover with a transform,
  * which would trap a fixed overlay inside the card.
  */
 export default function CalendarEntryDialog({

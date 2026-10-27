@@ -1,7 +1,7 @@
 import { officeDate } from "@/lib/officeTime";
 
 /**
- * What an entry on the dashboard calendar is. "Other" covers anything that is
+ * What an entry on the calendar is. "Other" covers anything that is
  * not one of the rest: a reminder, a deadline, a note to self.
  */
 export const CALENDAR_EVENT_TYPES = [
@@ -48,7 +48,7 @@ export function calendarEventTypeLabel(value: string) {
   );
 }
 
-/** An entry as the dashboard calendar receives it. */
+/** An entry as the calendar receives it. */
 export type CalendarEntry = {
   id: string;
   title: string;

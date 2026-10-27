@@ -4,10 +4,8 @@ import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import WatchingBoard from "@/components/dashboard/WatchingBoard";
-import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
-import { loadCalendarProps } from "@/lib/calendarEvents";
 
 // Only used by the welcome header, which is commented out for now.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -35,12 +33,8 @@ export default async function ManagerDashboardPage() {
     redirect("/member");
   }
 
-  // A manager can be added as a watcher on any team’s task, team or not, and
-  // has the calendar either way too.
-  const [watched, calendar] = await Promise.all([
-    loadWatchedBoard(sessionUser.id ?? "__no_user__"),
-    loadCalendarProps({ id: sessionUser.id ?? "__no_user__", role: sessionUser.role }),
-  ]);
+  // A manager can be added as a watcher on any team’s task, team or not.
+  const watched = await loadWatchedBoard(sessionUser.id ?? "__no_user__");
 
   const manager = await prisma.user.findUnique({
     where: { id: sessionUser.id },
@@ -83,7 +77,6 @@ export default async function ManagerDashboardPage() {
             </p>
           </section>
           <WatchingBoard columns={watched} today={todayInputValue()} />
-          <DashboardCalendar {...calendar} />
         </div>
       </DashboardLayout>
     );
@@ -159,8 +152,6 @@ export default async function ManagerDashboardPage() {
         />
 
         <WatchingBoard columns={watched} today={todayInputValue()} />
-
-        <DashboardCalendar {...calendar} />
 
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
           <StatCard
