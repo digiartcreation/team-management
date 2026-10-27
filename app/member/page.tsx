@@ -3,8 +3,9 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
+import WatchingBoard from "@/components/dashboard/WatchingBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { loadTaskBoard } from "@/lib/taskBoard";
+import { loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
 
 // Only used by the welcome header, which is commented out for now.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -56,12 +57,14 @@ export default async function MemberDashboardPage() {
     completedTasks,
     reopenedTasks,
     board,
+    watched,
   ] = await Promise.all([
     prisma.task.count({ where: { ...ownTasks, status: "pending" } }),
     prisma.task.count({ where: { ...ownTasks, status: "in_progress" } }),
     prisma.task.count({ where: { ...ownTasks, status: "completed" } }),
     prisma.task.count({ where: { ...ownTasks, status: "reopened" } }),
     loadTaskBoard(ownTasks),
+    loadWatchedBoard(ownTasks.assignedToId),
   ]);
 
   return (
@@ -98,6 +101,8 @@ export default async function MemberDashboardPage() {
           today={todayInputValue()}
           dashboardPath="/member"
         />
+
+        <WatchingBoard columns={watched} today={todayInputValue()} />
 
         {!member?.team ? (
           <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">

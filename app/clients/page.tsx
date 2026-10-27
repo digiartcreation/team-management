@@ -8,9 +8,11 @@ import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ActionMenu from "@/components/ui/ActionMenu";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
-import { deleteClient } from "@/app/clients/actions";
+import { deleteClient, deleteClientSop } from "@/app/clients/actions";
+import { formatFileSize } from "@/lib/uploads";
 import {
   CLIENT_STATUS_OPTIONS,
+  INCLUDED,
   formatPaymentTerms,
   formatServiceLabel,
 } from "@/lib/services";
@@ -55,6 +57,8 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
     where.OR = [
       { name: { contains: q } },
       { contactPerson: { contains: q } },
+      { owner: { contains: q } },
+      { communicationPerson: { contains: q } },
       { email: { contains: q } },
       { phone: { contains: q } },
     ];
@@ -85,6 +89,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
             billingCycle: true,
           },
         },
+        sop: {
+          select: { fileName: true, size: true },
+        },
       },
     }),
     prisma.client.count({ where }),
@@ -114,7 +121,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           <input
             name="q"
             defaultValue={params.q ?? ""}
-            placeholder="Search by name, contact, email or phone"
+            placeholder="Search by name, owner, contact, email or phone"
             className="rounded-md border border-slate-300 px-3 py-2 text-sm"
           />
           <select
@@ -152,12 +159,16 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
             </div>
           ) : (
             <div className="overflow-x-auto">
-              <table className="w-full min-w-[960px] text-left text-sm">
+              <table className="w-full min-w-[1080px] text-left text-sm">
                 <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-normal text-slate-500">
                   <tr>
                     <th className="px-4 py-3 font-semibold">Client Name</th>
                     <th className="px-4 py-3 font-semibold">Contact</th>
+                    <th className="px-4 py-3 font-semibold">
+                      Owner / Communication
+                    </th>
                     <th className="px-4 py-3 font-semibold">Services</th>
+                    <th className="px-4 py-3 font-semibold">SOP</th>
                     <th className="px-4 py-3 font-semibold">Status</th>
                     <th className="px-4 py-3 font-semibold">Created On</th>
                     <th className="px-4 py-3 font-semibold">
@@ -200,6 +211,24 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                           ) : null}
                         </td>
                         <td className="px-4 py-4 text-slate-600">
+                          <div>
+                            <span className="text-xs text-slate-500">
+                              Owner:{" "}
+                            </span>
+                            {client.owner || (
+                              <span className="text-slate-400">Not set</span>
+                            )}
+                          </div>
+                          <div className="mt-1">
+                            <span className="text-xs text-slate-500">
+                              Communication:{" "}
+                            </span>
+                            {client.communicationPerson || (
+                              <span className="text-slate-400">Not set</span>
+                            )}
+                          </div>
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
                           {services.length > 0 ? (
                             <div className="grid gap-1.5">
                               {services.map((mapping) => (
@@ -210,7 +239,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                                   <span className="rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
                                     {formatServiceLabel(mapping)}
                                   </span>
-                                  {mapping.percentage === null &&
+                                  {/* Included services carry no amount by design. */}
+                                  {mapping.paymentType !== INCLUDED &&
+                                  mapping.percentage === null &&
                                   mapping.packageAmount === null &&
                                   mapping.perUnitAmount === null ? (
                                     <span className="text-xs text-slate-400">
@@ -229,6 +260,37 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                               No services assigned
                             </span>
                           )}
+                        </td>
+                        <td className="px-4 py-4 text-slate-600">
+                          {client.sopContent ? (
+                            <Link
+                              href={`/clients/${client.id}/sop`}
+                              className="font-medium text-[#770FC2] hover:underline"
+                            >
+                              View SOP
+                            </Link>
+                          ) : null}
+                          {client.sop ? (
+                            <div className={client.sopContent ? "mt-1.5" : undefined}>
+                              <a
+                                href={`/api/clients/${client.id}/sop`}
+                                target="_blank"
+                                rel="noreferrer"
+                                title={client.sop.fileName}
+                                className="block max-w-48 truncate text-xs font-medium text-[#770FC2] hover:underline"
+                              >
+                                {client.sop.fileName}
+                              </a>
+                              <div className="mt-0.5 text-xs text-slate-500">
+                                {formatFileSize(client.sop.size)}
+                              </div>
+                            </div>
+                          ) : null}
+                          {!client.sopContent && !client.sop ? (
+                            <span className="text-xs text-slate-400">
+                              No SOP
+                            </span>
+                          ) : null}
                         </td>
                         <td className="px-4 py-4">
                           <span
@@ -255,6 +317,22 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                             >
                               Edit
                             </Link>
+                            {client.sopContent || client.sop ? (
+                              <Link
+                                href={`/clients/${client.id}/sop`}
+                                className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+                              >
+                                View SOP
+                              </Link>
+                            ) : null}
+                            {client.sop ? (
+                              <DeleteMenuAction
+                                id={client.id}
+                                action={deleteClientSop}
+                                label="Delete SOP file"
+                                message="Are you sure you want to delete this client’s uploaded SOP file? The SOP text stays."
+                              />
+                            ) : null}
                             <DeleteMenuAction
                               id={client.id}
                               action={deleteClient}

@@ -1,6 +1,22 @@
 import type { NextConfig } from "next";
 
 const nextConfig: NextConfig = {
+  experimental: {
+    // A client's SOP is uploaded through the client form's server action, and
+    // the 1 MB default would turn most documents away. Kept above
+    // MAX_SOP_BYTES in lib/uploads.ts, with room for the rest of the form.
+    serverActions: {
+      bodySizeLimit: "12mb",
+    },
+    // With middleware in place, request bodies past this are cut short before
+    // they reach the action or route, so it has to cover the uploads as well.
+    middlewareClientMaxBodySize: "12mb",
+    // `next build` starts one worker process per CPU, less one, and keeps them
+    // alive while it generates pages. Hostinger's build machine reports many
+    // CPUs but caps the processes an account may run, so the build died with
+    // "spawn node EAGAIN". One worker is plenty for this many pages.
+    cpus: 1,
+  },
   async headers() {
     return [
       {

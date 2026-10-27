@@ -1,6 +1,6 @@
 import {
+  ALWAYS_INCLUDED_SERVICES,
   BILLING_CYCLE_OPTIONS,
-  CLIENT_MANAGEMENT,
   DIGITAL_MARKETING,
   INCLUDED,
   DIGITAL_MARKETING_OPTIONS,
@@ -8,6 +8,8 @@ import {
   PERCENTAGE,
   PER_COUNT,
   SERVICE_OPTIONS,
+  formatServiceLabel,
+  isAlwaysIncluded,
   parseServices,
   paymentTypesForService,
   resolvePaymentType,
@@ -77,6 +79,35 @@ export function seedMappingsFromLegacy(services: string | null) {
     }));
 }
 
+/** The mapping an always-included service carries: on, and never billed. */
+export function includedMapping(service: string): ServiceMapping {
+  return {
+    service,
+    focus: null,
+    paymentType: INCLUDED,
+    percentage: null,
+    packageAmount: null,
+    perUnitAmount: null,
+    billingCycle: null,
+  };
+}
+
+/**
+ * Work labels a task for this client can name: its saved services, plus the
+ * always-included ones it may not have a row for yet -- a client last saved
+ * before Meeting & Call existed still has meetings and calls.
+ */
+export function clientWorkLabels(
+  mappings: { service: string; focus: string | null }[]
+) {
+  const labels = mappings.map(formatServiceLabel);
+  const missing = ALWAYS_INCLUDED_SERVICES.filter(
+    (service) => !mappings.some((mapping) => mapping.service === service)
+  );
+
+  return [...labels, ...missing];
+}
+
 function getField(formData: FormData, name: string) {
   const value = formData.get(name);
   return typeof value === "string" ? value.trim() : "";
@@ -103,20 +134,13 @@ export function parseServiceMappings(formData: FormData): ServiceMapping[] {
     .filter((service) => SERVICE_OPTIONS.includes(service));
 
   // De-duplicate: ClientService is unique on (clientId, service). Client
-  // Management is added whether or not the form sent it -- it is never optional.
-  const services = [...new Set([CLIENT_MANAGEMENT, ...selected])];
+  // Management and Meeting & Call are added whether or not the form sent them --
+  // they are never optional.
+  const services = [...new Set([...ALWAYS_INCLUDED_SERVICES, ...selected])];
 
   return services.map((service) => {
-    if (service === CLIENT_MANAGEMENT) {
-      return {
-        service,
-        focus: null,
-        paymentType: INCLUDED,
-        percentage: null,
-        packageAmount: null,
-        perUnitAmount: null,
-        billingCycle: null,
-      };
+    if (isAlwaysIncluded(service)) {
+      return includedMapping(service);
     }
 
     const key = serviceKey(service);

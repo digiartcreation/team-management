@@ -4,8 +4,9 @@ import { auth } from "@/auth";
 // import { prisma } from "@/lib/prisma";
 // import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
+import WatchingBoard from "@/components/dashboard/WatchingBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { loadTaskBoardsByAssignee } from "@/lib/taskBoard";
+import { loadTaskBoardsByAssignee, loadWatchedBoard } from "@/lib/taskBoard";
 import { createBroadcastNotification } from "@/app/notifications/actions";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 
@@ -42,12 +43,17 @@ export default async function Home() {
   ]);
   */
 
-  // Every team's work, split into a board per person.
-  const boards = await loadTaskBoardsByAssignee();
-
   const sessionUser = session.user as typeof session.user & {
+    id?: string;
     role?: string;
   };
+
+  // Every team's work, split into a board per person, and the tasks this
+  // admin was added to as a watcher.
+  const [boards, watched] = await Promise.all([
+    loadTaskBoardsByAssignee(),
+    loadWatchedBoard(sessionUser.id ?? "__no_user__"),
+  ]);
 
   if (sessionUser.role === "manager") {
     redirect("/manager");
@@ -91,6 +97,8 @@ export default async function Home() {
           today={todayInputValue()}
           dashboardPath="/"
         />
+
+        <WatchingBoard columns={watched} today={todayInputValue()} />
 
         {/* Stat cards hidden so the board carries the dashboard.
         <section className="grid gap-4 sm:grid-cols-2 xl:grid-cols-3">

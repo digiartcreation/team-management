@@ -1,5 +1,6 @@
 import { monthKeyOf, monthLabel } from "@/lib/attendance";
 import { formatDuration } from "@/lib/duration";
+import { includedMapping } from "@/lib/clientServices";
 import {
   INCLUDED,
   PACKAGE,
@@ -9,6 +10,7 @@ import {
   VIDEO_EDITING,
   formatInr,
   formatPercentage,
+  isAlwaysIncluded,
   splitService,
   type ServiceMapping,
 } from "@/lib/services";
@@ -587,7 +589,11 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
     if (!service) {
       row.issues.push({ message: "No service chosen on the task", fix: "task" });
     } else {
-      const mapping = mappings.get(poolKey(task.client.id, service)) ?? null;
+      // A client saved before an always-included service existed has no row
+      // for it, but is still under it.
+      const mapping =
+        mappings.get(poolKey(task.client.id, service)) ??
+        (isAlwaysIncluded(service) ? includedMapping(service) : null);
 
       if (!mapping) {
         row.issues.push({ message: `${service} is not set up for this client`, fix: "client" });

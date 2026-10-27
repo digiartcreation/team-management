@@ -166,6 +166,16 @@ function toBoardCard(task: BoardTask): BoardCard {
   };
 }
 
+/**
+ * The tasks a person has been added to as a watcher, for the Watching board on
+ * their dashboard: the same columns as their own board. Closed tasks are left
+ * out, as on every board; time cannot be logged on them, and logging time is
+ * what the board is for.
+ */
+export function loadWatchedBoard(userId: string) {
+  return loadTaskBoard({ watchers: { some: { userId } } });
+}
+
 /** One person's board, for the admin dashboard's board-per-member view. */
 export type BoardGroup = {
   /** The assignee's id, or "unassigned". */

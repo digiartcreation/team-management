@@ -1,3 +1,4 @@
+/** Services a client can be engaged for, as listed on the client form. */
 export const SERVICE_OPTIONS = [
   "Video Editing",
   "Digital Marketing",
@@ -5,10 +6,25 @@ export const SERVICE_OPTIONS = [
   "Web Application",
   "Social Media Management",
   "Client Management",
+  "Meeting & Call",
   "Graphic Design",
   "Poster Design",
   "Other",
 ];
+
+/**
+ * Training and coaching the team is internal work: never sold to a client, so
+ * it is not on the client form, only on internal tasks.
+ */
+export const TRAINING_AND_COACHES = "Training & Coaches";
+
+export const INTERNAL_ONLY_SERVICES = [TRAINING_AND_COACHES];
+
+/**
+ * Everything a task's work can be named as, and so everything a base price can
+ * be set for: the client services plus the internal-only ones.
+ */
+export const ALL_SERVICE_OPTIONS = [...SERVICE_OPTIONS, ...INTERNAL_ONLY_SERVICES];
 
 export const CLIENT_STATUS_OPTIONS = ["Active", "Inactive"];
 
@@ -38,6 +54,20 @@ export const DEFAULT_VIDEO_WEIGHTAGE = VIDEO_WEIGHTAGE_OPTIONS[0];
  */
 export const CLIENT_MANAGEMENT = "Client Management";
 
+/** Meetings and calls happen with every client, so this is always mapped too. */
+export const MEETING_AND_CALL = "Meeting & Call";
+
+/**
+ * Services every client has, ticked and locked on the client form, saved with
+ * the INCLUDED payment type, and offered as task work even for a client saved
+ * before the service was added.
+ */
+export const ALWAYS_INCLUDED_SERVICES = [CLIENT_MANAGEMENT, MEETING_AND_CALL];
+
+export function isAlwaysIncluded(service: string) {
+  return ALWAYS_INCLUDED_SERVICES.includes(service);
+}
+
 export const POSTER_DESIGN = "Poster Design";
 
 export const PERCENTAGE = "Percentage";
@@ -53,12 +83,12 @@ export const BILLING_CYCLE_OPTIONS = ["Monthly", "One-time"];
 /**
  * Payment types a service may be billed on. Percentage is Digital Marketing
  * only; Video Editing is billed per delivered item or as a package; Poster
- * Design is per count only; Client Management is always included and never
- * billed; every other service is package-only. The first entry is the default
- * for a new mapping.
+ * Design is per count only; Client Management and Meeting & Call are always
+ * included and never billed; every other service is package-only. The first
+ * entry is the default for a new mapping.
  */
 export function paymentTypesForService(service: string) {
-  if (service === CLIENT_MANAGEMENT) {
+  if (isAlwaysIncluded(service)) {
     return [INCLUDED];
   }
 

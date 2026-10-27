@@ -6,6 +6,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { updateTask } from "@/app/tasks/actions";
 import { getTaskClientOptions } from "@/lib/taskClients";
+import { getWatcherOptions } from "@/lib/taskWatchers";
 
 type EditTaskPageProps = {
   params: Promise<{
@@ -59,6 +60,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
         posterCount: true,
         status: true,
         priority: true,
+        watchers: { select: { userId: true } },
       },
     }),
     prisma.user.findMany({
@@ -94,8 +96,12 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
     notFound();
   }
 
-  // Needs task.clientId, so it cannot join the Promise.all above.
-  const clients = await getTaskClientOptions(task.clientId);
+  const watcherIds = task.watchers.map((watcher) => watcher.userId);
+  // Need the task itself, so they cannot join the Promise.all above.
+  const [clients, watcherOptions] = await Promise.all([
+    getTaskClientOptions(task.clientId),
+    getWatcherOptions(),
+  ]);
 
   return (
     <DashboardLayout>
@@ -118,9 +124,11 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
           pendingLabel="Updating Task..."
           employees={employees}
           teams={teams}
+          watcherOptions={watcherOptions}
           clients={clients}
           task={{
             ...task,
+            watcherIds,
             digitalMarketingAmount: task.digitalMarketingAmount?.toNumber() ?? null,
             videoWeightage: task.videoWeightage?.toNumber() ?? null,
           }}

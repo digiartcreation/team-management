@@ -35,10 +35,17 @@ model User {
   pushSubscriptions    PushSubscription[]
   researchDocs         ResearchDocument[]
   tasks                Task[]             @relation("AssignedTasks")
+  taskWatches          TaskWatcher[]
   taskTimeLogs         TaskTimeLog[]
   taskReopens          TaskReopen[]
   toolUsages           ToolUsage[]
-  team                 Team?              @relation(fields: [teamId], references: [id])
+  clientSops           ClientSop[]
+  documentations       Documentation[]
+  documentationImages  DocumentationImage[]
+  documentationAttachments DocumentationAttachment[]
+  calendarEvents       CalendarEvent[]
+  calendarShares       CalendarEventShare[]
+  team                Team?              @relation(fields: [teamId], references: [id])
 
   @@index([teamId], map: "User_teamId_fkey")
   @@unique([email, role])
@@ -58,6 +65,11 @@ model Client {
   id            String   @id @default(cuid())
   name          String   @unique
   contactPerson String?
+  /// Who owns the client relationship: an employee's name, picked on the client
+  /// form. Kept as text, so a name saved before the picker stays as it was.
+  owner         String?
+  /// Who handles day-to-day communication with the client. Same as owner.
+  communicationPerson String?
   email         String?
   phone         String?
   /// Legacy flat service list, superseded by the ClientService rows below.
@@ -66,15 +78,44 @@ model Client {
   services      String?  @db.Text
   status        String   @default("Active")
   notes         String?  @db.Text
+  /// The SOP written in the editor on the client form, as HTML sanitised on
+  /// save (lib/documentation.ts). Null when none was written.
+  sopContent    String?  @db.LongText
   createdById   String
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
   createdBy     User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
   tasks         Task[]
   serviceMappings ClientService[]
+  /// The file uploaded alongside the SOP, if any.
+  sop           ClientSop?
 
   @@index([createdById], map: "Client_createdById_fkey")
   @@index([status])
+}
+
+/// The file uploaded with a client's SOP, from the client form's File Upload
+/// field (the SOP's text is Client.sopContent). Kept in its own table rather
+/// than as a column on Client so listing clients never drags the file's bytes
+/// along. Served by app/api/clients/[id]/sop.
+model ClientSop {
+  id           String   @id @default(cuid())
+  clientId     String   @unique
+  /// The name it was uploaded with, used when it is downloaded again.
+  fileName     String
+  /// Decided from the file extension (lib/uploads.ts), never the browser's word.
+  mimeType     String
+  /// Bytes, for showing the size without loading the file.
+  size         Int
+  data         Bytes
+  /// Null once the uploader's account is deleted; the SOP stays with the client.
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+  client       Client   @relation(fields: [clientId], references: [id], onDelete: Cascade)
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([uploadedById], map: "ClientSop_uploadedById_fkey")
 }
 
 /// One service a client is engaged for, plus how that service is billed.
@@ -161,10 +202,26 @@ model Task {
   client       Client?  @relation(fields: [clientId], references: [id], onDelete: SetNull)
   timeLogs     TaskTimeLog[]
   reopens      TaskReopen[]
+  watchers     TaskWatcher[]
 
   @@index([assignedToId], map: "Task_assignedToId_fkey")
   @@index([teamId], map: "Task_teamId_fkey")
   @@index([clientId], map: "Task_clientId_fkey")
+}
+
+/// Someone following a task they are not assigned to. A watcher sees the task
+/// in the Watching section of their dashboard and may log time on it, but does
+/// not own its status -- that stays with the assignee.
+model TaskWatcher {
+  id        String   @id @default(cuid())
+  taskId    String
+  userId    String
+  createdAt DateTime @default(now())
+  task      Task     @relation(fields: [taskId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([taskId, userId])
+  @@index([userId], map: "TaskWatcher_userId_fkey")
 }
 
 /// One stretch of work logged against a task. A task accumulates many of
@@ -388,6 +445,109 @@ model AttendanceSession {
   attendance   AttendanceRecord @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 
   @@index([attendanceId])
+}
+
+/// A page in the Documentation menu: a heading and a body written in CKEditor.
+/// Every signed-in user can read every page; its author and admins can edit or
+/// delete it.
+model Documentation {
+  id          String   @id @default(cuid())
+  title       String
+  /// HTML from the editor, sanitised on save (lib/documentation.ts). Images in
+  /// it point at /api/documentation/images/<id>, served from DocumentationImage.
+  content     String   @db.LongText
+  /// Null once the author's account is deleted: the page outlives them, and
+  /// from then on only admins can edit it.
+  createdById String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User?    @relation(fields: [createdById], references: [id], onDelete: SetNull)
+  attachment  DocumentationAttachment?
+
+  @@index([createdById], map: "Documentation_createdById_fkey")
+}
+
+/// The one file a documentation page can carry, of any type: an image or a
+/// PDF opens in the browser, anything else downloads. Its own table, like
+/// ClientSop, so listing pages never loads the bytes. Served by
+/// app/api/documentation/[id]/attachment.
+model DocumentationAttachment {
+  id              String        @id @default(cuid())
+  documentationId String        @unique
+  fileName        String
+  /// Decided on upload (lib/uploads.ts), never the browser's word.
+  mimeType        String
+  size            Int
+  data            Bytes
+  /// Null once the uploader's account is deleted; the file stays on the page.
+  uploadedById    String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+  documentation   Documentation @relation(fields: [documentationId], references: [id], onDelete: Cascade)
+  uploadedBy      User?         @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([uploadedById], map: "DocumentationAttachment_uploadedById_fkey")
+}
+
+/// An image uploaded from the documentation editor. Stored in the database, not
+/// on disk, because a redeploy on the host replaces the app's files.
+model DocumentationImage {
+  id           String   @id @default(cuid())
+  /// Read from the file's own bytes on upload (lib/uploads.ts).
+  mimeType     String
+  size         Int
+  data         Bytes
+  /// Null once the uploader's account is deleted; pages showing it keep it.
+  uploadedById String?
+  createdAt    DateTime @default(now())
+  uploadedBy   User?    @relation(fields: [uploadedById], references: [id], onDelete: SetNull)
+
+  @@index([uploadedById], map: "DocumentationImage_uploadedById_fkey")
+}
+
+/// An entry on the calendar: a meeting, a client meeting, a training session,
+/// or anything else someone wants noted against a day. A private entry is seen
+/// by its author alone, a "selected" one also by the people it is shared with,
+/// and an "everyone" one by everyone -- admins can change or delete that kind
+/// too (canManageCalendarEvent in lib/calendar.ts).
+model CalendarEvent {
+  id          String   @id @default(cuid())
+  title       String
+  /// One of CALENDAR_EVENT_TYPES in lib/calendar.ts.
+  type        String
+  /// The day it falls on. A DATE column, so no time zone can move it.
+  date        DateTime @db.Date
+  /// "HH:MM" on the office clock. Null for an all-day entry.
+  startTime   String?
+  /// "HH:MM", later than startTime. Only ever set alongside it.
+  endTime     String?
+  notes       String?  @db.Text
+  /// "private", "selected" or "everyone", one of CALENDAR_VISIBILITIES in
+  /// lib/calendar.ts.
+  visibility  String   @default("private")
+  createdById String
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+  createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  /// Who a "selected" entry is shared with; empty for the other kinds.
+  shares      CalendarEventShare[]
+
+  @@index([date])
+  @@index([createdById], map: "CalendarEvent_createdById_fkey")
+}
+
+/// Someone a "selected" calendar entry is shared with. They see it on their
+/// calendar; only its author changes it.
+model CalendarEventShare {
+  id        String        @id @default(cuid())
+  eventId   String
+  userId    String
+  createdAt DateTime      @default(now())
+  event     CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId], map: "CalendarEventShare_userId_fkey")
 }
 
 model PushSubscription {

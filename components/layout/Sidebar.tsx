@@ -13,6 +13,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     return [
       { label: "Manager Dashboard", href: "/manager" },
       { label: "Tasks", href: "/tasks" },
+      { label: "Calendar", href: "/calendar" },
       { label: "Attendance", href: "/attendance" },
       { label: "Daily Updates", href: "/updates" },
       { label: "Learnings", href: "/learnings" },
@@ -20,6 +21,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      { label: "Documentation", href: "/documentation" },
     ];
   }
 
@@ -27,6 +29,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     return [
       { label: "My Dashboard", href: "/member" },
       { label: "My Tasks", href: "/tasks" },
+      { label: "Calendar", href: "/calendar" },
       { label: "Attendance", href: "/attendance" },
       { label: "Daily Updates", href: "/updates" },
       { label: "Learnings", href: "/learnings" },
@@ -34,6 +37,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      { label: "Documentation", href: "/documentation" },
     ];
   }
 
@@ -51,17 +55,26 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Reports", href: "/reports" },
     { label: "Activity", href: "/activity" },
     { label: "Search", href: "/search" },
+    { label: "Documentation", href: "/documentation" },
   ];
 
   // Straight after Attendance, the report before the prices it reads.
   if (isSuperAdmin) {
     adminItems.splice(
-      3,
+      adminItems.findIndex((item) => item.href === "/attendance") + 1,
       0,
       { label: "Base Price Report", href: "/base-price-report" },
       { label: "Base Price", href: "/base-prices" }
     );
   }
+
+  // Seventh and eighth in the menu, for admins and super admins alike.
+  adminItems.splice(
+    6,
+    0,
+    { label: "Services Count", href: "/services-count" },
+    { label: "Calendar", href: "/calendar" }
+  );
 
   return adminItems;
 }

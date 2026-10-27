@@ -3,7 +3,7 @@
 import { useState } from "react";
 import SectorDesignationField from "@/components/employees/SectorDesignationField";
 import SubmitButton from "@/components/ui/SubmitButton";
-import { SERVICE_OPTIONS } from "@/lib/services";
+import { ALL_SERVICE_OPTIONS } from "@/lib/services";
 
 type BasePriceFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -68,7 +68,8 @@ export default function BasePriceForm({
             <option value="" disabled>
               Select a service
             </option>
-            {SERVICE_OPTIONS.map((option) => (
+            {/* Internal-only services too: their tasks are costed for reference. */}
+            {ALL_SERVICE_OPTIONS.map((option) => (
               <option key={option} value={option}>
                 {option}
               </option>

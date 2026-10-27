@@ -3,13 +3,13 @@
 import { useState } from "react";
 import {
   BILLING_CYCLE_OPTIONS,
-  CLIENT_MANAGEMENT,
   DIGITAL_MARKETING,
   DIGITAL_MARKETING_OPTIONS,
   PACKAGE,
   PERCENTAGE,
   PER_COUNT,
   SERVICE_OPTIONS,
+  isAlwaysIncluded,
   paymentTypesForService,
   resolvePaymentType,
   serviceKey,
@@ -48,8 +48,8 @@ function buildInitialRows(mappings: ServiceMapping[]) {
     const mapping = saved.get(service);
 
     rows[service] = {
-      // Client Management is on for every client, saved or not.
-      checked: service === CLIENT_MANAGEMENT || Boolean(mapping),
+      // Client Management and Meeting & Call are on for every client, saved or not.
+      checked: isAlwaysIncluded(service) || Boolean(mapping),
       focus: mapping?.focus ?? "",
       paymentType: resolvePaymentType(service, mapping?.paymentType),
       percentage: numberToInput(mapping?.percentage),
@@ -81,9 +81,9 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
       </legend>
       <p className="text-sm text-slate-500">
         Tick each service this client is engaged for, then set how that service
-        is paid. Client Management is always included. Percentage applies to
-        Digital Marketing only, Video Editing is billed per count or as a
-        package, and Poster Design is billed per count.
+        is paid. Client Management and Meeting &amp; Call are always included.
+        Percentage applies to Digital Marketing only, Video Editing is billed
+        per count or as a package, and Poster Design is billed per count.
       </p>
 
       <div className="grid gap-3">
@@ -91,7 +91,7 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
           const row = rows[service];
           const key = serviceKey(service);
           const paymentTypes = paymentTypesForService(service);
-          const alwaysOn = service === CLIENT_MANAGEMENT;
+          const alwaysOn = isAlwaysIncluded(service);
 
           return (
             <div
@@ -105,8 +105,9 @@ export default function ServicesField({ mappings }: ServicesFieldProps) {
               <label
                 className={`flex items-center gap-3 text-sm ${alwaysOn ? "cursor-not-allowed" : ""}`}
               >
-                {/* Client Management stays ticked: not disabled, which would grey
-                    it out and drop it from the form, but locked on. */}
+                {/* Always-included services stay ticked: not disabled, which
+                    would grey them out and drop them from the form, but locked
+                    on. */}
                 <input
                   name="services"
                   type="checkbox"

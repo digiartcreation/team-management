@@ -6,6 +6,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { createTask } from "@/app/tasks/actions";
 import { getTaskClientOptions } from "@/lib/taskClients";
+import { getWatcherOptions } from "@/lib/taskWatchers";
 
 /** The dashboards a task can be added from, and where "Back" leads for each. */
 const RETURN_PATHS: Record<string, { href: string; label: string }> = {
@@ -49,7 +50,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
 
   const teamId = scopedToTeam ? currentUser?.teamId ?? "__no_team__" : undefined;
 
-  const [employees, teams, clients] = await Promise.all([
+  const [employees, teams, clients, watcherOptions] = await Promise.all([
     prisma.user.findMany({
       // An employee without a team can still add a task -- for themselves.
       where:
@@ -78,6 +79,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
       },
     }),
     getTaskClientOptions(),
+    getWatcherOptions(),
   ]);
 
   return (
@@ -101,6 +103,7 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
           pendingLabel="Creating Task..."
           employees={employees}
           teams={teams}
+          watcherOptions={watcherOptions}
           clients={clients}
           returnTo={back.href}
           defaultAssigneeId={

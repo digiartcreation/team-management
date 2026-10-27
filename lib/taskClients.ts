@@ -1,5 +1,5 @@
 import { prisma } from "@/lib/prisma";
-import { formatServiceLabel } from "@/lib/services";
+import { clientWorkLabels } from "@/lib/clientServices";
 import type { TaskClientOption } from "@/components/tasks/ClientWorkField";
 
 /**
@@ -30,6 +30,6 @@ export async function getTaskClientOptions(
     id: client.id,
     name: client.name,
     status: client.status,
-    works: client.serviceMappings.map(formatServiceLabel),
+    works: clientWorkLabels(client.serviceMappings),
   }));
 }
