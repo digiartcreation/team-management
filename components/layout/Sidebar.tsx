@@ -44,7 +44,6 @@ function getNavItems(role?: string, isSuperAdmin = false) {
   const adminItems = [
     { label: "Dashboard", href: "/" },
     { label: "Tasks", href: "/tasks" },
-    { label: "Calendar", href: "/calendar" },
     { label: "Attendance", href: "/attendance" },
     { label: "Employees", href: "/employees" },
     { label: "Teams", href: "/teams" },
@@ -59,16 +58,23 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Documentation", href: "/documentation" },
   ];
 
-  // Straight after Attendance, the reports before the prices they read.
+  // Straight after Attendance, the report before the prices it reads.
   if (isSuperAdmin) {
     adminItems.splice(
       adminItems.findIndex((item) => item.href === "/attendance") + 1,
       0,
-      { label: "Services Count", href: "/services-count" },
       { label: "Base Price Report", href: "/base-price-report" },
       { label: "Base Price", href: "/base-prices" }
     );
   }
+
+  // Seventh and eighth in the menu, for admins and super admins alike.
+  adminItems.splice(
+    6,
+    0,
+    { label: "Services Count", href: "/services-count" },
+    { label: "Calendar", href: "/calendar" }
+  );
 
   return adminItems;
 }

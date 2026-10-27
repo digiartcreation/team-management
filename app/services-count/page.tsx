@@ -85,10 +85,12 @@ export default async function ServicesCountPage({
   }
 
   const sessionUser = session.user as typeof session.user & {
-    isSuperAdmin?: boolean;
+    role?: string;
   };
 
-  if (!sessionUser.isSuperAdmin) {
+  // Admins and super admins: a super admin's session carries the admin role
+  // too (lib/roles.ts).
+  if (sessionUser.role !== "admin") {
     redirect("/");
   }
 
