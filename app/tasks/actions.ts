@@ -18,6 +18,7 @@ import {
 } from "@/lib/services";
 import { clientWorkLabels } from "@/lib/clientServices";
 import { formatDuration } from "@/lib/duration";
+import { officeDate, officeInstant } from "@/lib/officeTime";
 import {
   canCloseFrom,
   canMoveTo,
@@ -89,24 +90,37 @@ function resolveReopenCycle(
 }
 
 /**
- * The completion time a status move writes. It is the date the task was first
- * completed and stays locked there: a reopen does not clear it, and completing
- * the rework does not move it -- rework time is reported on its own.
+ * The completion time a status move writes: the day the work was finished,
+ * which is the latest "Date of Work Completion" logged on the run being
+ * completed -- not the moment someone got round to moving the card. Logged
+ * for today, or with nothing logged, that is now; logged for an earlier day,
+ * it is the start of that day on the office clock.
+ *
+ * It is the date the task was first completed and stays locked there: a
+ * reopen does not clear it, and completing the rework does not move it --
+ * rework time is reported on its own.
  */
-function completionStamp(
-  previousStatus: string,
-  nextStatus: string,
-  completedAt: Date | null
+async function completionStamp(
+  task: { id: string; status: string; completedAt: Date | null; reopenCount: number },
+  nextStatus: string
 ) {
-  if (
-    nextStatus === "completed" &&
-    previousStatus !== "completed" &&
-    !completedAt
-  ) {
-    return { completedAt: new Date() };
+  if (nextStatus !== "completed" || task.status === "completed" || task.completedAt) {
+    return {};
   }
 
-  return {};
+  const now = new Date();
+  const lastLog = await prisma.taskTimeLog.findFirst({
+    where: { taskId: task.id, reopenCycle: task.reopenCount },
+    orderBy: { date: "desc" },
+    select: { date: true },
+  });
+
+  // Log dates are their day's UTC midnight, the same form officeDate gives.
+  if (!lastLog || lastLog.date >= officeDate(now)) {
+    return { completedAt: now };
+  }
+
+  return { completedAt: officeInstant(lastLog.date, 0) };
 }
 
 function getValue(formData: FormData, key: string) {
@@ -579,6 +593,7 @@ export async function updateTask(formData: FormData) {
       status,
       previous.reopenCount
     );
+    const completion = await completionStamp({ id, ...previous }, status);
 
     const update = prisma.task.update({
       where: { id },
@@ -600,7 +615,7 @@ export async function updateTask(formData: FormData) {
           create: watcherIds.map((userId) => ({ userId })),
         },
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
-        ...completionStamp(previous.status, status, previous.completedAt),
+        ...completion,
       },
     });
 
@@ -885,12 +900,13 @@ export async function updateOwnTaskStatus(formData: FormData) {
   const reopenCycle = resolveReopenCycle(task.status, status, task.reopenCount);
 
   try {
+    const completion = await completionStamp({ id, ...task }, status);
     const update = prisma.task.update({
       where: { id },
       data: {
         status,
         ...(reopenCycle ? { reopenCount: reopenCycle } : {}),
-        ...completionStamp(task.status, status, task.completedAt),
+        ...completion,
       },
     });
 
