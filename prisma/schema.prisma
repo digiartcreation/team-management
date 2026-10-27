@@ -44,6 +44,7 @@ model User {
   documentationImages  DocumentationImage[]
   documentationAttachments DocumentationAttachment[]
   calendarEvents       CalendarEvent[]
+  calendarShares       CalendarEventShare[]
   team                Team?              @relation(fields: [teamId], references: [id])
 
   @@index([teamId], map: "User_teamId_fkey")
@@ -504,10 +505,11 @@ model DocumentationImage {
   @@index([uploadedById], map: "DocumentationImage_uploadedById_fkey")
 }
 
-/// An entry on the dashboard calendar: a meeting, a client meeting, a training
-/// session, or anything else someone wants noted against a day. A private
-/// entry is seen by its author alone; a shared one by everyone, and admins can
-/// change or delete it too (canManageCalendarEvent in lib/calendar.ts).
+/// An entry on the calendar: a meeting, a client meeting, a training session,
+/// or anything else someone wants noted against a day. A private entry is seen
+/// by its author alone, a "selected" one also by the people it is shared with,
+/// and an "everyone" one by everyone -- admins can change or delete that kind
+/// too (canManageCalendarEvent in lib/calendar.ts).
 model CalendarEvent {
   id          String   @id @default(cuid())
   title       String
@@ -520,15 +522,32 @@ model CalendarEvent {
   /// "HH:MM", later than startTime. Only ever set alongside it.
   endTime     String?
   notes       String?  @db.Text
-  /// "private" or "everyone", one of CALENDAR_VISIBILITIES in lib/calendar.ts.
+  /// "private", "selected" or "everyone", one of CALENDAR_VISIBILITIES in
+  /// lib/calendar.ts.
   visibility  String   @default("private")
   createdById String
   createdAt   DateTime @default(now())
   updatedAt   DateTime @updatedAt
   createdBy   User     @relation(fields: [createdById], references: [id], onDelete: Cascade)
+  /// Who a "selected" entry is shared with; empty for the other kinds.
+  shares      CalendarEventShare[]
 
   @@index([date])
   @@index([createdById], map: "CalendarEvent_createdById_fkey")
+}
+
+/// Someone a "selected" calendar entry is shared with. They see it on their
+/// calendar; only its author changes it.
+model CalendarEventShare {
+  id        String        @id @default(cuid())
+  eventId   String
+  userId    String
+  createdAt DateTime      @default(now())
+  event     CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
+  user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([eventId, userId])
+  @@index([userId], map: "CalendarEventShare_userId_fkey")
 }
 
 model PushSubscription {

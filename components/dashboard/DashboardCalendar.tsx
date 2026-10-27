@@ -30,6 +30,8 @@ type DashboardCalendarProps = {
    * fetched from /api/calendar as they are paged to.
    */
   initialEntries: CalendarEntry[];
+  /** Who an entry can be shared with: everyone but the viewer. */
+  people: { id: string; name: string }[];
 };
 
 /**
@@ -90,6 +92,14 @@ function chipTime(value: string) {
 }
 
 function sharingLabel(entry: CalendarEntry) {
+  if (entry.visibility === "selected") {
+    const count = entry.sharedWith.length;
+
+    return entry.isOwn
+      ? `Shared with ${count} ${count === 1 ? "person" : "people"}`
+      : `Shared with you by ${entry.createdByName}`;
+  }
+
   if (entry.visibility !== "everyone") {
     return "Only me";
   }
@@ -136,7 +146,9 @@ function ConfirmDeleteDialog({
       <p className="mt-4 text-sm text-slate-700">
         {entry.visibility === "everyone"
           ? "It will be removed from everyone's calendar. This cannot be undone."
-          : "This cannot be undone."}
+          : entry.visibility === "selected"
+            ? "It will be removed from the calendars of the people it is shared with too. This cannot be undone."
+            : "This cannot be undone."}
       </p>
 
       <div className="mt-5 flex justify-end gap-3">
@@ -169,6 +181,7 @@ function ConfirmDeleteDialog({
 export default function DashboardCalendar({
   today,
   initialEntries,
+  people,
 }: DashboardCalendarProps) {
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(today);
@@ -568,6 +581,7 @@ export default function DashboardCalendar({
           key={dialog.entry?.id ?? `new-${dialog.date}`}
           entry={dialog.entry}
           date={dialog.date}
+          people={people}
           onClose={() => setDialog(null)}
           onSaved={handleSaved}
           onDelete={requestDelete}

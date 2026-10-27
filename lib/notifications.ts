@@ -12,7 +12,8 @@ type NotificationType =
   | "FEEDBACK_UPDATED"
   | "ATTENDANCE_UPDATED"
   | "LEARNING_UPDATED"
-  | "TOOL_USAGE_UPDATED";
+  | "TOOL_USAGE_UPDATED"
+  | "CALENDAR_SHARED";
 
 type NotificationInput = {
   userId: string;
@@ -32,6 +33,7 @@ const visibleNotificationTypes = [
   "ATTENDANCE_UPDATED",
   "LEARNING_UPDATED",
   "TOOL_USAGE_UPDATED",
+  "CALENDAR_SHARED",
 ];
 
 export function getVisibleNotificationWhere(

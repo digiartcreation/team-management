@@ -1,15 +1,24 @@
 "use client";
 
-import { useActionState, useEffect, useRef, useState } from "react";
+import {
+  useActionState,
+  useEffect,
+  useRef,
+  useState,
+  useTransition,
+} from "react";
 import { saveCalendarEvent, type CalendarFormState } from "@/app/calendar/actions";
+import PeoplePicker from "@/components/ui/PeoplePicker";
 import {
   CALENDAR_EVENT_TYPES,
   CALENDAR_VISIBILITIES,
   DEFAULT_CALENDAR_EVENT_TYPE,
   DEFAULT_CALENDAR_VISIBILITY,
   calendarEventTypeLabel,
+  describeSharing,
   formatCalendarDay,
   formatCalendarTimes,
+  listNames,
   type CalendarEntry,
 } from "@/lib/calendar";
 
@@ -21,6 +30,8 @@ type CalendarEntryDialogProps = {
   entry: CalendarEntry | null;
   /** "YYYY-MM-DD": the day a new entry starts on. */
   date: string;
+  /** Who an entry can be shared with: everyone but the viewer. */
+  people: { id: string; name: string }[];
   onClose: () => void;
   /** Called with the day the entry was saved on. */
   onSaved: (date: string) => void;
@@ -35,16 +46,6 @@ const labelClass = "text-xs font-medium uppercase tracking-normal text-slate-500
 const secondaryButtonClass =
   "rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50";
 
-function sharingNote(entry: CalendarEntry) {
-  if (entry.visibility !== "everyone") {
-    return "Only you can see this entry.";
-  }
-
-  return entry.isOwn
-    ? "Shared with everyone."
-    : `Shared with everyone by ${entry.createdByName}.`;
-}
-
 /**
  * Adds, edits or shows one calendar entry, in the browser's top layer like the
  * task board's dialogs: the dashboard's cards lift on hover with a transform,
@@ -53,6 +54,7 @@ function sharingNote(entry: CalendarEntry) {
 export default function CalendarEntryDialog({
   entry,
   date,
+  people,
   onClose,
   onSaved,
   onDelete,
@@ -62,10 +64,23 @@ export default function CalendarEntryDialog({
     CalendarFormState,
     FormData
   >(saveCalendarEvent, null);
+  const [, startSubmit] = useTransition();
   // Kept in state so the end time can follow it: no end without a start, and
   // never before it.
   const [startTime, setStartTime] = useState(entry?.startTime ?? "");
+  // Kept in state so picking Selected people can open the list to pick from.
+  const [visibility, setVisibility] = useState<string>(
+    entry?.visibility ?? DEFAULT_CALENDAR_VISIBILITY
+  );
   const readOnly = Boolean(entry && !entry.canManage);
+  // The others a "selected" entry went to. `people` leaves the viewer out, so
+  // checking against it drops them from the list.
+  const alsoSharedWith =
+    entry?.visibility === "selected" && !entry.isOwn
+      ? entry.sharedWith
+          .filter((person) => people.some((other) => other.id === person.id))
+          .map((person) => person.name)
+      : [];
   const headingId = `calendar-entry-heading-${entry?.id ?? "new"}`;
 
   useEffect(() => {
@@ -111,8 +126,13 @@ export default function CalendarEntryDialog({
           ) : null}
 
           <p className="text-xs text-slate-500">
-            {sharingNote(entry)} Only {entry.createdByName} or an admin can
-            change it.
+            {describeSharing(entry)}
+            {alsoSharedWith.length > 0
+              ? ` Also shared with ${listNames(alsoSharedWith)}.`
+              : ""}{" "}
+            Only {entry.createdByName}
+            {entry.visibility === "everyone" ? " or an admin" : ""} can change
+            it.
           </p>
 
           <div className="flex justify-end">
@@ -126,7 +146,17 @@ export default function CalendarEntryDialog({
           </div>
         </div>
       ) : (
-        <form action={formAction} className="grid gap-4 p-6">
+        <form
+          onSubmit={(event) => {
+            // Sent by hand rather than through `action`, after which React
+            // clears the form's fields: a rejected save would wipe out
+            // everything typed along with it.
+            event.preventDefault();
+            const formData = new FormData(event.currentTarget);
+            startSubmit(() => formAction(formData));
+          }}
+          className="grid gap-4 p-6"
+        >
           {entry ? <input type="hidden" name="id" value={entry.id} /> : null}
 
           <h2 id={headingId} className="text-lg font-semibold text-slate-950">
@@ -219,34 +249,46 @@ export default function CalendarEntryDialog({
           </label>
 
           {!entry || entry.isOwn ? (
-            <fieldset className="grid gap-2">
-              <legend className={`${labelClass} mb-2`}>Who can see it</legend>
-              <div className="grid grid-cols-2 gap-2">
-                {CALENDAR_VISIBILITIES.map((visibility) => (
-                  <label
-                    key={visibility.value}
-                    className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-gray-800 has-checked:border-[#A05DD0] has-checked:bg-[#F8F7FB]"
-                  >
-                    <input
-                      type="radio"
-                      name="visibility"
-                      value={visibility.value}
-                      defaultChecked={
-                        (entry?.visibility ?? DEFAULT_CALENDAR_VISIBILITY) ===
-                        visibility.value
-                      }
-                      className="accent-[#770FC2]"
-                    />
-                    {visibility.label}
-                  </label>
-                ))}
-              </div>
-            </fieldset>
+            <>
+              <fieldset className="grid gap-2">
+                <legend className={`${labelClass} mb-2`}>Who can see it</legend>
+                <div className="grid gap-2 sm:grid-cols-3">
+                  {CALENDAR_VISIBILITIES.map((option) => (
+                    <label
+                      key={option.value}
+                      className="flex cursor-pointer items-center gap-2 rounded-md border border-slate-300 px-3 py-2 text-sm text-gray-800 has-checked:border-[#A05DD0] has-checked:bg-[#F8F7FB]"
+                    >
+                      <input
+                        type="radio"
+                        name="visibility"
+                        value={option.value}
+                        checked={visibility === option.value}
+                        onChange={() => setVisibility(option.value)}
+                        className="accent-[#770FC2]"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+
+              {visibility === "selected" ? (
+                <PeoplePicker
+                  people={people}
+                  selectedIds={entry?.sharedWith.map((person) => person.id) ?? []}
+                  name="sharedWith"
+                  legend="Share with"
+                  legendClassName={`${labelClass} mb-2`}
+                  hint="They see this entry on their calendar and get a notification. Only you can change it."
+                  groupLabel="the people it is shared with"
+                />
+              ) : null}
+            </>
           ) : (
             <>
               <input type="hidden" name="visibility" value={entry.visibility} />
               <p className="text-xs text-slate-500">
-                {sharingNote(entry)} Your changes show for everyone.
+                {describeSharing(entry)} Your changes show for everyone.
               </p>
             </>
           )}

@@ -6,6 +6,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import {
   canManageCalendarEvent,
+  formatCalendarDay,
   isCalendarEventType,
   isCalendarTime,
   isCalendarVisibility,
@@ -13,6 +14,7 @@ import {
   type CalendarEventType,
   type CalendarVisibility,
 } from "@/lib/calendar";
+import { createNotification } from "@/lib/notifications";
 
 /** The title column is a VARCHAR(191). */
 const MAX_TITLE_LENGTH = 191;
@@ -124,12 +126,80 @@ function readEntry(
 }
 
 /**
- * The activity log line for an entry. Admins and managers read the log, so a
- * private entry is logged without its title.
+ * The people a "selected" entry is posted with: each once, never its author,
+ * and only people who exist. Empty for the other kinds.
+ */
+async function resolveShareIds(
+  formData: FormData,
+  visibility: CalendarVisibility,
+  authorId: string
+): Promise<{ error: string } | string[]> {
+  if (visibility !== "selected") {
+    return [];
+  }
+
+  const ids = [
+    ...new Set(
+      formData
+        .getAll("sharedWith")
+        .filter((value): value is string => typeof value === "string" && value !== "")
+    ),
+  ].filter((id) => id !== authorId);
+
+  if (ids.length === 0) {
+    return { error: "Pick at least one person to share it with." };
+  }
+
+  const found = await prisma.user.count({ where: { id: { in: ids } } });
+
+  if (found !== ids.length) {
+    return { error: "Someone you picked is no longer here. Pick again." };
+  }
+
+  return ids;
+}
+
+/**
+ * Tells the people newly added to a "selected" entry. Best effort: the entry
+ * is already saved, so a failed notification is not reported as a failed save.
+ */
+async function notifySharedWith(
+  ids: string[],
+  previousIds: string[],
+  actorName: string | null | undefined,
+  entry: { title: string; day: string }
+) {
+  const previous = new Set(previousIds);
+
+  for (const userId of ids) {
+    if (previous.has(userId)) {
+      continue;
+    }
+
+    try {
+      await createNotification({
+        userId,
+        title: "Calendar entry shared",
+        message: `${actorName ?? "Someone"} shared "${entry.title}" on ${formatCalendarDay(entry.day)} with you.`,
+        type: "CALENDAR_SHARED",
+      });
+    } catch (error) {
+      console.error("Could not send a calendar share notification", error);
+    }
+  }
+}
+
+/**
+ * The activity log line for an entry. Admins and managers read the log, so an
+ * entry not shared with everyone is logged without its title.
  */
 function describeEntry(verb: string, title: string, visibility: string) {
-  return visibility === "everyone"
-    ? `${verb} calendar entry ${title}`
+  if (visibility === "everyone") {
+    return `${verb} calendar entry ${title}`;
+  }
+
+  return visibility === "selected"
+    ? `${verb} a calendar entry shared with selected people`
     : `${verb} a private calendar entry`;
 }
 
@@ -155,11 +225,20 @@ export async function saveCalendarEvent(
     notes: entry.notes,
   };
 
+  // Who it ends up shared with, and with whom before: the difference is told
+  // once the save is through.
+  let shareIds: string[] = [];
+  let previousShareIds: string[] = [];
+
   try {
     if (id) {
       const existing = await prisma.calendarEvent.findUnique({
         where: { id },
-        select: { createdById: true, visibility: true },
+        select: {
+          createdById: true,
+          visibility: true,
+          shares: { select: { userId: true } },
+        },
       });
 
       if (!existing) {
@@ -171,16 +250,36 @@ export async function saveCalendarEvent(
       }
 
       // Who sees an entry is its author's call. An admin tidying up someone
-      // else's shared entry leaves it shared.
-      const visibility =
-        existing.createdById === sessionUser.id
-          ? entry.visibility
-          : existing.visibility;
+      // else's shared entry leaves it shared, with the same people.
+      const isAuthor = existing.createdById === sessionUser.id;
+      const visibility = isAuthor ? entry.visibility : existing.visibility;
 
-      await prisma.calendarEvent.update({
-        where: { id },
-        data: { ...fields, visibility },
-      });
+      if (isAuthor) {
+        const resolved = await resolveShareIds(formData, entry.visibility, sessionUser.id);
+
+        if (!Array.isArray(resolved)) {
+          return { error: resolved.error };
+        }
+
+        shareIds = resolved;
+        previousShareIds = existing.shares.map((share) => share.userId);
+      }
+
+      await prisma.$transaction([
+        ...(isAuthor
+          ? [prisma.calendarEventShare.deleteMany({ where: { eventId: id } })]
+          : []),
+        prisma.calendarEvent.update({
+          where: { id },
+          data: {
+            ...fields,
+            visibility,
+            ...(isAuthor
+              ? { shares: { create: shareIds.map((userId) => ({ userId })) } }
+              : {}),
+          },
+        }),
+      ]);
 
       await logActivity({
         userId: sessionUser.id,
@@ -190,11 +289,20 @@ export async function saveCalendarEvent(
         description: describeEntry("Updated", entry.title, visibility),
       });
     } else {
+      const resolved = await resolveShareIds(formData, entry.visibility, sessionUser.id);
+
+      if (!Array.isArray(resolved)) {
+        return { error: resolved.error };
+      }
+
+      shareIds = resolved;
+
       const created = await prisma.calendarEvent.create({
         data: {
           ...fields,
           visibility: entry.visibility,
           createdById: sessionUser.id,
+          shares: { create: shareIds.map((userId) => ({ userId })) },
         },
         select: { id: true },
       });
@@ -210,6 +318,8 @@ export async function saveCalendarEvent(
   } catch {
     return { error: "Could not save the entry. Please try again." };
   }
+
+  await notifySharedWith(shareIds, previousShareIds, sessionUser.name, entry);
 
   return { ok: true, date: entry.day };
 }

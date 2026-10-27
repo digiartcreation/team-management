@@ -18,10 +18,12 @@ export const DEFAULT_CALENDAR_EVENT_TYPE: CalendarEventType = "meeting";
 
 /**
  * Who sees an entry. Private is the default, so nothing someone jots down for
- * themselves lands on everyone's calendar by accident.
+ * themselves lands on everyone's calendar by accident. "Selected" is its author
+ * plus the people picked for it (CalendarEventShare).
  */
 export const CALENDAR_VISIBILITIES = [
   { value: "private", label: "Only me" },
+  { value: "selected", label: "Selected people" },
   { value: "everyone", label: "Everyone" },
 ] as const;
 
@@ -58,6 +60,8 @@ export type CalendarEntry = {
   endTime: string | null;
   notes: string | null;
   visibility: string;
+  /** Who a "selected" entry is shared with, by name; empty otherwise. */
+  sharedWith: { id: string; name: string }[];
   createdByName: string;
   /** Written by the viewer. Only the author decides who sees an entry. */
   isOwn: boolean;
@@ -68,7 +72,8 @@ export type CalendarEntry = {
 /**
  * Who may change or delete an entry: whoever wrote it, and admins when it is
  * shared with everyone. A private entry is its author's alone -- admins never
- * see it, so they cannot touch it either.
+ * see it, so they cannot touch it either -- and the people a "selected" entry
+ * is shared with only read it.
  */
 export function canManageCalendarEvent(
   user: { id?: string; role?: string },
@@ -79,6 +84,30 @@ export function canManageCalendarEvent(
   }
 
   return user.role === "admin" && event.visibility === "everyone";
+}
+
+/** "Asha", "Asha and Ravi", "Asha, Ravi and Sara". */
+export function listNames(names: string[]) {
+  return names.length <= 1
+    ? (names[0] ?? "")
+    : `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}`;
+}
+
+/** Who sees an entry, as a sentence for its dialog. */
+export function describeSharing(entry: CalendarEntry) {
+  if (entry.visibility === "everyone") {
+    return entry.isOwn
+      ? "Shared with everyone."
+      : `Shared with everyone by ${entry.createdByName}.`;
+  }
+
+  if (entry.visibility === "selected") {
+    return entry.isOwn
+      ? `Shared with ${listNames(entry.sharedWith.map((person) => person.name))}.`
+      : `Shared with you by ${entry.createdByName}.`;
+  }
+
+  return "Only you can see this entry.";
 }
 
 /** Today on the office clock, as "YYYY-MM-DD". */

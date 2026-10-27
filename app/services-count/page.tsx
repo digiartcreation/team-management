@@ -1,25 +1,21 @@
-import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ServiceCountExport from "@/components/serviceCounts/ServiceCountExport";
 import { monthKeyOf, monthLabel, monthRange, monthsBetween } from "@/lib/attendance";
-import { loadBasePriceReport } from "@/lib/basePriceReportData";
-import { formatDuration } from "@/lib/duration";
-import { officeDate, officeInstant } from "@/lib/officeTime";
+import { toServiceMapping } from "@/lib/clientServices";
+import { formatOfficeDate, officeDate, officeInstant } from "@/lib/officeTime";
 import { datePresets } from "@/lib/reportAnalytics";
+import { describeRange, parseDateInput, todayUtcMidnight } from "@/lib/reportFilters";
 import {
-  describeRange,
-  endOfDay,
-  parseDateInput,
-  todayUtcMidnight,
-} from "@/lib/reportFilters";
-import {
+  COUNTED_SERVICES,
   buildServiceCounts,
   formatCount,
-  formatProfitPercent,
-  profitBand,
+  quantityLabel,
+  rateLabel,
+  tasksLabel,
+  type CountedService,
 } from "@/lib/serviceCounts";
 import { formatInr } from "@/lib/services";
 
@@ -43,6 +39,13 @@ const inputClass =
 
 const labelClass = "text-xs font-medium uppercase tracking-wide text-slate-500";
 
+/** The dot each service is marked with. */
+const SERVICE_DOT: Record<CountedService, string> = {
+  "Video Editing": "bg-[#770FC2]",
+  "Poster Design": "bg-amber-500",
+  "Digital Marketing": "bg-sky-500",
+};
+
 function servicesCountHref(filters: ServiceCountFilters) {
   const search = new URLSearchParams();
 
@@ -61,40 +64,15 @@ function isMonthKey(value: string | undefined): value is string {
   return Boolean(value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value));
 }
 
-function plural(count: number, one: string, many = `${one}s`) {
-  return `${count} ${count === 1 ? one : many}`;
-}
-
 function decimal(value: { toString(): string } | null) {
   return value === null ? null : Number(value.toString());
 }
 
-/** A profit with its Base Price Report colour band, never colour alone. */
-function ProfitValue({ percent }: { percent: number | null }) {
-  if (percent === null) {
-    return (
-      <span title="No billed work to set the cost against" className="text-slate-400">
-        –
-      </span>
-    );
-  }
-
-  const band = profitBand(percent);
-
-  return (
-    <span
-      title={`${band.label} · ratio ${band.range}`}
-      className="inline-flex items-center justify-end gap-2 whitespace-nowrap"
-    >
-      <span className="font-semibold tabular-nums text-slate-950">
-        {formatProfitPercent(percent)}
-      </span>
-      <span className="inline-flex items-center gap-1.5 rounded-full bg-gray-100 px-2 py-0.5 text-xs font-medium text-gray-700">
-        <span aria-hidden className="h-2.5 w-2.5 rounded-sm" style={{ background: band.color }} />
-        {band.label}
-      </span>
-    </span>
-  );
+/** What one task adds to its line: "weightage 2", "5 posters", "₹50,000". */
+function taskQuantity(service: CountedService, quantity: number) {
+  if (service === "Video Editing") return `weightage ${formatCount(quantity)}`;
+  if (service === "Poster Design") return `${quantity} ${quantity === 1 ? "poster" : "posters"}`;
+  return formatInr(quantity);
 }
 
 export default async function ServicesCountPage({
@@ -141,70 +119,78 @@ export default async function ServicesCountPage({
   const from = parseDateInput(dates.from);
   const to = parseDateInput(dates.to);
 
-  // Hours are stored against their work day; completions are moments, so the
-  // range is the office's days, midnight to midnight.
-  const logWhere = {
-    ...(from || to
-      ? {
-          date: {
-            ...(from ? { gte: from } : {}),
-            ...(to && dates.to ? { lte: endOfDay(dates.to) } : {}),
-          },
-        }
-      : {}),
-  };
-  const completedWithin = {
-    not: null,
-    ...(from ? { gte: officeInstant(from, 0) } : {}),
-    ...(to ? { lt: officeInstant(new Date(to.getTime() + DAY_MS), 0) } : {}),
-  };
-
-  const [completedTasks, priced, firstCompleted, firstLogged] = await Promise.all([
+  // Completions are moments, so the range is the office's days, midnight to
+  // midnight.
+  const [completedTasks, firstCompleted] = await Promise.all([
     prisma.task.findMany({
-      where: { clientId: { not: null }, completedAt: completedWithin },
+      where: {
+        clientId: { not: null },
+        completedAt: {
+          not: null,
+          ...(from ? { gte: officeInstant(from, 0) } : {}),
+          ...(to ? { lt: officeInstant(new Date(to.getTime() + DAY_MS), 0) } : {}),
+        },
+      },
       select: {
+        id: true,
+        title: true,
         clientWork: true,
         videoWeightage: true,
         posterCount: true,
         digitalMarketingAmount: true,
+        completedAt: true,
         client: { select: { id: true, name: true } },
       },
     }),
-    loadBasePriceReport(logWhere),
     prisma.task.aggregate({
       where: { clientId: { not: null } },
       _min: { completedAt: true },
     }),
-    prisma.taskTimeLog.aggregate({ _min: { date: true } }),
   ]);
+
+  const clientIds = [
+    ...new Set(completedTasks.flatMap((task) => (task.client ? [task.client.id] : []))),
+  ];
+  const mappingRows = await prisma.clientService.findMany({
+    where: { clientId: { in: clientIds }, service: { in: [...COUNTED_SERVICES] } },
+    select: {
+      clientId: true,
+      service: true,
+      focus: true,
+      paymentType: true,
+      percentage: true,
+      packageAmount: true,
+      perUnitAmount: true,
+      billingCycle: true,
+    },
+  });
 
   const report = buildServiceCounts(
     completedTasks.flatMap((task) =>
-      task.client
+      task.client && task.completedAt
         ? [
             {
+              id: task.id,
+              title: task.title,
               clientId: task.client.id,
               clientName: task.client.name,
               clientWork: task.clientWork,
               videoWeightage: decimal(task.videoWeightage),
               posterCount: task.posterCount,
               digitalMarketingAmount: decimal(task.digitalMarketingAmount),
+              completedAt: task.completedAt.toISOString(),
             },
           ]
         : []
     ),
-    priced.byClient
+    mappingRows.map((row) => ({ clientId: row.clientId, ...toServiceMapping(row) }))
   );
 
-  // Every month there is anything to show, newest first.
+  // Every month with a completion in it, newest first.
   const currentMonth = monthKeyOf(today);
-  const firstMonth = [
-    firstCompleted._min.completedAt ? monthKeyOf(officeDate(firstCompleted._min.completedAt)) : null,
-    firstLogged._min.date ? monthKeyOf(firstLogged._min.date) : null,
-    currentMonth,
-  ]
-    .filter((key): key is string => Boolean(key))
-    .sort()[0];
+  const firstMonth = firstCompleted._min.completedAt
+    ? [monthKeyOf(officeDate(firstCompleted._min.completedAt)), currentMonth].sort()[0]
+    : currentMonth;
   const monthOptions = monthsBetween(firstMonth, currentMonth);
 
   const scope = allTime ? "All time" : month ? monthLabel(month) : describeRange(from, to);
@@ -215,44 +201,49 @@ export default async function ServicesCountPage({
     ? "All time"
     : presets.find((preset) => preset.from === dates.from && preset.to === dates.to)?.label;
 
-  // The Base Price Report has no "all time", so that opens it from the first month.
-  const pricingHref = `/base-price-report?${new URLSearchParams(
-    allTime ? { from: `${firstMonth}-01` } : { from: dates.from ?? "", to: dates.to ?? "" }
-  ).toString()}`;
-
+  const unpriced = report.clients.some((client) =>
+    client.lines.some((line) => line.amount === null)
+  );
   const notes = [
-    "Videos, posters and DM amounts count client tasks completed in the period, by the date each was first completed. Video weightage is how many videos they bill as.",
-    "Income and cost come from hours logged in the period, priced as on the Base Price Report: income from each client's service payment, cost from hours × base price. Profit % = (income - cost) ÷ cost.",
-    ...(priced.leftOut.tasks > 0
+    "Counts are client tasks completed in the period, by the date each was first completed. Videos count by weightage, the number of videos each bills as; the brackets give the number of tasks.",
+    "Rates come from each client's services on Client Management: per-count rate for videos and posters, percentage of the amount for Digital Marketing.",
+    ...(unpriced
       ? [
-          `${plural(priced.leftOut.tasks, "task")} (${formatDuration(priced.leftOut.minutes)}) logged in this period are left out of income, cost and profit because their pricing data is missing.`,
+          "A service billed another way (a package) or with no rate set shows its terms instead of an amount, and is left out of the totals.",
         ]
       : []),
     ...(report.postersWithoutCount > 0
       ? [
-          `${plural(report.postersWithoutCount, "Poster Design task")} completed in this period ${
+          `${report.postersWithoutCount} Poster Design ${
+            report.postersWithoutCount === 1 ? "task" : "tasks"
+          } completed in this period ${
             report.postersWithoutCount === 1 ? "has" : "have"
-          } no poster count saved and add no posters.`,
+          } no poster count saved and ${report.postersWithoutCount === 1 ? "is" : "are"} not counted.`,
         ]
       : []),
   ];
 
-  const { totals } = report;
+  const { byService } = report;
   const tiles = [
     {
       label: "Videos",
-      value: String(totals.videos),
-      detail:
-        totals.videoWeightage !== totals.videos
-          ? `Weightage ${formatCount(totals.videoWeightage)}`
-          : "Video Editing tasks",
+      value: formatCount(byService["Video Editing"].quantity),
+      detail: tasksLabel(byService["Video Editing"].tasks),
     },
-    { label: "Posters", value: String(totals.posters), detail: "Poster Design" },
-    { label: "DM amount", value: formatInr(totals.dmAmount), detail: "Digital Marketing" },
     {
-      label: "Income vs cost",
-      value: formatInr(totals.income),
-      detail: `Cost ${formatInr(totals.cost)}`,
+      label: "Posters",
+      value: String(byService["Poster Design"].quantity),
+      detail: tasksLabel(byService["Poster Design"].tasks),
+    },
+    {
+      label: "DM amount",
+      value: formatInr(byService["Digital Marketing"].quantity),
+      detail: tasksLabel(byService["Digital Marketing"].tasks),
+    },
+    {
+      label: "Total amount",
+      value: formatInr(report.total),
+      detail: `${report.clients.length} ${report.clients.length === 1 ? "client" : "clients"}`,
     },
   ];
 
@@ -370,7 +361,7 @@ export default async function ServicesCountPage({
         </div>
 
         {/* Totals */}
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-5">
+        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {tiles.map((tile) => (
             <div key={tile.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className={labelClass}>{tile.label}</p>
@@ -378,116 +369,99 @@ export default async function ServicesCountPage({
               <p className="mt-0.5 text-xs text-slate-500">{tile.detail}</p>
             </div>
           ))}
-          <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-            <p className={labelClass}>Profit</p>
-            <div className="mt-1 text-2xl">
-              {totals.profitPercent === null ? (
-                <span className="font-semibold text-slate-400">–</span>
-              ) : (
-                <ProfitValue percent={totals.profitPercent} />
-              )}
-            </div>
-            <p className="mt-0.5 text-xs text-slate-500">
-              {formatInr(totals.income - totals.cost)} on cost
-            </p>
-          </div>
         </section>
 
-        {priced.leftOut.tasks > 0 ? (
-          <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
-            <p className="font-semibold">
-              {plural(priced.leftOut.tasks, "task")} ({formatDuration(priced.leftOut.minutes)}) left
-              out of income, cost and profit
-            </p>
-            <p className="mt-1 text-amber-800">
-              Their pricing data is missing (a client payment, a base price, or a field on the
-              task).{" "}
-              <Link href={pricingHref} className="font-semibold text-[#770FC2] hover:underline">
-                See what to fix on the Base Price Report →
-              </Link>
-            </p>
-          </div>
-        ) : null}
+        {/* Per client: count × rate = amount */}
+        {report.clients.length === 0 ? (
+          <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
+            No videos, posters or Digital Marketing work was completed for a client in this period.
+          </p>
+        ) : (
+          <div className="grid gap-4">
+            {report.clients.map((client) => (
+              <section
+                key={client.clientId}
+                className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm"
+              >
+                <div className="flex items-center justify-between gap-3 border-b border-slate-200 px-5 py-3">
+                  <h2 className="min-w-0 truncate text-base font-semibold text-slate-950">
+                    {client.name}
+                  </h2>
+                  <p className="shrink-0 text-sm text-slate-500">
+                    Total{" "}
+                    <span className="text-base font-semibold tabular-nums text-[#770FC2]">
+                      {formatInr(client.total)}
+                    </span>
+                  </p>
+                </div>
 
-        {/* Per client */}
-        <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
-          <div className="border-b border-slate-200 px-5 py-4">
-            <h2 className="text-lg font-semibold text-slate-950">By client</h2>
-            <p className="mt-0.5 text-sm text-slate-500">
-              {plural(report.rows.length, "client")} with work in this period.
-            </p>
-          </div>
-
-          {report.rows.length === 0 ? (
-            <p className="p-8 text-center text-sm text-slate-500">
-              Nothing was completed or logged for a client in this period.
-            </p>
-          ) : (
-            <div className="overflow-x-auto">
-              <table className="w-full min-w-[860px] text-left text-sm">
-                <thead className="border-b border-slate-200 text-xs uppercase">
-                  <tr>
-                    <th className="px-5 py-3">Client</th>
-                    <th className="px-4 py-3 text-right">Videos</th>
-                    <th className="px-4 py-3 text-right">Posters</th>
-                    <th className="px-4 py-3 text-right">DM amount</th>
-                    <th className="px-4 py-3 text-right">Income</th>
-                    <th className="px-4 py-3 text-right">Cost</th>
-                    <th className="px-5 py-3 text-right">Profit %</th>
-                  </tr>
-                </thead>
-                <tbody className="divide-y divide-slate-100">
-                  {report.rows.map((row) => (
-                    <tr key={row.clientId}>
-                      <td className="px-5 py-3 font-medium text-slate-950">{row.name}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {row.videos}
-                        {row.videoWeightage !== row.videos ? (
-                          <span className="block text-xs text-slate-500">
-                            weightage {formatCount(row.videoWeightage)}
+                <ul className="divide-y divide-slate-100">
+                  {client.lines.map((line) => (
+                    <li key={line.service}>
+                      <details className="group">
+                        <summary className="grid cursor-pointer list-none grid-cols-[minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-3 transition hover:bg-[#FBF7FF] sm:grid-cols-[11rem_minmax(0,1fr)_7rem] [&::-webkit-details-marker]:hidden">
+                          <span className="flex min-w-0 items-center gap-2 text-sm font-medium text-slate-800">
+                            <span aria-hidden className={`h-2 w-2 shrink-0 rounded-full ${SERVICE_DOT[line.service]}`} />
+                            <span className="truncate">{line.service}</span>
+                            <svg
+                              aria-hidden
+                              viewBox="0 0 20 20"
+                              className="h-3.5 w-3.5 shrink-0 text-slate-400 transition group-open:rotate-90"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="2"
+                            >
+                              <path d="m8 5 5 5-5 5" />
+                            </svg>
                           </span>
-                        ) : null}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">{row.posters}</td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {row.dmAmount > 0 ? formatInr(row.dmAmount) : <span className="text-slate-400">–</span>}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {row.income === null ? <span className="text-slate-400">–</span> : formatInr(row.income)}
-                      </td>
-                      <td className="px-4 py-3 text-right tabular-nums">
-                        {row.cost === null ? <span className="text-slate-400">–</span> : formatInr(row.cost)}
-                      </td>
-                      <td className="px-5 py-3 text-right">
-                        <ProfitValue percent={row.profitPercent} />
-                      </td>
-                    </tr>
+                          <span className="order-3 col-span-2 text-sm tabular-nums text-slate-700 sm:order-none sm:col-span-1">
+                            <span className="font-semibold text-slate-950">
+                              {quantityLabel(line.service, line.quantity)}
+                            </span>{" "}
+                            <span className="text-slate-500">({tasksLabel(line.tasks.length)})</span>{" "}
+                            <span className="text-slate-400">×</span>{" "}
+                            <span className={line.amount === null ? "text-amber-700" : ""}>
+                              {rateLabel(line)}
+                            </span>
+                          </span>
+                          <span className="text-right text-sm font-semibold tabular-nums text-slate-950">
+                            {line.amount === null ? (
+                              <span className="text-slate-400">–</span>
+                            ) : (
+                              <>= {formatInr(line.amount)}</>
+                            )}
+                          </span>
+                        </summary>
+
+                        <ul className="grid gap-1 border-t border-slate-100 bg-slate-50 px-5 py-2.5">
+                          {line.tasks.map((task) => (
+                            <li
+                              key={task.id}
+                              className="flex items-baseline justify-between gap-3 text-xs"
+                            >
+                              <span className="min-w-0 truncate text-slate-700">{task.title}</span>
+                              <span className="shrink-0 tabular-nums text-slate-500">
+                                {taskQuantity(line.service, task.quantity)} ·{" "}
+                                {formatOfficeDate(task.completedAt)}
+                              </span>
+                            </li>
+                          ))}
+                        </ul>
+                      </details>
+                    </li>
                   ))}
-                </tbody>
-                <tfoot className="border-t-2 border-[#A05DD0]/40 bg-[#F8F7FB] font-semibold">
-                  <tr>
-                    <td className="px-5 py-3 text-[#770FC2]">Total</td>
-                    <td className="px-4 py-3 text-right tabular-nums">
-                      {totals.videos}
-                      {totals.videoWeightage !== totals.videos ? (
-                        <span className="block text-xs font-normal text-slate-500">
-                          weightage {formatCount(totals.videoWeightage)}
-                        </span>
-                      ) : null}
-                    </td>
-                    <td className="px-4 py-3 text-right tabular-nums">{totals.posters}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatInr(totals.dmAmount)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatInr(totals.income)}</td>
-                    <td className="px-4 py-3 text-right tabular-nums">{formatInr(totals.cost)}</td>
-                    <td className="px-5 py-3 text-right">
-                      <ProfitValue percent={totals.profitPercent} />
-                    </td>
-                  </tr>
-                </tfoot>
-              </table>
+                </ul>
+              </section>
+            ))}
+
+            <div className="flex items-center justify-between rounded-xl border border-[#A05DD0]/40 bg-[#F8F7FB] px-5 py-3">
+              <span className="text-sm font-semibold text-[#770FC2]">Total · {scope}</span>
+              <span className="text-lg font-semibold tabular-nums text-[#770FC2]">
+                {formatInr(report.total)}
+              </span>
             </div>
-          )}
-        </section>
+          </div>
+        )}
 
         <ul className="grid gap-1 text-xs text-slate-500">
           {notes.map((note) => (

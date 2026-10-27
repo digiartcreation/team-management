@@ -13,6 +13,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     return [
       { label: "Manager Dashboard", href: "/manager" },
       { label: "Tasks", href: "/tasks" },
+      { label: "Calendar", href: "/calendar" },
       { label: "Attendance", href: "/attendance" },
       { label: "Daily Updates", href: "/updates" },
       { label: "Learnings", href: "/learnings" },
@@ -28,6 +29,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     return [
       { label: "My Dashboard", href: "/member" },
       { label: "My Tasks", href: "/tasks" },
+      { label: "Calendar", href: "/calendar" },
       { label: "Attendance", href: "/attendance" },
       { label: "Daily Updates", href: "/updates" },
       { label: "Learnings", href: "/learnings" },
@@ -42,6 +44,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
   const adminItems = [
     { label: "Dashboard", href: "/" },
     { label: "Tasks", href: "/tasks" },
+    { label: "Calendar", href: "/calendar" },
     { label: "Attendance", href: "/attendance" },
     { label: "Employees", href: "/employees" },
     { label: "Teams", href: "/teams" },
@@ -59,7 +62,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
   // Straight after Attendance, the reports before the prices they read.
   if (isSuperAdmin) {
     adminItems.splice(
-      3,
+      adminItems.findIndex((item) => item.href === "/attendance") + 1,
       0,
       { label: "Services Count", href: "/services-count" },
       { label: "Base Price Report", href: "/base-price-report" },

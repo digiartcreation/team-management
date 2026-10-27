@@ -7,8 +7,7 @@ import WatchingBoard from "@/components/dashboard/WatchingBoard";
 import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
-import { officeToday } from "@/lib/calendar";
-import { loadCalendarMonth } from "@/lib/calendarEvents";
+import { loadCalendarProps } from "@/lib/calendarEvents";
 
 // Only used by the welcome header, which is commented out for now.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -53,7 +52,6 @@ export default async function MemberDashboardPage() {
   // filter Prisma drops, which would put every task in the workspace on one
   // employee's board. No such user exists, so this matches nothing instead.
   const ownTasks = { assignedToId: sessionUser.id ?? "__no_user__" };
-  const calendarToday = officeToday();
 
   const [
     backlogTasks,
@@ -62,7 +60,7 @@ export default async function MemberDashboardPage() {
     reopenedTasks,
     board,
     watched,
-    calendarEntries,
+    calendar,
   ] = await Promise.all([
     prisma.task.count({ where: { ...ownTasks, status: "pending" } }),
     prisma.task.count({ where: { ...ownTasks, status: "in_progress" } }),
@@ -70,10 +68,7 @@ export default async function MemberDashboardPage() {
     prisma.task.count({ where: { ...ownTasks, status: "reopened" } }),
     loadTaskBoard(ownTasks),
     loadWatchedBoard(ownTasks.assignedToId),
-    loadCalendarMonth(
-      { id: ownTasks.assignedToId, role: sessionUser.role },
-      calendarToday.slice(0, 7)
-    ),
+    loadCalendarProps({ id: ownTasks.assignedToId, role: sessionUser.role }),
   ]);
 
   return (
@@ -113,10 +108,7 @@ export default async function MemberDashboardPage() {
 
         <WatchingBoard columns={watched} today={todayInputValue()} />
 
-        <DashboardCalendar
-          today={calendarToday}
-          initialEntries={calendarEntries}
-        />
+        <DashboardCalendar {...calendar} />
 
         {!member?.team ? (
           <section className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center shadow-sm">

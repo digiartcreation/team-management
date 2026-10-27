@@ -1,9 +1,12 @@
 "use client";
 
 import { useState } from "react";
+import { formatOfficeDate } from "@/lib/officeTime";
 import {
   formatCount,
-  formatProfitPercent,
+  quantityLabel,
+  rateLabel,
+  tasksLabel,
   type ServiceCountReport,
 } from "@/lib/serviceCounts";
 import { formatInr } from "@/lib/services";
@@ -20,18 +23,6 @@ type ServiceCountExportProps = {
 const HEADING = "Services Count";
 const BRAND = "770FC2";
 const BRAND_TINT = "F3E8FF";
-
-const HEADINGS = [
-  "Client",
-  "Videos",
-  "Video weightage",
-  "Posters",
-  "DM amount",
-  "Income",
-  "Cost",
-  "Profit",
-  "Profit %",
-];
 
 function download(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
@@ -51,25 +42,6 @@ function generatedOn() {
   }).format(new Date());
 }
 
-/** The table's rows and its totals, as plain values both formats start from. */
-function tableLines(report: ServiceCountReport) {
-  return [
-    ...report.rows.map((row) => ({ ...row, total: false })),
-    { ...report.totals, name: "Total", total: true },
-  ].map((line) => ({
-    name: line.name,
-    videos: line.videos,
-    videoWeightage: line.videoWeightage,
-    posters: line.posters,
-    dmAmount: line.dmAmount,
-    income: line.income,
-    cost: line.cost,
-    profit: line.income === null || line.cost === null ? null : line.income - line.cost,
-    profitPercent: line.profitPercent,
-    total: line.total,
-  }));
-}
-
 /* ------------------------------------------------------------------ */
 /* Excel                                                                */
 /* ------------------------------------------------------------------ */
@@ -80,71 +52,92 @@ async function exportExcel({ scope, fileStem, report, notes }: ServiceCountExpor
   workbook.creator = "Digiart Creation";
   workbook.created = new Date();
 
-  const sheet = workbook.addWorksheet(HEADING, {
-    views: [{ state: "frozen", ySplit: 4 }],
-  });
-  sheet.columns = [
-    { width: 32 },
-    { width: 10 },
-    { width: 16 },
-    { width: 10 },
-    { width: 16 },
-    { width: 16 },
-    { width: 16 },
-    { width: 16 },
-    { width: 12 },
-  ];
+  type Sheet = ReturnType<typeof workbook.addWorksheet>;
+  type Row = ReturnType<Sheet["addRow"]>;
 
-  sheet.mergeCells(1, 1, 1, HEADINGS.length);
-  sheet.getCell(1, 1).value = HEADING;
-  sheet.getCell(1, 1).font = { bold: true, size: 14, color: { argb: `FF${BRAND}` } };
-  sheet.mergeCells(2, 1, 2, HEADINGS.length);
-  sheet.getCell(2, 1).value = `${scope} · Generated ${generatedOn()}`;
-  sheet.getCell(2, 1).font = { italic: true, color: { argb: "FF6B7280" } };
-  sheet.addRow([]);
+  const addTitle = (sheet: Sheet, title: string, span: number) => {
+    sheet.mergeCells(1, 1, 1, span);
+    sheet.getCell(1, 1).value = title;
+    sheet.getCell(1, 1).font = { bold: true, size: 14, color: { argb: `FF${BRAND}` } };
+    sheet.mergeCells(2, 1, 2, span);
+    sheet.getCell(2, 1).value = `${scope} · Generated ${generatedOn()}`;
+    sheet.getCell(2, 1).font = { italic: true, color: { argb: "FF6B7280" } };
+    sheet.addRow([]);
+  };
 
-  const header = sheet.addRow(HEADINGS);
-  header.eachCell((cell) => {
-    cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
-    cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${BRAND}` } };
-    cell.alignment = { vertical: "middle" };
-  });
-  header.height = 20;
+  const styleHeader = (row: Row) => {
+    row.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${BRAND}` } };
+      cell.alignment = { vertical: "middle" };
+    });
+    row.height = 20;
+  };
 
-  for (const line of tableLines(report)) {
-    const row = sheet.addRow([
-      line.name,
-      line.videos,
-      line.videoWeightage,
-      line.posters,
-      line.dmAmount,
-      line.income,
-      line.cost,
-      line.profit,
-      // Stored as a fraction so Excel's percent format reads it right.
-      line.profitPercent === null ? null : line.profitPercent / 100,
-    ]);
+  const styleTotal = (row: Row) => {
+    row.eachCell((cell) => {
+      cell.font = { bold: true, color: { argb: `FF${BRAND}` } };
+      cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${BRAND_TINT}` } };
+    });
+  };
 
-    if (line.total) {
-      row.eachCell((cell) => {
-        cell.font = { bold: true, color: { argb: `FF${BRAND}` } };
-        cell.fill = { type: "pattern", pattern: "solid", fgColor: { argb: `FF${BRAND_TINT}` } };
-      });
-    }
+  // Summary: count × rate = amount, per client
+  const headings = ["Client", "Service", "Count", "Tasks", "Rate", "Amount"];
+  const sheet = workbook.addWorksheet(HEADING, { views: [{ state: "frozen", ySplit: 4 }] });
+  sheet.columns = [{ width: 30 }, { width: 20 }, { width: 14 }, { width: 8 }, { width: 30 }, { width: 16 }];
+  addTitle(sheet, HEADING, headings.length);
+  styleHeader(sheet.addRow(headings));
+
+  for (const client of report.clients) {
+    client.lines.forEach((line, index) => {
+      const row = sheet.addRow([
+        index === 0 ? client.name : "",
+        line.service,
+        // DM is an amount, the others a count; both stay numbers for Excel.
+        line.quantity,
+        line.tasks.length,
+        rateLabel(line),
+        line.amount,
+      ]);
+
+      row.getCell(3).numFmt = line.service === "Digital Marketing" ? '"₹"#,##0' : "0.##";
+    });
+
+    styleTotal(sheet.addRow([`${client.name} total`, "", "", "", "", client.total]));
   }
 
-  sheet.getColumn(3).numFmt = "0.0";
-  [5, 6, 7, 8].forEach((column) => (sheet.getColumn(column).numFmt = '"₹"#,##0;-"₹"#,##0'));
-  sheet.getColumn(9).numFmt = "0.0%";
-
+  sheet.addRow([]);
+  styleTotal(sheet.addRow([`Total · ${scope}`, "", "", "", "", report.total]));
+  sheet.getColumn(6).numFmt = '"₹"#,##0';
   sheet.addRow([]);
 
   for (const note of notes) {
     const row = sheet.addRow([note]);
-    sheet.mergeCells(row.number, 1, row.number, HEADINGS.length);
+    sheet.mergeCells(row.number, 1, row.number, headings.length);
     row.getCell(1).font = { italic: true, color: { argb: "FF6B7280" } };
     row.getCell(1).alignment = { wrapText: true, vertical: "top" };
     row.height = 30;
+  }
+
+  // Every task behind the counts
+  const tasks = workbook.addWorksheet("Tasks", { views: [{ state: "frozen", ySplit: 4 }] });
+  tasks.columns = [{ width: 30 }, { width: 20 }, { width: 44 }, { width: 14 }, { width: 16 }];
+  addTitle(tasks, `${HEADING} – tasks`, 5);
+  styleHeader(tasks.addRow(["Client", "Service", "Task", "Count", "Completed on"]));
+
+  for (const client of report.clients) {
+    for (const line of client.lines) {
+      for (const task of line.tasks) {
+        const row = tasks.addRow([
+          client.name,
+          line.service,
+          task.title,
+          task.quantity,
+          formatOfficeDate(task.completedAt),
+        ]);
+        row.getCell(4).numFmt = line.service === "Digital Marketing" ? '"₹"#,##0' : "0.##";
+      }
+    }
   }
 
   const buffer = await workbook.xlsx.writeBuffer();
@@ -169,10 +162,6 @@ function pdfText(text: string) {
   return text.replace(/₹/g, "Rs. ").replace(/−/g, "-");
 }
 
-function pdfInr(amount: number) {
-  return pdfText(formatInr(amount));
-}
-
 async function exportPdf({ scope, fileStem, report, notes }: ServiceCountExportProps) {
   const [{ jsPDF }, { autoTable }] = await Promise.all([
     import("jspdf"),
@@ -185,6 +174,7 @@ async function exportPdf({ scope, fileStem, report, notes }: ServiceCountExportP
   const margin = 12;
   const contentWidth = pageWidth - margin * 2;
   const violet: [number, number, number] = [119, 15, 194];
+  const tint: [number, number, number] = [243, 232, 255];
   const ink: [number, number, number] = [31, 41, 55];
   const muted: [number, number, number] = [107, 114, 128];
 
@@ -201,14 +191,12 @@ async function exportPdf({ scope, fileStem, report, notes }: ServiceCountExportP
   doc.text(`Generated ${generatedOn()}`, pageWidth - margin, 19, { align: "right" });
 
   // KPI tiles
-  const { totals } = report;
+  const { byService } = report;
   const tiles = [
-    ["Videos", `${totals.videos} (weightage ${formatCount(totals.videoWeightage)})`],
-    ["Posters", String(totals.posters)],
-    ["DM amount", pdfInr(totals.dmAmount)],
-    ["Income", pdfInr(totals.income)],
-    ["Cost", pdfInr(totals.cost)],
-    ["Profit", totals.profitPercent === null ? "–" : formatProfitPercent(totals.profitPercent)],
+    ["Videos", `${formatCount(byService["Video Editing"].quantity)} (${tasksLabel(byService["Video Editing"].tasks)})`],
+    ["Posters", `${byService["Poster Design"].quantity} (${tasksLabel(byService["Poster Design"].tasks)})`],
+    ["DM amount", pdfText(formatInr(byService["Digital Marketing"].quantity))],
+    ["Total amount", pdfText(formatInr(report.total))],
   ];
   const gap = 4;
   const tileWidth = (contentWidth - gap * (tiles.length - 1)) / tiles.length;
@@ -224,44 +212,55 @@ async function exportPdf({ scope, fileStem, report, notes }: ServiceCountExportP
     doc.text(label.toUpperCase(), x + 4, tileTop + 6);
     doc.setTextColor(...ink);
     doc.setFont("helvetica", "bold");
-    doc.setFontSize(11);
+    doc.setFontSize(12);
     doc.text(value, x + 4, tileTop + 14);
     doc.setFont("helvetica", "normal");
   });
 
-  const lines = tableLines(report);
-  const cell = (line: (typeof lines)[number]) => [
-    line.name,
-    String(line.videos),
-    formatCount(line.videoWeightage),
-    String(line.posters),
-    // A dash for no DM work, as on the page; the total always shows its sum.
-    line.total || line.dmAmount > 0 ? pdfInr(line.dmAmount) : "–",
-    line.income === null ? "–" : pdfInr(line.income),
-    line.cost === null ? "–" : pdfInr(line.cost),
-    line.profit === null ? "–" : pdfInr(line.profit),
-    line.profitPercent === null ? "–" : formatProfitPercent(line.profitPercent),
-  ];
+  type Cell = { content: string; styles?: Record<string, unknown> };
+  const totalStyle = { fontStyle: "bold", fillColor: tint, textColor: violet };
+  const body: Cell[][] = [];
+
+  for (const client of report.clients) {
+    client.lines.forEach((line, index) => {
+      body.push([
+        { content: index === 0 ? client.name : "" },
+        { content: line.service },
+        { content: `${pdfText(quantityLabel(line.service, line.quantity))} (${tasksLabel(line.tasks.length)})` },
+        { content: pdfText(rateLabel(line)) },
+        { content: line.amount === null ? "–" : pdfText(formatInr(line.amount)) },
+      ]);
+    });
+
+    body.push([
+      { content: `${client.name} total`, styles: totalStyle },
+      { content: "", styles: totalStyle },
+      { content: "", styles: totalStyle },
+      { content: "", styles: totalStyle },
+      { content: pdfText(formatInr(client.total)), styles: totalStyle },
+    ]);
+  }
 
   autoTable(doc, {
     startY: tileTop + 24,
     margin: { left: margin, right: margin },
-    head: [HEADINGS],
-    body: lines.filter((line) => !line.total).map(cell),
-    // columnStyles skip the foot, so its figures are right-aligned here.
+    head: [["Client", "Service", "Count", "× Rate", "Amount"]],
+    body,
+    // columnStyles skip the foot, so its figure is right-aligned here.
     foot: [
-      cell(lines[lines.length - 1]).map((content, index) => ({
-        content,
-        styles: index === 0 ? {} : { halign: "right" as const },
-      })),
+      [
+        { content: `Total · ${scope}` },
+        { content: "" },
+        { content: "" },
+        { content: "" },
+        { content: pdfText(formatInr(report.total)), styles: { halign: "right" } },
+      ],
     ],
     theme: "grid",
-    styles: { fontSize: 8.5, cellPadding: 2, lineColor: [229, 231, 235], lineWidth: 0.2, textColor: ink },
+    styles: { fontSize: 9, cellPadding: 2.2, lineColor: [229, 231, 235], lineWidth: 0.2, textColor: ink },
     headStyles: { fillColor: violet, textColor: 255, fontStyle: "bold" },
-    footStyles: { fillColor: [243, 232, 255], textColor: violet, fontStyle: "bold" },
-    columnStyles: Object.fromEntries(
-      HEADINGS.slice(1).map((_, index) => [index + 1, { halign: "right" }])
-    ),
+    footStyles: { fillColor: violet, textColor: 255, fontStyle: "bold" },
+    columnStyles: { 4: { halign: "right" } },
     showFoot: "lastPage",
   });
 
@@ -323,7 +322,7 @@ function PdfIcon() {
 export default function ServiceCountExport(props: ServiceCountExportProps) {
   const [busy, setBusy] = useState<"excel" | "pdf" | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const empty = props.report.rows.length === 0;
+  const empty = props.report.clients.length === 0;
 
   async function run(kind: "excel" | "pdf") {
     setBusy(kind);
