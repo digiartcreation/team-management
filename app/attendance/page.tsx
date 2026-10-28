@@ -46,6 +46,14 @@ function formatTime(value: Date | null) {
   return value ? timeFormatter.format(value) : "Not recorded";
 }
 
+/**
+ * Past 9:20 on the office clock: when the Check-In button turns red, and when
+ * a day's First In is shown in red. (The Late status itself starts at 9:01.)
+ */
+function isRedCheckIn(value: Date) {
+  return officeMinutes(value) > 9 * 60 + 20;
+}
+
 const clockFormatter = new Intl.DateTimeFormat("en", {
   timeZone: "UTC",
   hour: "2-digit",
@@ -143,7 +151,17 @@ function AttendanceTable({
                     <StatusBadge status={record.status} />
                   </td>
                 ) : null}
-                <td className="px-4 py-4 text-slate-600">{formatTime(record.actualCheckInTime)}</td>
+                <td
+                  className={`px-4 py-4 font-medium ${
+                    !record.actualCheckInTime
+                      ? "text-slate-600"
+                      : isRedCheckIn(record.actualCheckInTime)
+                        ? "text-red-600"
+                        : "text-emerald-700"
+                  }`}
+                >
+                  {formatTime(record.actualCheckInTime)}
+                </td>
                 <td className="px-4 py-4 text-slate-600">
                   {day.open ? (
                     <span className="font-medium text-emerald-700">Checked in</span>
@@ -214,7 +232,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   // Sessions left open past 10 PM are checked out (30 minutes after their
   // check-in) before any day is read, so the page never shows one running.
   await closeExpiredSessions(now);
-  const isLateForCheckIn = officeMinutes(now) > 9 * 60 + 20;
+  const isLateForCheckIn = isRedCheckIn(now);
   const checkInClosed = isCheckOutClosed(now);
   const todayDate = officeDate(now);
   const [earliest, ownTodayRecord] = await Promise.all([

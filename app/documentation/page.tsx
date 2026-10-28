@@ -70,10 +70,10 @@ export default async function DocumentationListPage({
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>
             <p className="text-sm font-medium uppercase tracking-normal text-slate-500">
-              Documentation
+              Docs
             </p>
             <h1 className="mt-2 text-2xl font-semibold tracking-normal text-slate-950">
-              Team Documentation
+              Team Docs
             </h1>
           </div>
           <Link
@@ -110,7 +110,7 @@ export default async function DocumentationListPage({
         {pages.length === 0 ? (
           <section className="rounded-lg border border-slate-200 bg-white p-8 text-center shadow-sm">
             <p className="text-sm font-medium text-slate-700">
-              {q ? "No pages match that search." : "No documentation yet."}
+              {q ? "No pages match that search." : "No docs yet."}
             </p>
             <p className="mt-1 text-sm text-slate-500">
               {q
