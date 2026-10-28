@@ -8,18 +8,19 @@ import {
   useTransition,
 } from "react";
 import { saveCalendarEvent, type CalendarFormState } from "@/app/calendar/actions";
+import CalendarRepeatField from "@/components/dashboard/CalendarRepeatField";
 import PeoplePicker from "@/components/ui/PeoplePicker";
 import {
   CALENDAR_EVENT_TYPES,
-  CALENDAR_RECURRENCES,
   CALENDAR_VISIBILITIES,
   DEFAULT_CALENDAR_EVENT_TYPE,
   DEFAULT_CALENDAR_VISIBILITY,
   calendarEventTypeLabel,
-  describeRecurrence,
+  describeRepeat,
   describeSharing,
   formatCalendarDay,
   formatCalendarTimes,
+  formatShortDay,
   listNames,
   type CalendarEntry,
 } from "@/lib/calendar";
@@ -74,6 +75,10 @@ export default function CalendarEntryDialog({
   const [visibility, setVisibility] = useState<string>(
     entry?.visibility ?? DEFAULT_CALENDAR_VISIBILITY
   );
+  // A repeating entry is edited from the date it was set for, whichever of
+  // its days was clicked. Kept in state so the repeat can follow it.
+  const [startDate, setStartDate] = useState(entry?.seriesDate ?? date);
+  const [recurrence, setRecurrence] = useState(entry?.recurrence ?? "none");
   const readOnly = Boolean(entry && !entry.canManage);
   // The others a "selected" entry went to. `people` leaves the viewer out, so
   // checking against it drops them from the list.
@@ -119,10 +124,9 @@ export default function CalendarEntryDialog({
             <p className="mt-1 text-sm text-slate-600">
               {formatCalendarDay(entry.date)} · {formatCalendarTimes(entry)}
             </p>
-            {describeRecurrence(entry.recurrence) ? (
+            {describeRepeat(entry) ? (
               <p className="mt-0.5 text-xs text-slate-500">
-                {describeRecurrence(entry.recurrence)}, from{" "}
-                {formatCalendarDay(entry.seriesDate)}
+                {describeRepeat(entry)}, from {formatShortDay(entry.seriesDate)}
               </p>
             ) : null}
           </div>
@@ -167,9 +171,16 @@ export default function CalendarEntryDialog({
         >
           {entry ? <input type="hidden" name="id" value={entry.id} /> : null}
 
-          <h2 id={headingId} className="text-lg font-semibold text-slate-950">
-            {entry ? "Edit entry" : "Add to calendar"}
-          </h2>
+          <div>
+            <h2 id={headingId} className="text-lg font-semibold text-slate-950">
+              {entry ? "Edit entry" : "Add to calendar"}
+            </h2>
+            {entry && entry.recurrence !== "none" ? (
+              <p className="mt-2 rounded-md border border-[#A05DD0]/40 bg-[#F8F7FB] px-3 py-2 text-xs text-[#5B0B96]">
+                This entry repeats. Changes here apply to every day it shows on.
+              </p>
+            ) : null}
+          </div>
 
           <label className="grid gap-2">
             <span className={labelClass}>Title</span>
@@ -202,14 +213,15 @@ export default function CalendarEntryDialog({
             </label>
 
             <label className="grid gap-2">
-              <span className={labelClass}>Date</span>
+              <span className={labelClass}>
+                {recurrence === "none" ? "Date" : "Starts on"}
+              </span>
               <input
                 name="date"
                 type="date"
                 required
-                // A repeating entry is edited from the date it was set for,
-                // whichever of its days was clicked.
-                defaultValue={entry?.seriesDate ?? date}
+                value={startDate}
+                onChange={(event) => setStartDate(event.target.value)}
                 className={fieldClass}
               />
             </label>
@@ -246,24 +258,14 @@ export default function CalendarEntryDialog({
             </p>
           </div>
 
-          <label className="grid gap-2">
-            <span className={labelClass}>Repeat</span>
-            <select
-              name="recurrence"
-              defaultValue={entry?.recurrence ?? "none"}
-              className={fieldClass}
-            >
-              {CALENDAR_RECURRENCES.map((option) => (
-                <option key={option.value} value={option.value}>
-                  {option.label}
-                </option>
-              ))}
-            </select>
-            <span className="text-xs text-slate-500">
-              Set one date: a weekly entry shows on that weekday every week, a
-              monthly one on that day every month.
-            </span>
-          </label>
+          <CalendarRepeatField
+            // Until a date is in, there is no weekday or day of the month to
+            // default to; today's stands in.
+            startDate={startDate || date}
+            recurrence={recurrence}
+            onRecurrenceChange={setRecurrence}
+            initial={entry}
+          />
 
           <label className="grid gap-2">
             <span className={labelClass}>Notes (optional)</span>

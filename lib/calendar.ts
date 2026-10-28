@@ -34,15 +34,67 @@ export type CalendarVisibility =
 export const DEFAULT_CALENDAR_VISIBILITY: CalendarVisibility = "private";
 
 /**
- * How an entry repeats from its date: a weekly meeting shows on the same
- * weekday every week, a monthly one on the same day every month -- or on the
- * month's last day when it is shorter (the 31st falls on the 30th in June).
+ * How an entry repeats from its start date: weekly on the weekdays picked for
+ * it, or monthly on the day of the month picked -- the month's last day when
+ * it is shorter (the 31st falls on the 30th in June). Either may stop on a
+ * last date.
  */
 export const CALENDAR_RECURRENCES = [
   { value: "none", label: "Does not repeat" },
-  { value: "weekly", label: "Every week" },
-  { value: "monthly", label: "Every month" },
+  { value: "weekly", label: "Weekly" },
+  { value: "monthly", label: "Monthly" },
 ] as const;
+
+/** Monday 1 to Sunday 7, the numbers a weekly entry's days are stored as. */
+export const WEEKDAYS = [
+  { value: 1, short: "Mon", long: "Monday" },
+  { value: 2, short: "Tue", long: "Tuesday" },
+  { value: 3, short: "Wed", long: "Wednesday" },
+  { value: 4, short: "Thu", long: "Thursday" },
+  { value: 5, short: "Fri", long: "Friday" },
+  { value: 6, short: "Sat", long: "Saturday" },
+  { value: 7, short: "Sun", long: "Sunday" },
+] as const;
+
+/** How an entry repeats, as stored. */
+export type RepeatRule = {
+  recurrence: string;
+  /** Weekly: the weekdays, Monday 1 to Sunday 7. Empty means the start's own. */
+  repeatDays: number[];
+  /** Monthly: the day of the month. Null means the start's own. */
+  repeatMonthDay: number | null;
+  /** "YYYY-MM-DD": the last day it can fall on, or null to repeat for good. */
+  repeatUntil: string | null;
+};
+
+/** The weekday of a "YYYY-MM-DD" day, Monday 1 to Sunday 7. */
+export function isoWeekday(day: string) {
+  const weekday = new Date(`${day}T00:00:00.000Z`).getUTCDay();
+  return weekday === 0 ? 7 : weekday;
+}
+
+/** "1,4" -> [1, 4]: each weekday once, in order, anything else dropped. */
+export function parseRepeatDays(value: string | null | undefined) {
+  return [
+    ...new Set(
+      (value ?? "")
+        .split(",")
+        .map((part) => Number(part.trim()))
+        .filter((day) => Number.isInteger(day) && day >= 1 && day <= 7)
+    ),
+  ].sort((a, b) => a - b);
+}
+
+/** 1 -> "1st", 2 -> "2nd", 23 -> "23rd", 11 -> "11th". */
+export function ordinal(value: number) {
+  const tens = value % 100;
+
+  if (tens >= 11 && tens <= 13) {
+    return `${value}th`;
+  }
+
+  return `${value}${["th", "st", "nd", "rd"][value % 10] ?? "th"}`;
+}
 
 export type CalendarRecurrence =
   (typeof CALENDAR_RECURRENCES)[number]["value"];
@@ -83,6 +135,9 @@ export type CalendarEntry = {
   seriesDate: string;
   /** One of CALENDAR_RECURRENCES. */
   recurrence: string;
+  repeatDays: number[];
+  repeatMonthDay: number | null;
+  repeatUntil: string | null;
   /** "HH:MM", or null for an all-day entry. */
   startTime: string | null;
   endTime: string | null;
@@ -208,28 +263,38 @@ export function calendarGridDays(month: string) {
 
 /**
  * The days from `from` to `to` (both "YYYY-MM-DD", inclusive) that an entry
- * set for `seriesDate` shows on, given how it repeats.
+ * starting on `seriesDate` shows on, given how it repeats. A repeat never
+ * falls before its start or after its last date.
  */
 export function occurrencesBetween(
-  seriesDate: string,
-  recurrence: string,
+  series: RepeatRule & { seriesDate: string },
   from: string,
   to: string
 ) {
-  const start = Date.parse(`${seriesDate}T00:00:00.000Z`);
+  const start = Date.parse(`${series.seriesDate}T00:00:00.000Z`);
   const first = Math.max(start, Date.parse(`${from}T00:00:00.000Z`));
-  const last = Date.parse(`${to}T00:00:00.000Z`);
+  const last = Math.min(
+    Date.parse(`${to}T00:00:00.000Z`),
+    series.repeatUntil && series.recurrence !== "none"
+      ? Date.parse(`${series.repeatUntil}T00:00:00.000Z`)
+      : Infinity
+  );
   const days: string[] = [];
 
-  if (recurrence === "weekly") {
-    // The first of its weekly dates on or after the range opens.
-    const weeks = Math.ceil((first - start) / (7 * DAY_MS));
+  if (series.recurrence === "weekly") {
+    const weekdays = new Set(
+      series.repeatDays.length > 0 ? series.repeatDays : [isoWeekday(series.seriesDate)]
+    );
 
-    for (let day = start + weeks * 7 * DAY_MS; day <= last; day += 7 * DAY_MS) {
-      days.push(new Date(day).toISOString().slice(0, 10));
+    for (let day = first; day <= last; day += DAY_MS) {
+      const iso = new Date(day).toISOString().slice(0, 10);
+
+      if (weekdays.has(isoWeekday(iso))) {
+        days.push(iso);
+      }
     }
-  } else if (recurrence === "monthly") {
-    const dayOfMonth = new Date(start).getUTCDate();
+  } else if (series.recurrence === "monthly") {
+    const dayOfMonth = series.repeatMonthDay ?? new Date(start).getUTCDate();
     const cursor = new Date(first);
 
     for (
@@ -245,17 +310,50 @@ export function occurrencesBetween(
       }
     }
   } else if (start >= first && start <= last) {
-    days.push(seriesDate);
+    days.push(series.seriesDate);
   }
 
   return days;
 }
 
-/** "Repeats every week", or null when it does not repeat. */
-export function describeRecurrence(recurrence: string) {
-  if (recurrence === "weekly") return "Repeats every week";
-  if (recurrence === "monthly") return "Repeats every month";
-  return null;
+const shortDayFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+/** "2026-12-31" -> "Dec 31, 2026". */
+export function formatShortDay(day: string) {
+  return shortDayFormatter.format(new Date(`${day}T00:00:00.000Z`));
+}
+
+/**
+ * How an entry repeats, in words: "Every Monday and Thursday", "Every weekday
+ * (Mon–Fri)", "Every month on the 15th", with " until Dec 31, 2026" when it
+ * stops. Null when it does not repeat.
+ */
+export function describeRepeat(series: RepeatRule & { seriesDate: string }) {
+  let text: string;
+
+  if (series.recurrence === "weekly") {
+    const days =
+      series.repeatDays.length > 0 ? series.repeatDays : [isoWeekday(series.seriesDate)];
+
+    text =
+      days.length === 7
+        ? "Every day"
+        : days.join(",") === "1,2,3,4,5"
+          ? "Every weekday (Mon–Fri)"
+          : `Every ${listNames(days.map((day) => WEEKDAYS[day - 1].long))}`;
+  } else if (series.recurrence === "monthly") {
+    const day = series.repeatMonthDay ?? Number(series.seriesDate.slice(8));
+    text = `Every month on the ${ordinal(day)}`;
+  } else {
+    return null;
+  }
+
+  return series.repeatUntil ? `${text} until ${formatShortDay(series.repeatUntil)}` : text;
 }
 
 // Days are UTC midnights, so they are read back in UTC to stay on the same day.

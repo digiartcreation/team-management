@@ -4,6 +4,7 @@ import {
   canManageCalendarEvent,
   occurrencesBetween,
   officeToday,
+  parseRepeatDays,
   type CalendarEntry,
 } from "@/lib/calendar";
 import { getWatcherOptions } from "@/lib/taskWatchers";
@@ -33,12 +34,18 @@ export async function loadCalendarMonth(
             { visibility: "selected", shares: { some: { userId: viewer.id } } },
           ],
         },
-        // Set for a day on the grid, or set earlier and repeating onto it.
+        // Set for a day on the grid, or set earlier and still repeating onto it.
         {
           date: { lte: new Date(`${to}T00:00:00.000Z`) },
           OR: [
             { date: { gte: new Date(`${from}T00:00:00.000Z`) } },
-            { recurrence: { not: "none" } },
+            {
+              recurrence: { not: "none" },
+              OR: [
+                { repeatUntil: null },
+                { repeatUntil: { gte: new Date(`${from}T00:00:00.000Z`) } },
+              ],
+            },
           ],
         },
       ],
@@ -51,6 +58,9 @@ export async function loadCalendarMonth(
       startTime: true,
       endTime: true,
       recurrence: true,
+      repeatDays: true,
+      repeatMonthDay: true,
+      repeatUntil: true,
       notes: true,
       visibility: true,
       createdById: true,
@@ -72,6 +82,9 @@ export async function loadCalendarMonth(
         type: event.type,
         seriesDate,
         recurrence: event.recurrence,
+        repeatDays: parseRepeatDays(event.repeatDays),
+        repeatMonthDay: event.repeatMonthDay,
+        repeatUntil: event.repeatUntil?.toISOString().slice(0, 10) ?? null,
         startTime: event.startTime,
         endTime: event.endTime,
         notes: event.notes,
@@ -82,7 +95,7 @@ export async function loadCalendarMonth(
         canManage: canManageCalendarEvent(viewer, event),
       };
 
-      return occurrencesBetween(seriesDate, event.recurrence, from, to).map((date) => ({
+      return occurrencesBetween(entry, from, to).map((date) => ({
         entry: { ...entry, date },
         createdAt: event.createdAt.getTime(),
       }));

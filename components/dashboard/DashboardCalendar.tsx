@@ -14,7 +14,7 @@ import {
   CALENDAR_EVENT_TYPES,
   calendarEventTypeLabel,
   calendarGridDays,
-  describeRecurrence,
+  describeRepeat,
   formatCalendarDay,
   formatCalendarMonth,
   formatCalendarTimes,
@@ -595,9 +595,7 @@ export default function DashboardCalendar({
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate text-[11px] text-slate-400">
                         {sharingLabel(entry)}
-                        {describeRecurrence(entry.recurrence)
-                          ? ` · ${describeRecurrence(entry.recurrence)}`
-                          : ""}
+                        {describeRepeat(entry) ? ` · ${describeRepeat(entry)}` : ""}
                       </span>
                       {entry.canManage ? (
                         <span className="flex shrink-0 gap-1">
