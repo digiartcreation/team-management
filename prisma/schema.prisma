@@ -521,6 +521,9 @@ model CalendarEvent {
   startTime   String?
   /// "HH:MM", later than startTime. Only ever set alongside it.
   endTime     String?
+  /// "none", "weekly" or "monthly", one of CALENDAR_RECURRENCES in
+  /// lib/calendar.ts. A repeating entry shows every week or month from `date`.
+  recurrence  String   @default("none")
   notes       String?  @db.Text
   /// "private", "selected" or "everyone", one of CALENDAR_VISIBILITIES in
   /// lib/calendar.ts.

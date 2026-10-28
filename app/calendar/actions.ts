@@ -6,12 +6,15 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import {
   canManageCalendarEvent,
+  describeRecurrence,
   formatCalendarDay,
   isCalendarEventType,
+  isCalendarRecurrence,
   isCalendarTime,
   isCalendarVisibility,
   parseCalendarDay,
   type CalendarEventType,
+  type CalendarRecurrence,
   type CalendarVisibility,
 } from "@/lib/calendar";
 import { createNotification } from "@/lib/notifications";
@@ -23,9 +26,13 @@ const MAX_NOTES_LENGTH = 5000;
 /**
  * Returned to the dialog rather than thrown: a thrown error reaches the
  * browser as a generic message in production, and the dialog would lose what
- * was typed into it. `date` is the day saved, so the calendar can show it.
+ * was typed into it. `date` is the day saved, so the calendar can show it;
+ * `repeats` says it also shows on other days, so there is no need to go there.
  */
-export type CalendarFormState = { ok: true; date: string } | { error: string } | null;
+export type CalendarFormState =
+  | { ok: true; date: string; repeats: boolean }
+  | { error: string }
+  | null;
 
 type CalendarEntryInput = {
   title: string;
@@ -35,6 +42,7 @@ type CalendarEntryInput = {
   date: Date;
   startTime: string | null;
   endTime: string | null;
+  recurrence: CalendarRecurrence;
   notes: string | null;
   visibility: CalendarVisibility;
 };
@@ -68,6 +76,8 @@ function readEntry(
   const day = getValue(formData, "date");
   const startTime = getValue(formData, "startTime");
   const endTime = getValue(formData, "endTime");
+  // Left out by an older page; such an entry does not repeat.
+  const recurrence = getValue(formData, "recurrence") || "none";
   const notes = getValue(formData, "notes");
   const visibility = getValue(formData, "visibility");
   const date = parseCalendarDay(day);
@@ -105,6 +115,10 @@ function readEntry(
     return { error: "The end time has to be after the start time." };
   }
 
+  if (!isCalendarRecurrence(recurrence)) {
+    return { error: "Choose whether the entry repeats." };
+  }
+
   if (notes.length > MAX_NOTES_LENGTH) {
     return { error: `Keep the notes under ${MAX_NOTES_LENGTH} characters.` };
   }
@@ -120,6 +134,7 @@ function readEntry(
     date,
     startTime: startTime || null,
     endTime: endTime || null,
+    recurrence,
     notes: notes || null,
     visibility,
   };
@@ -167,9 +182,10 @@ async function notifySharedWith(
   ids: string[],
   previousIds: string[],
   actorName: string | null | undefined,
-  entry: { title: string; day: string }
+  entry: { title: string; day: string; recurrence: string }
 ) {
   const previous = new Set(previousIds);
+  const repeats = describeRecurrence(entry.recurrence);
 
   for (const userId of ids) {
     if (previous.has(userId)) {
@@ -180,7 +196,9 @@ async function notifySharedWith(
       await createNotification({
         userId,
         title: "Calendar entry shared",
-        message: `${actorName ?? "Someone"} shared "${entry.title}" on ${formatCalendarDay(entry.day)} with you.`,
+        message: `${actorName ?? "Someone"} shared "${entry.title}" on ${formatCalendarDay(entry.day)}${
+          repeats ? ` (${repeats.toLowerCase()})` : ""
+        } with you.`,
         type: "CALENDAR_SHARED",
       });
     } catch (error) {
@@ -222,6 +240,7 @@ export async function saveCalendarEvent(
     date: entry.date,
     startTime: entry.startTime,
     endTime: entry.endTime,
+    recurrence: entry.recurrence,
     notes: entry.notes,
   };
 
@@ -321,7 +340,7 @@ export async function saveCalendarEvent(
 
   await notifySharedWith(shareIds, previousShareIds, sessionUser.name, entry);
 
-  return { ok: true, date: entry.day };
+  return { ok: true, date: entry.day, repeats: entry.recurrence !== "none" };
 }
 
 export async function deleteCalendarEvent(

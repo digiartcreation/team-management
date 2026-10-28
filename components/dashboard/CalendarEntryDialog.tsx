@@ -11,10 +11,12 @@ import { saveCalendarEvent, type CalendarFormState } from "@/app/calendar/action
 import PeoplePicker from "@/components/ui/PeoplePicker";
 import {
   CALENDAR_EVENT_TYPES,
+  CALENDAR_RECURRENCES,
   CALENDAR_VISIBILITIES,
   DEFAULT_CALENDAR_EVENT_TYPE,
   DEFAULT_CALENDAR_VISIBILITY,
   calendarEventTypeLabel,
+  describeRecurrence,
   describeSharing,
   formatCalendarDay,
   formatCalendarTimes,
@@ -33,8 +35,8 @@ type CalendarEntryDialogProps = {
   /** Who an entry can be shared with: everyone but the viewer. */
   people: { id: string; name: string }[];
   onClose: () => void;
-  /** Called with the day the entry was saved on. */
-  onSaved: (date: string) => void;
+  /** Called with the day the entry was saved on, and whether it repeats. */
+  onSaved: (date: string, repeats: boolean) => void;
   onDelete: (entry: CalendarEntry) => void;
 };
 
@@ -93,7 +95,7 @@ export default function CalendarEntryDialog({
 
   useEffect(() => {
     if (state && "ok" in state) {
-      onSaved(state.date);
+      onSaved(state.date, state.repeats);
     }
   }, [state, onSaved]);
 
@@ -117,6 +119,12 @@ export default function CalendarEntryDialog({
             <p className="mt-1 text-sm text-slate-600">
               {formatCalendarDay(entry.date)} · {formatCalendarTimes(entry)}
             </p>
+            {describeRecurrence(entry.recurrence) ? (
+              <p className="mt-0.5 text-xs text-slate-500">
+                {describeRecurrence(entry.recurrence)}, from{" "}
+                {formatCalendarDay(entry.seriesDate)}
+              </p>
+            ) : null}
           </div>
 
           {entry.notes ? (
@@ -199,7 +207,9 @@ export default function CalendarEntryDialog({
                 name="date"
                 type="date"
                 required
-                defaultValue={entry?.date ?? date}
+                // A repeating entry is edited from the date it was set for,
+                // whichever of its days was clicked.
+                defaultValue={entry?.seriesDate ?? date}
                 className={fieldClass}
               />
             </label>
@@ -235,6 +245,25 @@ export default function CalendarEntryDialog({
               Leave the start time empty for an all-day entry.
             </p>
           </div>
+
+          <label className="grid gap-2">
+            <span className={labelClass}>Repeat</span>
+            <select
+              name="recurrence"
+              defaultValue={entry?.recurrence ?? "none"}
+              className={fieldClass}
+            >
+              {CALENDAR_RECURRENCES.map((option) => (
+                <option key={option.value} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
+            </select>
+            <span className="text-xs text-slate-500">
+              Set one date: a weekly entry shows on that weekday every week, a
+              monthly one on that day every month.
+            </span>
+          </label>
 
           <label className="grid gap-2">
             <span className={labelClass}>Notes (optional)</span>

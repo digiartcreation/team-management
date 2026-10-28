@@ -20,7 +20,7 @@ export default async function NewDocumentationPage() {
             href="/documentation"
             className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
           >
-            Back to Documentation
+            Back to Docs
           </Link>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
             New Page

@@ -2,13 +2,14 @@ import { officeDate } from "@/lib/officeTime";
 
 /**
  * What an entry on the calendar is. "Other" covers anything that is
- * not one of the rest: a reminder, a deadline, a note to self.
+ * not one of the rest: a deadline, a note to self.
  */
 export const CALENDAR_EVENT_TYPES = [
   { value: "meeting", label: "Meeting" },
   { value: "client_meeting", label: "Client Meeting" },
   { value: "training", label: "Training Session" },
   { value: "event", label: "Event" },
+  { value: "reminder", label: "Reminder" },
   { value: "other", label: "Other" },
 ] as const;
 
@@ -32,6 +33,26 @@ export type CalendarVisibility =
 
 export const DEFAULT_CALENDAR_VISIBILITY: CalendarVisibility = "private";
 
+/**
+ * How an entry repeats from its date: a weekly meeting shows on the same
+ * weekday every week, a monthly one on the same day every month -- or on the
+ * month's last day when it is shorter (the 31st falls on the 30th in June).
+ */
+export const CALENDAR_RECURRENCES = [
+  { value: "none", label: "Does not repeat" },
+  { value: "weekly", label: "Every week" },
+  { value: "monthly", label: "Every month" },
+] as const;
+
+export type CalendarRecurrence =
+  (typeof CALENDAR_RECURRENCES)[number]["value"];
+
+export function isCalendarRecurrence(
+  value: string
+): value is CalendarRecurrence {
+  return CALENDAR_RECURRENCES.some((recurrence) => recurrence.value === value);
+}
+
 export function isCalendarEventType(value: string): value is CalendarEventType {
   return CALENDAR_EVENT_TYPES.some((type) => type.value === value);
 }
@@ -48,13 +69,20 @@ export function calendarEventTypeLabel(value: string) {
   );
 }
 
-/** An entry as the calendar receives it. */
+/**
+ * An entry as the calendar receives it: one per day it shows on, so a weekly
+ * entry arrives once for each of its weeks on the grid, all with the same id.
+ */
 export type CalendarEntry = {
   id: string;
   title: string;
   type: string;
-  /** "YYYY-MM-DD". */
+  /** "YYYY-MM-DD": the day this one shows on. */
   date: string;
+  /** "YYYY-MM-DD": the date it was set for, which a repeat counts from. */
+  seriesDate: string;
+  /** One of CALENDAR_RECURRENCES. */
+  recurrence: string;
   /** "HH:MM", or null for an all-day entry. */
   startTime: string | null;
   endTime: string | null;
@@ -176,6 +204,58 @@ export function calendarGridDays(month: string) {
   }
 
   return days;
+}
+
+/**
+ * The days from `from` to `to` (both "YYYY-MM-DD", inclusive) that an entry
+ * set for `seriesDate` shows on, given how it repeats.
+ */
+export function occurrencesBetween(
+  seriesDate: string,
+  recurrence: string,
+  from: string,
+  to: string
+) {
+  const start = Date.parse(`${seriesDate}T00:00:00.000Z`);
+  const first = Math.max(start, Date.parse(`${from}T00:00:00.000Z`));
+  const last = Date.parse(`${to}T00:00:00.000Z`);
+  const days: string[] = [];
+
+  if (recurrence === "weekly") {
+    // The first of its weekly dates on or after the range opens.
+    const weeks = Math.ceil((first - start) / (7 * DAY_MS));
+
+    for (let day = start + weeks * 7 * DAY_MS; day <= last; day += 7 * DAY_MS) {
+      days.push(new Date(day).toISOString().slice(0, 10));
+    }
+  } else if (recurrence === "monthly") {
+    const dayOfMonth = new Date(start).getUTCDate();
+    const cursor = new Date(first);
+
+    for (
+      let year = cursor.getUTCFullYear(), month = cursor.getUTCMonth();
+      Date.UTC(year, month, 1) <= last;
+      month += 1
+    ) {
+      const daysInMonth = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+      const day = Date.UTC(year, month, Math.min(dayOfMonth, daysInMonth));
+
+      if (day >= first && day <= last) {
+        days.push(new Date(day).toISOString().slice(0, 10));
+      }
+    }
+  } else if (start >= first && start <= last) {
+    days.push(seriesDate);
+  }
+
+  return days;
+}
+
+/** "Repeats every week", or null when it does not repeat. */
+export function describeRecurrence(recurrence: string) {
+  if (recurrence === "weekly") return "Repeats every week";
+  if (recurrence === "monthly") return "Repeats every month";
+  return null;
 }
 
 // Days are UTC midnights, so they are read back in UTC to stay on the same day.

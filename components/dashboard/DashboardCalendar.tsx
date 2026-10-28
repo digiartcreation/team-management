@@ -14,6 +14,7 @@ import {
   CALENDAR_EVENT_TYPES,
   calendarEventTypeLabel,
   calendarGridDays,
+  describeRecurrence,
   formatCalendarDay,
   formatCalendarMonth,
   formatCalendarTimes,
@@ -64,6 +65,11 @@ const TYPE_TONE: Record<string, { dot: string; tint: string; edge: string }> = {
     dot: "bg-emerald-500",
     tint: "bg-emerald-50 text-emerald-800",
     edge: "border-l-emerald-500",
+  },
+  reminder: {
+    dot: "bg-rose-500",
+    tint: "bg-rose-50 text-rose-800",
+    edge: "border-l-rose-500",
   },
   other: {
     dot: "bg-gray-400",
@@ -144,6 +150,9 @@ function ConfirmDeleteDialog({
       </h2>
       <p className="mt-1 break-words text-sm text-slate-500">{entry.title}</p>
       <p className="mt-4 text-sm text-slate-700">
+        {entry.recurrence !== "none"
+          ? "It repeats, and every repeat goes with it. "
+          : ""}
         {entry.visibility === "everyone"
           ? "It will be removed from everyone's calendar. This cannot be undone."
           : entry.visibility === "selected"
@@ -245,6 +254,22 @@ export default function DashboardCalendar({
 
   const selectedEntries = entriesByDay.get(selectedDay) ?? [];
 
+  // How many of each type fall in the month itself, repeats counted on every
+  // day they show, the neighbouring months' days on the grid left out.
+  const monthCounts = useMemo(() => {
+    const counts = new Map<string, number>();
+    let total = 0;
+
+    for (const entry of entries) {
+      if (entry.date.startsWith(month)) {
+        counts.set(entry.type, (counts.get(entry.type) ?? 0) + 1);
+        total += 1;
+      }
+    }
+
+    return { counts, total };
+  }, [entries, month]);
+
   function showMonth(target: string, day?: string) {
     setMonth(target);
     setSelectedDay(day ?? (today.startsWith(target) ? today : `${target}-01`));
@@ -261,11 +286,17 @@ export default function DashboardCalendar({
 
   // Stable for the dialog's effect, which calls it once the save lands.
   const handleSaved = useCallback(
-    (date: string) => {
+    (date: string, repeats: boolean) => {
       setDialog(null);
-      setSelectedDay(date);
-      // Stay on this month if the day is on its grid; otherwise go to it.
-      const target = days.includes(date) ? month : date.slice(0, 7);
+      // Stay on this month if the day is on its grid, or if it repeats onto
+      // it anyway; otherwise go to the day.
+      const stay = days.includes(date) || repeats;
+
+      if (!stay || days.includes(date)) {
+        setSelectedDay(date);
+      }
+
+      const target = stay ? month : date.slice(0, 7);
       setMonth(target);
       void loadMonth(target);
     },
@@ -337,9 +368,12 @@ export default function DashboardCalendar({
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3
               aria-live="polite"
-              className="text-base font-semibold text-slate-950"
+              className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold text-slate-950"
             >
               {formatCalendarMonth(month)}
+              <span className="text-xs font-medium text-slate-500">
+                {monthCounts.total} {monthCounts.total === 1 ? "entry" : "entries"}
+              </span>
             </h3>
             <div className="flex items-center gap-3">
               {loading ? (
@@ -402,7 +436,7 @@ export default function DashboardCalendar({
                   <div
                     key={day}
                     onClick={() => setSelectedDay(day)}
-                    className={`flex min-h-14 cursor-pointer flex-col gap-1 border-gray-200 p-1 transition sm:min-h-24 sm:p-1.5 ${
+                    className={`relative flex min-h-14 cursor-pointer flex-col gap-1 border-gray-200 p-1 transition sm:min-h-24 sm:p-1.5 ${
                       index % 7 === 6 ? "" : "border-r"
                     } ${index < days.length - 7 ? "border-b" : ""} ${
                       isSelected
@@ -429,6 +463,16 @@ export default function DashboardCalendar({
                     >
                       {Number(day.slice(8))}
                     </button>
+
+                    {/* How many on the day, beside its number. */}
+                    {dayEntries.length > 0 ? (
+                      <span
+                        aria-hidden
+                        className="absolute right-1 top-1 rounded-full bg-[#F3E8FF] px-1.5 text-[10px] font-semibold leading-4 text-[#770FC2] sm:right-1.5 sm:top-1.5"
+                      >
+                        {dayEntries.length}
+                      </span>
+                    ) : null}
 
                     {/* Phones get a dot per entry; the day list spells them out. */}
                     {dayEntries.length > 0 ? (
@@ -489,6 +533,9 @@ export default function DashboardCalendar({
                   className={`h-2 w-2 rounded-full ${toneFor(type.value).dot}`}
                 />
                 {type.label}
+                <span className="font-semibold tabular-nums text-slate-700">
+                  {monthCounts.counts.get(type.value) ?? 0}
+                </span>
               </li>
             ))}
           </ul>
@@ -548,6 +595,9 @@ export default function DashboardCalendar({
                     <div className="mt-2 flex items-center justify-between gap-2">
                       <span className="min-w-0 truncate text-[11px] text-slate-400">
                         {sharingLabel(entry)}
+                        {describeRecurrence(entry.recurrence)
+                          ? ` · ${describeRecurrence(entry.recurrence)}`
+                          : ""}
                       </span>
                       {entry.canManage ? (
                         <span className="flex shrink-0 gap-1">

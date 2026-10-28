@@ -79,12 +79,12 @@ export default async function DocumentationViewPage({
           href="/documentation"
           className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
         >
-          Back to Documentation
+          Back to Docs
         </Link>
 
         <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
           <nav
-            aria-label="Documentation pages"
+            aria-label="Docs pages"
             className="hidden self-start rounded-lg border border-slate-200 bg-white p-3 shadow-sm lg:sticky lg:top-6 lg:block"
           >
             <p className="px-2 pb-2 text-xs font-semibold uppercase tracking-wide text-slate-500">

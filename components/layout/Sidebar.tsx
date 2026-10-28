@@ -16,12 +16,12 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Calendar", href: "/calendar" },
       { label: "Attendance", href: "/attendance" },
       { label: "Daily Updates", href: "/updates" },
+      { label: "Docs", href: "/documentation" },
       { label: "Learnings", href: "/learnings" },
       { label: "AI Tools", href: "/tools" },
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
-      { label: "Documentation", href: "/documentation" },
     ];
   }
 
@@ -32,12 +32,12 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Calendar", href: "/calendar" },
       { label: "Attendance", href: "/attendance" },
       { label: "Daily Updates", href: "/updates" },
+      { label: "Docs", href: "/documentation" },
       { label: "Learnings", href: "/learnings" },
       { label: "AI Tools", href: "/tools" },
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
-      { label: "Documentation", href: "/documentation" },
     ];
   }
 
@@ -55,7 +55,6 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Reports", href: "/reports" },
     { label: "Activity", href: "/activity" },
     { label: "Search", href: "/search" },
-    { label: "Documentation", href: "/documentation" },
   ];
 
   // Straight after Attendance, the report before the prices it reads.
@@ -68,10 +67,11 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     );
   }
 
-  // Seventh and eighth in the menu, for admins and super admins alike.
+  // Sixth, seventh and eighth in the menu, for admins and super admins alike.
   adminItems.splice(
-    6,
+    5,
     0,
+    { label: "Docs", href: "/documentation" },
     { label: "Services Count", href: "/services-count" },
     { label: "Calendar", href: "/calendar" }
   );
