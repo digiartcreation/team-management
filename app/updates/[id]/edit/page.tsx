@@ -1,4 +1,4 @@
-import Link from "next/link";
+import FormPageHeader from "@/components/ui/FormPageHeader";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -32,14 +32,12 @@ export default async function EditUpdatePage({ params }: EditUpdatePageProps) {
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <header>
-          <Link href="/updates" className="text-sm font-medium text-slate-500">
-            Back to Updates
-          </Link>
-          <h1 className="mt-3 text-2xl font-semibold text-slate-950">
-            Edit Daily Update
-          </h1>
-        </header>
+        <FormPageHeader
+          backHref="/updates"
+          backLabel="Back to Updates"
+          title="Edit Daily Update"
+          description="Correct or add to this day’s update."
+        />
         <DailyUpdateForm
           action={updateDailyUpdate}
           submitLabel="Update"

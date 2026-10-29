@@ -1,4 +1,5 @@
 import { prisma } from "@/lib/prisma";
+import { fitText } from "@/lib/fitText";
 
 type ActivityInput = {
   userId: string;
@@ -21,7 +22,8 @@ export async function logActivity({
       action,
       entityType,
       entityId,
-      description,
+      // Quotes titles that can run to any length; the column holds 191.
+      description: fitText(description),
     },
   });
 }

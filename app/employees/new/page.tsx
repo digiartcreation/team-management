@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import Link from "next/link";
+import BackLink from "@/components/ui/BackLink";
 import { auth } from "@/auth";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import EmployeeForm from "@/components/employees/EmployeeForm";
@@ -26,12 +26,9 @@ export default async function NewEmployeePage() {
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-3xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
-          <Link
-            href="/employees"
-            className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
-          >
+          <BackLink href="/employees">
             Back to Employees
-          </Link>
+          </BackLink>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
             Add Employee
           </h1>

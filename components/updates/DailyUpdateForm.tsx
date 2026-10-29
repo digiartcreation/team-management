@@ -1,3 +1,5 @@
+import FormCard from "@/components/ui/FormCard";
+import FormField, { fieldInputClass } from "@/components/ui/FormField";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 
 type DailyUpdateFormProps = {
@@ -21,48 +23,53 @@ export default function DailyUpdateForm({
   update,
 }: DailyUpdateFormProps) {
   return (
-    <form
+    <FormCard
       action={action}
-      className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+      title="Daily update"
+      description="What you worked on today and anything holding you up. No length limit."
+      cancelHref="/updates"
+      submitLabel={submitLabel}
     >
       {update ? <input type="hidden" name="id" value={update.id} /> : null}
-      <div className="grid gap-5">
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Date</span>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <FormField label="Date" htmlFor="update-date" required>
           <input
+            id="update-date"
             name="date"
             type="date"
             defaultValue={formatDateInput(update?.date)}
             required
-            className="w-full cursor-pointer rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={`${fieldInputClass} cursor-pointer`}
           />
-        </label>
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Today&apos;s Tasks</span>
-          <TextareaWithBullet
-            name="todaysTasks"
-            defaultValue={update?.todaysTasks ?? ""}
-            rows={4}
-            required
-          />
-        </label>
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Blockers</span>
-          <TextareaWithBullet
-            name="blockers"
-            defaultValue={update?.blockers ?? ""}
-            rows={3}
-          />
-        </label>
+        </FormField>
       </div>
-      <div className="mt-6 flex justify-end">
-        <button
-          type="submit"
-          className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white"
-        >
-          {submitLabel}
-        </button>
-      </div>
-    </form>
+
+      <FormField
+        label="Today's tasks"
+        htmlFor="update-tasks"
+        required
+        hint="One line or bullet per task."
+      >
+        <TextareaWithBullet
+          id="update-tasks"
+          name="todaysTasks"
+          defaultValue={update?.todaysTasks ?? ""}
+          placeholder="• Edited the Acme launch video&#10;• Client call about the Q4 posters"
+          rows={8}
+          required
+        />
+      </FormField>
+
+      <FormField label="Blockers" htmlFor="update-blockers">
+        <TextareaWithBullet
+          id="update-blockers"
+          name="blockers"
+          defaultValue={update?.blockers ?? ""}
+          placeholder="Anything stopping you, or help you need."
+          rows={4}
+        />
+      </FormField>
+    </FormCard>
   );
 }
