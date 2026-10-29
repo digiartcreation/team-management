@@ -6,6 +6,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import MonthFilter from "@/components/attendance/MonthFilter";
 import Avatar from "@/components/ui/Avatar";
 import { checkIn, checkOut } from "@/app/attendance/actions";
+import { SUPER_ADMIN } from "@/lib/roles";
 import {
   monthKeyOf,
   monthLabel,
@@ -76,7 +77,9 @@ function StatusBadge({ status }: { status: string }) {
       ? "bg-emerald-50 text-emerald-700 ring-emerald-200"
       : status === "Late"
         ? "bg-amber-50 text-amber-700 ring-amber-200"
-        : "bg-slate-100 text-slate-600 ring-slate-200";
+        : status === "Leave"
+          ? "bg-rose-50 text-rose-700 ring-rose-200"
+          : "bg-slate-100 text-slate-600 ring-slate-200";
 
   return (
     <span className={`rounded-full px-2 py-0.5 text-xs font-medium ring-1 ${tone}`}>
@@ -94,20 +97,68 @@ type AttendanceRow = Prisma.AttendanceRecordGetPayload<{
   include: typeof recordInclude;
 }>;
 
+/** A line of the table: a day with a check-in, or a working day without one. */
+type DayRow =
+  | { kind: "record"; record: AttendanceRow }
+  | { kind: "leave"; date: Date };
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * The working days of `month` that went by without a check-in: every day but
+ * Sunday, from `from` -- when the person joined, or attendance began -- up to
+ * yesterday. Today is left alone; there is still time to check in.
+ */
+function leaveDaysOf(
+  month: string,
+  from: Date,
+  today: Date,
+  recorded: Set<number>
+) {
+  const { gte, lt } = monthRange(month);
+  const days: Date[] = [];
+
+  for (
+    let day = Math.max(gte.getTime(), from.getTime());
+    day < Math.min(lt.getTime(), today.getTime());
+    day += DAY_MS
+  ) {
+    const date = new Date(day);
+
+    if (date.getUTCDay() !== 0 && !recorded.has(day)) {
+      days.push(date);
+    }
+  }
+
+  return days;
+}
+
+/** A person's days with check-ins and their leave days, newest first. */
+function dayRowsOf(records: AttendanceRow[], leaveDays: Date[]): DayRow[] {
+  return [
+    ...records.map((record): DayRow => ({ kind: "record", record })),
+    ...leaveDays.map((date): DayRow => ({ kind: "leave", date })),
+  ].sort(
+    (a, b) =>
+      (b.kind === "record" ? b.record.date : b.date).getTime() -
+      (a.kind === "record" ? a.record.date : a.date).getTime()
+  );
+}
+
 function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
 /**
- * One person's days, newest first. Employees get the plain log: no Late /
- * Present status, breaks, lateness or early departure.
+ * One person's days, newest first, leave days among them. Employees get the
+ * plain log: no Late / Present status, breaks, lateness or early departure.
  */
 function AttendanceTable({
-  records,
+  rows,
   now,
   detailed,
 }: {
-  records: AttendanceRow[];
+  rows: DayRow[];
   now: Date;
   detailed: boolean;
 }) {
@@ -134,7 +185,35 @@ function AttendanceTable({
           </tr>
         </thead>
         <tbody className="divide-y divide-slate-200">
-          {records.map((record) => {
+          {rows.map((row) => {
+            if (row.kind === "leave") {
+              return (
+                <tr key={`leave-${row.date.getTime()}`} className="align-top bg-rose-50/40">
+                  <td className="px-4 py-4 text-slate-600">
+                    {dateFormatter.format(row.date)}
+                    <div className="mt-0.5 text-xs text-slate-400">No check-in</div>
+                  </td>
+                  {detailed ? (
+                    <td className="px-4 py-4">
+                      <StatusBadge status="Leave" />
+                    </td>
+                  ) : null}
+                  <td className="px-4 py-4 font-medium text-rose-700">Leave</td>
+                  <td className="px-4 py-4 text-slate-400">–</td>
+                  <td className="px-4 py-4 text-slate-400">0</td>
+                  <td className="px-4 py-4 text-slate-400">None</td>
+                  {detailed ? (
+                    <>
+                      <td className="px-4 py-4 text-slate-400">–</td>
+                      <td className="px-4 py-4 text-slate-400">–</td>
+                      <td className="px-4 py-4 text-slate-400">–</td>
+                    </>
+                  ) : null}
+                </tr>
+              );
+            }
+
+            const { record } = row;
             const sessions = sessionsOf(record);
             const day = summariseSessions(sessions, now);
 
@@ -260,22 +339,43 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   const { month } = await searchParams;
   const selectedMonth = month && months.includes(month) ? month : currentMonth;
 
-  const records = await prisma.attendanceRecord.findMany({
-    where: { ...where, date: monthRange(selectedMonth) },
-    orderBy: { date: "desc" },
-    include: recordInclude,
-  });
+  const [records, trackingStart, staff] = await Promise.all([
+    prisma.attendanceRecord.findMany({
+      where: { ...where, date: monthRange(selectedMonth) },
+      orderBy: { date: "desc" },
+      include: recordInclude,
+    }),
+    // Leave is counted from the first day anyone checked in, never before.
+    prisma.attendanceRecord.findFirst({
+      orderBy: { date: "asc" },
+      select: { date: true },
+    }),
+    // Whose leave to count: everyone who checks in (all but super admins) for
+    // the super admin's view, yourself for everyone else's.
+    prisma.user.findMany({
+      where: isSuperAdmin
+        ? { role: { not: SUPER_ADMIN } }
+        : { id: sessionUser.id ?? "__no_user__" },
+      select: { id: true, name: true, createdAt: true },
+    }),
+  ]);
   const todaySessions = ownTodayRecord ? sessionsOf(ownTodayRecord) : [];
   const today = summariseSessions(todaySessions, now);
   const isMember = sessionUser.role === "member";
   const canCheckIn = !isSuperAdmin;
 
-  // The super admin sees one block per person, the way the task board does.
-  const people = new Map<string, { id: string; name: string; records: AttendanceRow[] }>();
+  // One block per person for the super admin, the way the task board does;
+  // everyone else has the one, their own.
+  const people = new Map<
+    string,
+    { id: string; name: string; joined: Date | null; records: AttendanceRow[] }
+  >(staff.map((person) => [person.id, { ...person, joined: person.createdAt, records: [] }]));
 
   for (const record of records) {
     const person = people.get(record.user.id) ?? {
       ...record.user,
+      // Someone left out of `staff` (a super admin's old days): no leave.
+      joined: null,
       records: [],
     };
     person.records.push(record);
@@ -283,16 +383,37 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   }
 
   const groups = [...people.values()]
-    .sort((a, b) => a.name.localeCompare(b.name))
-    .map((person) => ({
-      ...person,
-      workedMinutes: person.records.reduce(
-        (sum, record) =>
-          sum + summariseSessions(sessionsOf(record), now).workedMinutes,
-        0
-      ),
-      lateDays: person.records.filter((record) => record.status === "Late").length,
-    }));
+    .map((person) => {
+      const leaveDays =
+        trackingStart && person.joined
+          ? leaveDaysOf(
+              selectedMonth,
+              new Date(
+                Math.max(trackingStart.date.getTime(), officeDate(person.joined).getTime())
+              ),
+              todayDate,
+              new Set(person.records.map((record) => record.date.getTime()))
+            )
+          : [];
+
+      return {
+        id: person.id,
+        name: person.name,
+        records: person.records,
+        leaveDays: leaveDays.length,
+        rows: dayRowsOf(person.records, leaveDays),
+        workedMinutes: person.records.reduce(
+          (sum, record) =>
+            sum + summariseSessions(sessionsOf(record), now).workedMinutes,
+          0
+        ),
+        lateDays: person.records.filter((record) => record.status === "Late").length,
+      };
+    })
+    .filter((person) => person.rows.length > 0)
+    .sort((a, b) => a.name.localeCompare(b.name));
+  const ownRows = groups[0]?.rows ?? [];
+  const ownLeaveDays = groups[0]?.leaveDays ?? 0;
 
   return (
     <DashboardLayout>
@@ -452,7 +573,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
               <p className="mt-1 text-sm text-slate-500">
                 {isSuperAdmin
                   ? `${plural(groups.length, "person", "people")} · ${plural(records.length, "day")} recorded`
-                  : `${plural(records.length, "day")} recorded`}
+                  : `${plural(records.length, "day")} recorded · ${plural(ownLeaveDays, "leave day")}`}
               </p>
             </div>
             <MonthFilter
@@ -462,13 +583,13 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             />
           </div>
 
-          {records.length === 0 ? (
+          {groups.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
               No attendance recorded in {monthLabel(selectedMonth)}.
             </p>
           ) : !isSuperAdmin ? (
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
-              <AttendanceTable records={records} now={now} detailed={!isMember} />
+              <AttendanceTable rows={ownRows} now={now} detailed={!isMember} />
             </div>
           ) : (
             groups.map((group) => (
@@ -489,7 +610,8 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                   </span>
                   <span className="flex shrink-0 items-center gap-4">
                     <span className="hidden text-xs text-slate-500 sm:inline">
-                      Worked {formatDuration(group.workedMinutes)} · {group.lateDays} late
+                      Worked {formatDuration(group.workedMinutes)} · {group.lateDays} late ·{" "}
+                      {group.leaveDays} leave
                     </span>
                     <span
                       aria-hidden
@@ -500,7 +622,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                   </span>
                 </summary>
                 <div className="border-t border-slate-100">
-                  <AttendanceTable records={group.records} now={now} detailed />
+                  <AttendanceTable rows={group.rows} now={now} detailed />
                 </div>
               </details>
             ))

@@ -33,7 +33,6 @@ export default async function EditDocumentationPage({
       title: true,
       content: true,
       createdById: true,
-      attachment: { select: { fileName: true, size: true } },
     },
   });
 
@@ -69,7 +68,6 @@ export default async function EditDocumentationPage({
             id: doc.id,
             title: doc.title,
             content: doc.content,
-            attachment: doc.attachment,
           }}
         />
       </div>

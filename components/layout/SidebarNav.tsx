@@ -14,12 +14,15 @@ type SidebarNavProps = {
   items: NavItem[];
   unreadNotifications?: number;
   alertCounts?: Record<string, number | undefined>;
+  /** Calendar entries today (green) and tomorrow (gray), beside Calendar. */
+  calendarCounts?: { today: number; tomorrow: number };
 };
 
 export default function SidebarNav({
   items,
   unreadNotifications = 0,
   alertCounts = {},
+  calendarCounts,
 }: SidebarNavProps) {
   const pathname = usePathname();
 
@@ -43,6 +46,28 @@ export default function SidebarNav({
             {alertCounts[item.href] ? (
               <span className="ml-2 rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
                 {alertCounts[item.href]}
+              </span>
+            ) : null}
+            {/* Both show once either has something, so green is always today
+                and gray tomorrow, in that order. */}
+            {item.href === "/calendar" &&
+            calendarCounts &&
+            (calendarCounts.today > 0 || calendarCounts.tomorrow > 0) ? (
+              <span className="ml-2 inline-flex gap-1">
+                <span
+                  title={`${calendarCounts.today} today`}
+                  className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white"
+                >
+                  {calendarCounts.today}
+                  <span className="sr-only"> today</span>
+                </span>
+                <span
+                  title={`${calendarCounts.tomorrow} tomorrow`}
+                  className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700"
+                >
+                  {calendarCounts.tomorrow}
+                  <span className="sr-only"> tomorrow</span>
+                </span>
               </span>
             ) : null}
             {item.href === "/notifications" && unreadNotifications > 0 ? (

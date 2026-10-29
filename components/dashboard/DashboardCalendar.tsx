@@ -8,6 +8,7 @@ import {
   useState,
   useTransition,
 } from "react";
+import { useRouter } from "next/navigation";
 import CalendarEntryDialog from "@/components/dashboard/CalendarEntryDialog";
 import { deleteCalendarEvent } from "@/app/calendar/actions";
 import {
@@ -192,6 +193,7 @@ export default function DashboardCalendar({
   initialEntries,
   people,
 }: DashboardCalendarProps) {
+  const router = useRouter();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(today);
   const [entries, setEntries] = useState(initialEntries);
@@ -254,22 +256,6 @@ export default function DashboardCalendar({
 
   const selectedEntries = entriesByDay.get(selectedDay) ?? [];
 
-  // How many of each type fall in the month itself, repeats counted on every
-  // day they show, the neighbouring months' days on the grid left out.
-  const monthCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    let total = 0;
-
-    for (const entry of entries) {
-      if (entry.date.startsWith(month)) {
-        counts.set(entry.type, (counts.get(entry.type) ?? 0) + 1);
-        total += 1;
-      }
-    }
-
-    return { counts, total };
-  }, [entries, month]);
-
   function showMonth(target: string, day?: string) {
     setMonth(target);
     setSelectedDay(day ?? (today.startsWith(target) ? today : `${target}-01`));
@@ -299,8 +285,10 @@ export default function DashboardCalendar({
       const target = stay ? month : date.slice(0, 7);
       setMonth(target);
       void loadMonth(target);
+      // The menu's today and tomorrow counts come with the page.
+      router.refresh();
     },
-    [days, month, loadMonth]
+    [days, month, loadMonth, router]
   );
 
   function requestDelete(entry: CalendarEntry) {
@@ -322,6 +310,7 @@ export default function DashboardCalendar({
         setError(result.error);
       } else {
         setEntries((current) => current.filter((item) => item.id !== entry.id));
+        router.refresh();
       }
 
       setDeleting(null);
@@ -368,12 +357,9 @@ export default function DashboardCalendar({
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3
               aria-live="polite"
-              className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold text-slate-950"
+              className="text-base font-semibold text-slate-950"
             >
               {formatCalendarMonth(month)}
-              <span className="text-xs font-medium text-slate-500">
-                {monthCounts.total} {monthCounts.total === 1 ? "entry" : "entries"}
-              </span>
             </h3>
             <div className="flex items-center gap-3">
               {loading ? (
@@ -436,7 +422,7 @@ export default function DashboardCalendar({
                   <div
                     key={day}
                     onClick={() => setSelectedDay(day)}
-                    className={`relative flex min-h-14 cursor-pointer flex-col gap-1 border-gray-200 p-1 transition sm:min-h-24 sm:p-1.5 ${
+                    className={`flex min-h-14 cursor-pointer flex-col gap-1 border-gray-200 p-1 transition sm:min-h-24 sm:p-1.5 ${
                       index % 7 === 6 ? "" : "border-r"
                     } ${index < days.length - 7 ? "border-b" : ""} ${
                       isSelected
@@ -463,16 +449,6 @@ export default function DashboardCalendar({
                     >
                       {Number(day.slice(8))}
                     </button>
-
-                    {/* How many on the day, beside its number. */}
-                    {dayEntries.length > 0 ? (
-                      <span
-                        aria-hidden
-                        className="absolute right-1 top-1 rounded-full bg-[#F3E8FF] px-1.5 text-[10px] font-semibold leading-4 text-[#770FC2] sm:right-1.5 sm:top-1.5"
-                      >
-                        {dayEntries.length}
-                      </span>
-                    ) : null}
 
                     {/* Phones get a dot per entry; the day list spells them out. */}
                     {dayEntries.length > 0 ? (
@@ -533,9 +509,6 @@ export default function DashboardCalendar({
                   className={`h-2 w-2 rounded-full ${toneFor(type.value).dot}`}
                 />
                 {type.label}
-                <span className="font-semibold tabular-nums text-slate-700">
-                  {monthCounts.counts.get(type.value) ?? 0}
-                </span>
               </li>
             ))}
           </ul>

@@ -5,6 +5,7 @@ import Sidebar from "@/components/layout/Sidebar";
 import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
 import { getVisibleNotificationWhere } from "@/lib/notifications";
 import { getSidebarAlertCounts } from "@/lib/moduleAlerts";
+import { countTodayAndTomorrow } from "@/lib/calendarEvents";
 
 type DashboardLayoutProps = {
   children: ReactNode;
@@ -42,6 +43,9 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     sessionUser?.id,
     sessionUser?.role
   );
+  const calendarCounts = sessionUser?.id
+    ? await countTodayAndTomorrow({ id: sessionUser.id, role: sessionUser.role })
+    : undefined;
   const sidebarAlertCounts = {
     "/tasks": moduleAlertCounts.tasks,
     "/updates": moduleAlertCounts.updates,
@@ -56,6 +60,7 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
         isSuperAdmin={sessionUser?.isSuperAdmin === true}
         unreadNotifications={unreadNotifications}
         alertCounts={sidebarAlertCounts}
+        calendarCounts={calendarCounts}
       />
       <main className="flex-1">
         <AnnouncementBanner
