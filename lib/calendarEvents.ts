@@ -132,7 +132,12 @@ export async function loadCalendarMonth(
       createdAt: true,
       createdBy: { select: { name: true } },
       shares: {
-        select: { response: true, user: { select: { id: true, name: true } } },
+        select: {
+          response: true,
+          responseReason: true,
+          respondedAt: true,
+          user: { select: { id: true, name: true } },
+        },
         orderBy: { user: { name: "asc" } },
       },
     },
@@ -154,7 +159,12 @@ export async function loadCalendarMonth(
         endTime: event.endTime,
         notes: event.notes,
         visibility: event.visibility,
-        sharedWith: event.shares.map((share) => ({ ...share.user, response: share.response })),
+        sharedWith: event.shares.map((share) => ({
+          ...share.user,
+          response: share.response,
+          reason: share.responseReason,
+          respondedAt: share.respondedAt?.toISOString() ?? null,
+        })),
         myResponse: event.shares.find((share) => share.user.id === viewer.id)?.response ?? null,
         createdByName: event.createdBy.name,
         isOwn: event.createdById === viewer.id,

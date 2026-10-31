@@ -38,10 +38,14 @@ type DashboardCalendarProps = {
 };
 
 /**
- * The open dialog: an entry to edit (or view, when the viewer cannot change
- * it), or a new one starting on `date`.
+ * The open dialog: an entry's details or its form (only ever its details when
+ * the viewer cannot change it), or a new one starting on `date`.
  */
-type DialogState = { entry: CalendarEntry | null; date: string } | null;
+type DialogState = {
+  entry: CalendarEntry | null;
+  date: string;
+  mode: "view" | "edit";
+} | null;
 
 /**
  * How each type is drawn: its dot, the tint of its chip on the grid, and the
@@ -263,12 +267,23 @@ export default function DashboardCalendar({
     void loadMonth(target);
   }
 
-  function openEntry(entry: CalendarEntry) {
-    setDialog({ entry, date: entry.date });
+  function openEntry(entry: CalendarEntry, mode: "view" | "edit" = "view") {
+    setDialog({ entry, date: entry.date, mode });
   }
 
   function openNew() {
-    setDialog({ entry: null, date: selectedDay });
+    setDialog({ entry: null, date: selectedDay, mode: "edit" });
+  }
+
+  // The viewer's own reason for declining an entry shared with them: theirs is
+  // the one place among the people it is shared with that `people` (everyone
+  // but the viewer) leaves out.
+  function ownReason(entry: CalendarEntry) {
+    return (
+      entry.sharedWith.find(
+        (person) => !people.some((other) => other.id === person.id)
+      )?.reason ?? null
+    );
   }
 
   // Stable for the dialog's effect, which calls it once the save lands.
@@ -586,9 +601,10 @@ export default function DashboardCalendar({
                       <div className="mt-2.5 border-t border-slate-100 pt-2.5">
                         <CalendarRsvp
                           // Remounted when the reload brings a new answer.
-                          key={entry.myResponse}
+                          key={`${entry.myResponse}-${ownReason(entry) ?? ""}`}
                           eventId={entry.id}
                           response={entry.myResponse}
+                          reason={ownReason(entry)}
                           onResponded={handleResponded}
                         />
                       </div>
@@ -599,16 +615,26 @@ export default function DashboardCalendar({
                         {responseSummary(entry.sharedWith)}
                       </p>
                     ) : null}
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-[11px] text-slate-400">
-                        {sharingLabel(entry)}
-                        {describeRepeat(entry) ? ` · ${describeRepeat(entry)}` : ""}
-                      </span>
+                    <p className="mt-2 truncate text-[11px] text-slate-400">
+                      {sharingLabel(entry)}
+                      {describeRepeat(entry) ? ` · ${describeRepeat(entry)}` : ""}
+                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => openEntry(entry)}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                      >
+                        View details
+                        <svg aria-hidden viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 5l5 5-5 5" />
+                        </svg>
+                      </button>
                       {entry.canManage ? (
                         <span className="flex shrink-0 gap-1">
                           <button
                             type="button"
-                            onClick={() => openEntry(entry)}
+                            onClick={() => openEntry(entry, "edit")}
                             className="rounded px-2 py-1 text-xs font-medium text-[#770FC2] transition hover:bg-[#F3E8FF]"
                           >
                             Edit
@@ -648,6 +674,8 @@ export default function DashboardCalendar({
           onSaved={handleSaved}
           onDelete={requestDelete}
           onResponded={handleResponded}
+          mode={dialog.mode}
+          onEdit={() => setDialog((current) => current && { ...current, mode: "edit" })}
         />
       ) : null}
 

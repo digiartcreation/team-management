@@ -433,19 +433,32 @@ export async function deleteCalendarEvent(
   return null;
 }
 
+const MAX_REASON_LENGTH = 2000;
+
 /**
  * Accepts or declines an entry shared with the viewer, and tells its author.
+ * Declining needs a reason, which everyone invited sees; accepting clears it.
  * Only someone it is shared with can answer it; they can change their mind,
  * and the author is told each time the answer changes.
  */
 export async function respondToCalendarEvent(
   eventId: string,
-  response: string
+  response: string,
+  reason = ""
 ): Promise<{ error: string } | null> {
   const sessionUser = await getSessionUser();
+  const why = reason.trim();
 
   if (response !== "accepted" && response !== "declined") {
     return { error: "Accept or decline the entry." };
+  }
+
+  if (response === "declined" && !why) {
+    return { error: "Say why you can't attend." };
+  }
+
+  if (why.length > MAX_REASON_LENGTH) {
+    return { error: `Keep the reason under ${MAX_REASON_LENGTH} characters.` };
   }
 
   const share = await prisma.calendarEventShare.findUnique({
@@ -463,20 +476,28 @@ export async function respondToCalendarEvent(
   try {
     await prisma.calendarEventShare.update({
       where: { eventId_userId: { eventId, userId: sessionUser.id } },
-      data: { response, respondedAt: new Date() },
+      data: {
+        response,
+        responseReason: response === "declined" ? why : null,
+        respondedAt: new Date(),
+      },
     });
   } catch {
     return { error: "Could not save your answer. Please try again." };
   }
 
-  if (share.response !== response) {
+  // Told when the answer changes, or when a decline gives a new reason.
+  if (share.response !== response || response === "declined") {
+    const day = formatCalendarDay(share.event.date.toISOString().slice(0, 10));
+
     try {
       await createNotification({
         userId: share.event.createdById,
         title: response === "accepted" ? "Calendar entry accepted" : "Calendar entry declined",
-        message: `${sessionUser.name ?? "Someone"} ${response} "${share.event.title}" on ${formatCalendarDay(
-          share.event.date.toISOString().slice(0, 10)
-        )}.`,
+        message:
+          response === "accepted"
+            ? `${sessionUser.name ?? "Someone"} accepted "${share.event.title}" on ${day}.`
+            : `${sessionUser.name ?? "Someone"} declined "${share.event.title}" on ${day}: ${why}`,
         type: "CALENDAR_RESPONSE",
       });
     } catch (error) {

@@ -160,7 +160,15 @@ export type CalendarEntry = {
    * Who a "selected" entry is shared with, and how each has answered; empty
    * otherwise.
    */
-  sharedWith: { id: string; name: string; response: string }[];
+  sharedWith: {
+    id: string;
+    name: string;
+    response: string;
+    /** Why they declined; null otherwise. */
+    reason: string | null;
+    /** ISO, when they last answered; null until they do. */
+    respondedAt: string | null;
+  }[];
   /** The viewer's own answer when it is shared with them; null otherwise. */
   myResponse: string | null;
   createdByName: string;

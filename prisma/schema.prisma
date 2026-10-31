@@ -559,6 +559,8 @@ model CalendarEventShare {
   /// "pending", "accepted" or "declined", one of CALENDAR_RESPONSES in
   /// lib/calendar.ts. Kept when the author edits the entry.
   response    String        @default("pending")
+  /// Why they declined; required to decline, cleared when they accept.
+  responseReason String?    @db.Text
   respondedAt DateTime?
   createdAt   DateTime      @default(now())
   event     CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
