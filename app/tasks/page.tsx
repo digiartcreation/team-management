@@ -24,7 +24,10 @@ import {
   isTaskStatus,
 } from "@/lib/taskStatus";
 import { buildReopenHistory, countReopenNotes } from "@/lib/reopenHistory";
-import { formatOfficeDate } from "@/lib/officeTime";
+import { monthRange } from "@/lib/attendance";
+import { formatOfficeDate, officeInstant } from "@/lib/officeTime";
+import { UNMAPPED_SERVICE, parseDateInput } from "@/lib/reportFilters";
+import { UNMAPPED_SERVICE_LABEL, serviceNameOf } from "@/lib/reports";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -38,6 +41,12 @@ function todayInputValue() {
 
 const priorityOptions = ["low", "medium", "high"];
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+function isMonthKey(value: string | undefined): value is string {
+  return Boolean(value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value));
+}
+
 type TasksPageProps = {
   searchParams: Promise<{
     status?: string;
@@ -45,6 +54,11 @@ type TasksPageProps = {
     teamId?: string;
     assignedToId?: string;
     clientId?: string;
+    service?: string;
+    /** "YYYY-MM-DD": tasks created that day. Wins over `month`. */
+    date?: string;
+    /** "YYYY-MM": tasks created that month. */
+    month?: string;
     page?: string;
   }>;
 };
@@ -105,6 +119,51 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   if (filters.clientId) {
     where.clientId = filters.clientId;
+  }
+
+  // Every service a task has been mapped to, as on the Reports page: it fills
+  // the filter and turns the chosen service back into the stored values,
+  // since "Digital Marketing" has to match "Digital Marketing (SEO)" as well.
+  const mappedWork = await prisma.task.findMany({
+    where: { clientWork: { not: null } },
+    select: { clientWork: true },
+    distinct: ["clientWork"],
+    orderBy: { clientWork: "asc" },
+  });
+  const workValues = mappedWork
+    .map((task) => task.clientWork)
+    .filter((work): work is string => Boolean(work));
+  const serviceOptions = [
+    ...new Set(
+      workValues
+        .map((work) => serviceNameOf(work))
+        .filter((service): service is string => Boolean(service))
+    ),
+  ].sort((a, b) => a.localeCompare(b));
+
+  if (filters.service === UNMAPPED_SERVICE) {
+    where.clientWork = null;
+  } else if (filters.service) {
+    // An unknown service leaves an empty list, which matches nothing.
+    where.clientWork = {
+      in: workValues.filter((work) => serviceNameOf(work) === filters.service),
+    };
+  }
+
+  // Created on one day, or else in one month, on the office calendar: from
+  // the office's midnight that starts it to the one after it ends.
+  const createdDay = parseDateInput(filters.date);
+  const created = createdDay
+    ? { gte: createdDay, lt: new Date(createdDay.getTime() + DAY_MS) }
+    : isMonthKey(filters.month)
+      ? monthRange(filters.month)
+      : null;
+
+  if (created) {
+    where.createdAt = {
+      gte: officeInstant(created.gte, 0),
+      lt: officeInstant(created.lt, 0),
+    };
   }
 
   const [tasks, totalTasks, employees, teams, clientOptions] = await Promise.all([
@@ -311,13 +370,59 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
             </select>
           </label>
 
+          <label className="grid gap-2">
+            <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
+              Service
+            </span>
+            <select
+              name="service"
+              defaultValue={filters.service ?? ""}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            >
+              <option value="">All services</option>
+              <option value={UNMAPPED_SERVICE}>{UNMAPPED_SERVICE_LABEL}</option>
+              {serviceOptions.map((service) => (
+                <option key={service} value={service}>
+                  {service}
+                </option>
+              ))}
+            </select>
+          </label>
+
+          <label className="grid gap-2">
+            <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
+              Created Date
+            </span>
+            <input
+              type="date"
+              name="date"
+              defaultValue={filters.date ?? ""}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+
+          <label className="grid gap-2">
+            <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
+              Created Month
+            </span>
+            <input
+              type="month"
+              name="month"
+              defaultValue={filters.month ?? ""}
+              className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            />
+          </label>
+
           <div className="flex gap-3 md:col-span-4 md:justify-end">
-            <Link
+            {/* A plain link, a full page load like Apply: in production a
+                client-side hop that only changes the query string sometimes
+                never finishes, leaving the old filters on screen. */}
+            <a
               href="/tasks"
               className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Reset
-            </Link>
+            </a>
             <button
               type="submit"
               className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
