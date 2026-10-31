@@ -24,7 +24,6 @@ import {
   isTaskStatus,
 } from "@/lib/taskStatus";
 import { buildReopenHistory, countReopenNotes } from "@/lib/reopenHistory";
-import { monthRange } from "@/lib/attendance";
 import { formatOfficeDate, officeInstant } from "@/lib/officeTime";
 import { UNMAPPED_SERVICE, parseDateInput } from "@/lib/reportFilters";
 import { UNMAPPED_SERVICE_LABEL, serviceNameOf } from "@/lib/reports";
@@ -43,10 +42,6 @@ const priorityOptions = ["low", "medium", "high"];
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-function isMonthKey(value: string | undefined): value is string {
-  return Boolean(value && /^\d{4}-(0[1-9]|1[0-2])$/.test(value));
-}
-
 type TasksPageProps = {
   searchParams: Promise<{
     status?: string;
@@ -55,10 +50,10 @@ type TasksPageProps = {
     assignedToId?: string;
     clientId?: string;
     service?: string;
-    /** "YYYY-MM-DD": tasks created that day. Wins over `month`. */
-    date?: string;
-    /** "YYYY-MM": tasks created that month. */
-    month?: string;
+    /** "YYYY-MM-DD": tasks created on or after that day. */
+    from?: string;
+    /** "YYYY-MM-DD": tasks created on or before that day. */
+    to?: string;
     page?: string;
   }>;
 };
@@ -150,19 +145,20 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     };
   }
 
-  // Created on one day, or else in one month, on the office calendar: from
-  // the office's midnight that starts it to the one after it ends.
-  const createdDay = parseDateInput(filters.date);
-  const created = createdDay
-    ? { gte: createdDay, lt: new Date(createdDay.getTime() + DAY_MS) }
-    : isMonthKey(filters.month)
-      ? monthRange(filters.month)
-      : null;
+  // Created between two days on the office calendar, both included: from the
+  // office's midnight that starts the first to the one after the last. Either
+  // end may be left open, and a range picked backwards is turned round.
+  let fromDay = parseDateInput(filters.from);
+  let toDay = parseDateInput(filters.to);
 
-  if (created) {
+  if (fromDay && toDay && fromDay > toDay) {
+    [fromDay, toDay] = [toDay, fromDay];
+  }
+
+  if (fromDay || toDay) {
     where.createdAt = {
-      gte: officeInstant(created.gte, 0),
-      lt: officeInstant(created.lt, 0),
+      ...(fromDay ? { gte: officeInstant(fromDay, 0) } : {}),
+      ...(toDay ? { lt: officeInstant(new Date(toDay.getTime() + DAY_MS), 0) } : {}),
     };
   }
 
@@ -391,24 +387,24 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
           <label className="grid gap-2">
             <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
-              Created Date
+              From Date
             </span>
             <input
               type="date"
-              name="date"
-              defaultValue={filters.date ?? ""}
+              name="from"
+              defaultValue={filters.from ?? ""}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </label>
 
           <label className="grid gap-2">
             <span className="text-xs font-medium uppercase tracking-normal text-slate-500">
-              Created Month
+              To Date
             </span>
             <input
-              type="month"
-              name="month"
-              defaultValue={filters.month ?? ""}
+              type="date"
+              name="to"
+              defaultValue={filters.to ?? ""}
               className="rounded-md border border-slate-300 px-3 py-2 text-sm"
             />
           </label>
