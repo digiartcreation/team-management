@@ -8,7 +8,9 @@ import {
   useState,
   useTransition,
 } from "react";
+import { useRouter } from "next/navigation";
 import CalendarEntryDialog from "@/components/dashboard/CalendarEntryDialog";
+import { CalendarRsvp, responseSummary } from "@/components/dashboard/CalendarResponses";
 import { deleteCalendarEvent } from "@/app/calendar/actions";
 import {
   CALENDAR_EVENT_TYPES,
@@ -36,10 +38,14 @@ type DashboardCalendarProps = {
 };
 
 /**
- * The open dialog: an entry to edit (or view, when the viewer cannot change
- * it), or a new one starting on `date`.
+ * The open dialog: an entry's details or its form (only ever its details when
+ * the viewer cannot change it), or a new one starting on `date`.
  */
-type DialogState = { entry: CalendarEntry | null; date: string } | null;
+type DialogState = {
+  entry: CalendarEntry | null;
+  date: string;
+  mode: "view" | "edit";
+} | null;
 
 /**
  * How each type is drawn: its dot, the tint of its chip on the grid, and the
@@ -192,6 +198,7 @@ export default function DashboardCalendar({
   initialEntries,
   people,
 }: DashboardCalendarProps) {
+  const router = useRouter();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(today);
   const [entries, setEntries] = useState(initialEntries);
@@ -254,34 +261,29 @@ export default function DashboardCalendar({
 
   const selectedEntries = entriesByDay.get(selectedDay) ?? [];
 
-  // How many of each type fall in the month itself, repeats counted on every
-  // day they show, the neighbouring months' days on the grid left out.
-  const monthCounts = useMemo(() => {
-    const counts = new Map<string, number>();
-    let total = 0;
-
-    for (const entry of entries) {
-      if (entry.date.startsWith(month)) {
-        counts.set(entry.type, (counts.get(entry.type) ?? 0) + 1);
-        total += 1;
-      }
-    }
-
-    return { counts, total };
-  }, [entries, month]);
-
   function showMonth(target: string, day?: string) {
     setMonth(target);
     setSelectedDay(day ?? (today.startsWith(target) ? today : `${target}-01`));
     void loadMonth(target);
   }
 
-  function openEntry(entry: CalendarEntry) {
-    setDialog({ entry, date: entry.date });
+  function openEntry(entry: CalendarEntry, mode: "view" | "edit" = "view") {
+    setDialog({ entry, date: entry.date, mode });
   }
 
   function openNew() {
-    setDialog({ entry: null, date: selectedDay });
+    setDialog({ entry: null, date: selectedDay, mode: "edit" });
+  }
+
+  // The viewer's own reason for declining an entry shared with them: theirs is
+  // the one place among the people it is shared with that `people` (everyone
+  // but the viewer) leaves out.
+  function ownReason(entry: CalendarEntry) {
+    return (
+      entry.sharedWith.find(
+        (person) => !people.some((other) => other.id === person.id)
+      )?.reason ?? null
+    );
   }
 
   // Stable for the dialog's effect, which calls it once the save lands.
@@ -299,9 +301,18 @@ export default function DashboardCalendar({
       const target = stay ? month : date.slice(0, 7);
       setMonth(target);
       void loadMonth(target);
+      // The menu's today and tomorrow counts come with the page.
+      router.refresh();
     },
-    [days, month, loadMonth]
+    [days, month, loadMonth, router]
   );
+
+  // An answer to a shared entry: reload the month to show it, and the page
+  // for the menu's counts, which leave declined entries out.
+  const handleResponded = useCallback(() => {
+    void loadMonth(month);
+    router.refresh();
+  }, [loadMonth, month, router]);
 
   function requestDelete(entry: CalendarEntry) {
     setDialog(null);
@@ -322,6 +333,7 @@ export default function DashboardCalendar({
         setError(result.error);
       } else {
         setEntries((current) => current.filter((item) => item.id !== entry.id));
+        router.refresh();
       }
 
       setDeleting(null);
@@ -368,12 +380,9 @@ export default function DashboardCalendar({
           <div className="mb-3 flex items-center justify-between gap-3">
             <h3
               aria-live="polite"
-              className="flex flex-wrap items-baseline gap-x-2 text-base font-semibold text-slate-950"
+              className="text-base font-semibold text-slate-950"
             >
               {formatCalendarMonth(month)}
-              <span className="text-xs font-medium text-slate-500">
-                {monthCounts.total} {monthCounts.total === 1 ? "entry" : "entries"}
-              </span>
             </h3>
             <div className="flex items-center gap-3">
               {loading ? (
@@ -436,7 +445,7 @@ export default function DashboardCalendar({
                   <div
                     key={day}
                     onClick={() => setSelectedDay(day)}
-                    className={`relative flex min-h-14 cursor-pointer flex-col gap-1 border-gray-200 p-1 transition sm:min-h-24 sm:p-1.5 ${
+                    className={`flex min-h-14 cursor-pointer flex-col gap-1 border-gray-200 p-1 transition sm:min-h-24 sm:p-1.5 ${
                       index % 7 === 6 ? "" : "border-r"
                     } ${index < days.length - 7 ? "border-b" : ""} ${
                       isSelected
@@ -464,16 +473,6 @@ export default function DashboardCalendar({
                       {Number(day.slice(8))}
                     </button>
 
-                    {/* How many on the day, beside its number. */}
-                    {dayEntries.length > 0 ? (
-                      <span
-                        aria-hidden
-                        className="absolute right-1 top-1 rounded-full bg-[#F3E8FF] px-1.5 text-[10px] font-semibold leading-4 text-[#770FC2] sm:right-1.5 sm:top-1.5"
-                      >
-                        {dayEntries.length}
-                      </span>
-                    ) : null}
-
                     {/* Phones get a dot per entry; the day list spells them out. */}
                     {dayEntries.length > 0 ? (
                       <span
@@ -499,7 +498,9 @@ export default function DashboardCalendar({
                             type="button"
                             onClick={() => openEntry(entry)}
                             title={`${formatCalendarTimes(entry)} · ${entry.title}`}
-                            className={`truncate rounded-sm border-l-2 px-1 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-95 ${tone.edge} ${tone.tint}`}
+                            className={`truncate rounded-sm border-l-2 px-1 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-95 ${tone.edge} ${tone.tint} ${
+                              entry.myResponse === "declined" ? "line-through opacity-50" : ""
+                            }`}
                           >
                             {entry.startTime ? (
                               <span className="font-semibold">
@@ -533,9 +534,6 @@ export default function DashboardCalendar({
                   className={`h-2 w-2 rounded-full ${toneFor(type.value).dot}`}
                 />
                 {type.label}
-                <span className="font-semibold tabular-nums text-slate-700">
-                  {monthCounts.counts.get(type.value) ?? 0}
-                </span>
               </li>
             ))}
           </ul>
@@ -584,7 +582,13 @@ export default function DashboardCalendar({
                         {calendarEventTypeLabel(entry.type)}
                       </span>
                     </div>
-                    <p className="mt-1 break-words text-sm font-medium text-slate-950">
+                    <p
+                      className={`mt-1 break-words text-sm font-medium ${
+                        entry.myResponse === "declined"
+                          ? "text-slate-400 line-through"
+                          : "text-slate-950"
+                      }`}
+                    >
                       {entry.title}
                     </p>
                     {entry.notes ? (
@@ -592,16 +596,45 @@ export default function DashboardCalendar({
                         {entry.notes}
                       </p>
                     ) : null}
-                    <div className="mt-2 flex items-center justify-between gap-2">
-                      <span className="min-w-0 truncate text-[11px] text-slate-400">
-                        {sharingLabel(entry)}
-                        {describeRepeat(entry) ? ` · ${describeRepeat(entry)}` : ""}
-                      </span>
+                    {/* Shared with the viewer: their answer. */}
+                    {entry.myResponse !== null ? (
+                      <div className="mt-2.5 border-t border-slate-100 pt-2.5">
+                        <CalendarRsvp
+                          // Remounted when the reload brings a new answer.
+                          key={`${entry.myResponse}-${ownReason(entry) ?? ""}`}
+                          eventId={entry.id}
+                          response={entry.myResponse}
+                          reason={ownReason(entry)}
+                          onResponded={handleResponded}
+                        />
+                      </div>
+                    ) : null}
+                    {/* Their own shared entry: how the people answered. */}
+                    {entry.isOwn && entry.sharedWith.length > 0 ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#770FC2]">
+                        {responseSummary(entry.sharedWith)}
+                      </p>
+                    ) : null}
+                    <p className="mt-2 truncate text-[11px] text-slate-400">
+                      {sharingLabel(entry)}
+                      {describeRepeat(entry) ? ` · ${describeRepeat(entry)}` : ""}
+                    </p>
+                    <div className="mt-2 flex items-center justify-between gap-2 border-t border-slate-100 pt-2">
+                      <button
+                        type="button"
+                        onClick={() => openEntry(entry)}
+                        className="inline-flex items-center gap-1 rounded px-2 py-1 text-xs font-medium text-slate-700 transition hover:bg-slate-100"
+                      >
+                        View details
+                        <svg aria-hidden viewBox="0 0 20 20" className="h-3 w-3" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round">
+                          <path d="M8 5l5 5-5 5" />
+                        </svg>
+                      </button>
                       {entry.canManage ? (
                         <span className="flex shrink-0 gap-1">
                           <button
                             type="button"
-                            onClick={() => openEntry(entry)}
+                            onClick={() => openEntry(entry, "edit")}
                             className="rounded px-2 py-1 text-xs font-medium text-[#770FC2] transition hover:bg-[#F3E8FF]"
                           >
                             Edit
@@ -627,12 +660,22 @@ export default function DashboardCalendar({
       {dialog ? (
         <CalendarEntryDialog
           key={dialog.entry?.id ?? `new-${dialog.date}`}
-          entry={dialog.entry}
+          // The reloaded copy once an answer is saved, so the dialog shows it.
+          entry={
+            dialog.entry
+              ? (entries.find(
+                  (item) => item.id === dialog.entry?.id && item.date === dialog.entry?.date
+                ) ?? dialog.entry)
+              : null
+          }
           date={dialog.date}
           people={people}
           onClose={() => setDialog(null)}
           onSaved={handleSaved}
           onDelete={requestDelete}
+          onResponded={handleResponded}
+          mode={dialog.mode}
+          onEdit={() => setDialog((current) => current && { ...current, mode: "edit" })}
         />
       ) : null}
 

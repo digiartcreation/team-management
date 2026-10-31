@@ -1,3 +1,4 @@
+import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
 import {
   calendarGridDays,
@@ -7,9 +8,97 @@ import {
   parseRepeatDays,
   type CalendarEntry,
 } from "@/lib/calendar";
+import { minutesFromTime, officeMinutes } from "@/lib/officeTime";
 import { getWatcherOptions } from "@/lib/taskWatchers";
 
 type Viewer = { id: string; role?: string };
+
+/**
+ * Entries `viewer` may see that can fall between `from` and `to`: their own,
+ * those shared with them or with everyone, set for a day in the range or set
+ * earlier and still repeating into it.
+ */
+function visibleBetween(viewer: Viewer, from: string, to: string): Prisma.CalendarEventWhereInput {
+  return {
+    AND: [
+      {
+        OR: [
+          { createdById: viewer.id },
+          { visibility: "everyone" },
+          { visibility: "selected", shares: { some: { userId: viewer.id } } },
+        ],
+      },
+      {
+        date: { lte: new Date(`${to}T00:00:00.000Z`) },
+        OR: [
+          { date: { gte: new Date(`${from}T00:00:00.000Z`) } },
+          {
+            recurrence: { not: "none" },
+            OR: [
+              { repeatUntil: null },
+              { repeatUntil: { gte: new Date(`${from}T00:00:00.000Z`) } },
+            ],
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/**
+ * How many entries `viewer` still has today and has tomorrow on the office
+ * clock, repeats included: the two counts beside Calendar in the menu. One of
+ * today's that has already ended -- past its end time, or its start time when
+ * it has no end -- no longer counts; an all-day one counts all day. Entries the
+ * viewer declined never count.
+ */
+export async function countTodayAndTomorrow(viewer: Viewer) {
+  const now = new Date();
+  const today = officeToday();
+  const nowMinutes = officeMinutes(now);
+  const tomorrow = new Date(Date.parse(`${today}T00:00:00.000Z`) + 24 * 60 * 60 * 1000)
+    .toISOString()
+    .slice(0, 10);
+  const events = await prisma.calendarEvent.findMany({
+    where: visibleBetween(viewer, today, tomorrow),
+    select: {
+      date: true,
+      startTime: true,
+      endTime: true,
+      recurrence: true,
+      repeatDays: true,
+      repeatMonthDay: true,
+      repeatUntil: true,
+      shares: { where: { userId: viewer.id }, select: { response: true } },
+    },
+  });
+  const counts = { today: 0, tomorrow: 0 };
+
+  for (const event of events) {
+    if (event.shares[0]?.response === "declined") {
+      continue;
+    }
+
+    const lastTime = event.endTime ?? event.startTime;
+    const endedToday = lastTime !== null && minutesFromTime(lastTime) <= nowMinutes;
+    const days = occurrencesBetween(
+      {
+        seriesDate: event.date.toISOString().slice(0, 10),
+        recurrence: event.recurrence,
+        repeatDays: parseRepeatDays(event.repeatDays),
+        repeatMonthDay: event.repeatMonthDay,
+        repeatUntil: event.repeatUntil?.toISOString().slice(0, 10) ?? null,
+      },
+      today,
+      tomorrow
+    );
+
+    counts.today += days.includes(today) && !endedToday ? 1 : 0;
+    counts.tomorrow += days.includes(tomorrow) ? 1 : 0;
+  }
+
+  return counts;
+}
 
 /**
  * The entries on a month's grid that `viewer` may see: their own, whoever
@@ -25,31 +114,7 @@ export async function loadCalendarMonth(
   const from = days[0];
   const to = days[days.length - 1];
   const events = await prisma.calendarEvent.findMany({
-    where: {
-      AND: [
-        {
-          OR: [
-            { createdById: viewer.id },
-            { visibility: "everyone" },
-            { visibility: "selected", shares: { some: { userId: viewer.id } } },
-          ],
-        },
-        // Set for a day on the grid, or set earlier and still repeating onto it.
-        {
-          date: { lte: new Date(`${to}T00:00:00.000Z`) },
-          OR: [
-            { date: { gte: new Date(`${from}T00:00:00.000Z`) } },
-            {
-              recurrence: { not: "none" },
-              OR: [
-                { repeatUntil: null },
-                { repeatUntil: { gte: new Date(`${from}T00:00:00.000Z`) } },
-              ],
-            },
-          ],
-        },
-      ],
-    },
+    where: visibleBetween(viewer, from, to),
     select: {
       id: true,
       title: true,
@@ -67,7 +132,12 @@ export async function loadCalendarMonth(
       createdAt: true,
       createdBy: { select: { name: true } },
       shares: {
-        select: { user: { select: { id: true, name: true } } },
+        select: {
+          response: true,
+          responseReason: true,
+          respondedAt: true,
+          user: { select: { id: true, name: true } },
+        },
         orderBy: { user: { name: "asc" } },
       },
     },
@@ -89,7 +159,13 @@ export async function loadCalendarMonth(
         endTime: event.endTime,
         notes: event.notes,
         visibility: event.visibility,
-        sharedWith: event.shares.map((share) => share.user),
+        sharedWith: event.shares.map((share) => ({
+          ...share.user,
+          response: share.response,
+          reason: share.responseReason,
+          respondedAt: share.respondedAt?.toISOString() ?? null,
+        })),
+        myResponse: event.shares.find((share) => share.user.id === viewer.id)?.response ?? null,
         createdByName: event.createdBy.name,
         isOwn: event.createdById === viewer.id,
         canManage: canManageCalendarEvent(viewer, event),

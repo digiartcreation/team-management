@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -75,12 +76,9 @@ export default async function DocumentationViewPage({
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <Link
-          href="/documentation"
-          className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
-        >
+        <BackLink href="/documentation">
           Back to Docs
-        </Link>
+        </BackLink>
 
         <div className="grid gap-6 lg:grid-cols-[240px_minmax(0,1fr)]">
           <nav

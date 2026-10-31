@@ -1,4 +1,5 @@
 import Link from "next/link";
+import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -51,12 +52,9 @@ export default async function ClientSopPage({ params }: ClientSopPageProps) {
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-4xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
-        <Link
-          href="/clients"
-          className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
-        >
+        <BackLink href="/clients">
           Back to Clients
-        </Link>
+        </BackLink>
 
         <article className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm sm:p-8">
           <header className="flex flex-col gap-4 border-b border-slate-200 pb-5 sm:flex-row sm:items-start sm:justify-between">

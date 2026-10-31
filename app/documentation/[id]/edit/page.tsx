@@ -1,4 +1,4 @@
-import Link from "next/link";
+import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
@@ -33,7 +33,6 @@ export default async function EditDocumentationPage({
       title: true,
       content: true,
       createdById: true,
-      attachment: { select: { fileName: true, size: true } },
     },
   });
 
@@ -49,12 +48,7 @@ export default async function EditDocumentationPage({
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header>
-          <Link
-            href={`/documentation/${doc.id}`}
-            className="text-sm font-medium text-slate-500 transition hover:text-slate-950"
-          >
-            Back to Page
-          </Link>
+          <BackLink href={`/documentation/${doc.id}`}>Back to Page</BackLink>
           <h1 className="mt-3 text-2xl font-semibold tracking-normal text-slate-950">
             Edit Page
           </h1>
@@ -69,7 +63,6 @@ export default async function EditDocumentationPage({
             id: doc.id,
             title: doc.title,
             content: doc.content,
-            attachment: doc.attachment,
           }}
         />
       </div>

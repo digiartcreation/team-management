@@ -8,20 +8,16 @@ import {
   useTransition,
 } from "react";
 import { saveCalendarEvent, type CalendarFormState } from "@/app/calendar/actions";
+import CalendarEntryDetails from "@/components/dashboard/CalendarEntryDetails";
 import CalendarRepeatField from "@/components/dashboard/CalendarRepeatField";
+import { responseSummary } from "@/components/dashboard/CalendarResponses";
 import PeoplePicker from "@/components/ui/PeoplePicker";
 import {
   CALENDAR_EVENT_TYPES,
   CALENDAR_VISIBILITIES,
   DEFAULT_CALENDAR_EVENT_TYPE,
   DEFAULT_CALENDAR_VISIBILITY,
-  calendarEventTypeLabel,
-  describeRepeat,
   describeSharing,
-  formatCalendarDay,
-  formatCalendarTimes,
-  formatShortDay,
-  listNames,
   type CalendarEntry,
 } from "@/lib/calendar";
 
@@ -39,6 +35,15 @@ type CalendarEntryDialogProps = {
   /** Called with the day the entry was saved on, and whether it repeats. */
   onSaved: (date: string, repeats: boolean) => void;
   onDelete: (entry: CalendarEntry) => void;
+  /** Called once the viewer accepts or declines an entry shared with them. */
+  onResponded: () => void;
+  /**
+   * "view" shows an entry's details; "edit" its form. Someone who cannot
+   * change an entry only ever gets its details.
+   */
+  mode: "view" | "edit";
+  /** Switches from the details to the form. */
+  onEdit: () => void;
 };
 
 const fieldClass =
@@ -61,6 +66,9 @@ export default function CalendarEntryDialog({
   onClose,
   onSaved,
   onDelete,
+  onResponded,
+  mode,
+  onEdit,
 }: CalendarEntryDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, formAction, isPending] = useActionState<
@@ -80,14 +88,11 @@ export default function CalendarEntryDialog({
   const [startDate, setStartDate] = useState(entry?.seriesDate ?? date);
   const [recurrence, setRecurrence] = useState(entry?.recurrence ?? "none");
   const readOnly = Boolean(entry && !entry.canManage);
-  // The others a "selected" entry went to. `people` leaves the viewer out, so
-  // checking against it drops them from the list.
-  const alsoSharedWith =
-    entry?.visibility === "selected" && !entry.isOwn
-      ? entry.sharedWith
-          .filter((person) => people.some((other) => other.id === person.id))
-          .map((person) => person.name)
-      : [];
+  // The viewer's own place among the people it is shared with: the one
+  // `people` (everyone but the viewer) leaves out.
+  const viewerShareId = entry?.sharedWith.find(
+    (person) => !people.some((other) => other.id === person.id)
+  )?.id;
   const headingId = `calendar-entry-heading-${entry?.id ?? "new"}`;
 
   useEffect(() => {
@@ -111,52 +116,16 @@ export default function CalendarEntryDialog({
       aria-labelledby={headingId}
       className="m-auto w-[calc(100vw-2rem)] max-w-lg rounded-lg border border-slate-200 bg-white p-0 text-left shadow-xl backdrop:bg-slate-950/40"
     >
-      {entry && readOnly ? (
-        <div className="grid gap-4 p-6">
-          <div>
-            <p className={labelClass}>{calendarEventTypeLabel(entry.type)}</p>
-            <h2
-              id={headingId}
-              className="mt-1 break-words text-lg font-semibold text-slate-950"
-            >
-              {entry.title}
-            </h2>
-            <p className="mt-1 text-sm text-slate-600">
-              {formatCalendarDay(entry.date)} · {formatCalendarTimes(entry)}
-            </p>
-            {describeRepeat(entry) ? (
-              <p className="mt-0.5 text-xs text-slate-500">
-                {describeRepeat(entry)}, from {formatShortDay(entry.seriesDate)}
-              </p>
-            ) : null}
-          </div>
-
-          {entry.notes ? (
-            <p className="whitespace-pre-line break-words rounded-md border border-slate-200 bg-slate-50 px-3 py-2 text-sm text-slate-700">
-              {entry.notes}
-            </p>
-          ) : null}
-
-          <p className="text-xs text-slate-500">
-            {describeSharing(entry)}
-            {alsoSharedWith.length > 0
-              ? ` Also shared with ${listNames(alsoSharedWith)}.`
-              : ""}{" "}
-            Only {entry.createdByName}
-            {entry.visibility === "everyone" ? " or an admin" : ""} can change
-            it.
-          </p>
-
-          <div className="flex justify-end">
-            <button
-              type="button"
-              onClick={onClose}
-              className={secondaryButtonClass}
-            >
-              Close
-            </button>
-          </div>
-        </div>
+      {entry && (mode === "view" || readOnly) ? (
+        <CalendarEntryDetails
+          entry={entry}
+          headingId={headingId}
+          viewerShareId={viewerShareId}
+          onResponded={onResponded}
+          onClose={onClose}
+          onEdit={entry.canManage ? onEdit : undefined}
+          onDelete={entry.canManage ? () => onDelete(entry) : undefined}
+        />
       ) : (
         <form
           onSubmit={(event) => {
@@ -302,6 +271,13 @@ export default function CalendarEntryDialog({
                   ))}
                 </div>
               </fieldset>
+
+              {visibility === "selected" && entry && entry.sharedWith.length > 0 ? (
+                <p className="rounded-md bg-[#F8F7FB] px-3 py-2 text-xs text-[#5B0B96]">
+                  Responses so far: {responseSummary(entry.sharedWith)}. Anyone
+                  you keep keeps their answer.
+                </p>
+              ) : null}
 
               {visibility === "selected" ? (
                 <PeoplePicker

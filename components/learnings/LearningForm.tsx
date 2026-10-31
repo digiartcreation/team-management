@@ -1,3 +1,5 @@
+import FormCard from "@/components/ui/FormCard";
+import FormField, { fieldInputClass } from "@/components/ui/FormField";
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 
 type LearningFormProps = {
@@ -27,39 +29,34 @@ export default function LearningForm({
   learning,
 }: LearningFormProps) {
   return (
-    <form
+    <FormCard
       action={action}
-      className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm"
+      title="Learning details"
+      description="What you learned, and where to find it again. No length limit on any field."
+      cancelHref="/learnings"
+      submitLabel={submitLabel}
     >
       {learning ? <input type="hidden" name="id" value={learning.id} /> : null}
-      <div className="grid gap-5">
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Title</span>
-          <input
-            name="title"
-            defaultValue={learning?.title}
-            required
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
-          />
-        </label>
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">
-            Description
-          </span>
-          <TextareaWithBullet
-            name="description"
-            defaultValue={learning?.description ?? ""}
-            rows={4}
-            required
-          />
-        </label>
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">Category</span>
+
+      <FormField label="Title" htmlFor="learning-title" required>
+        <input
+          id="learning-title"
+          name="title"
+          defaultValue={learning?.title}
+          required
+          placeholder="Eg: Building dashboard layouts with CSS grid"
+          className={fieldInputClass}
+        />
+      </FormField>
+
+      <div className="grid gap-6 sm:grid-cols-2">
+        <FormField label="Category" htmlFor="learning-category" required>
           <select
+            id="learning-category"
             name="category"
             defaultValue={learning?.category ?? "Development"}
             required
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            className={fieldInputClass}
           >
             {categories.map((category) => (
               <option key={category} value={category}>
@@ -67,27 +64,34 @@ export default function LearningForm({
               </option>
             ))}
           </select>
-        </label>
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">
-            Reference Link
-          </span>
+        </FormField>
+
+        <FormField
+          label="Reference link"
+          htmlFor="learning-link"
+          hint="A course, article or video to go back to."
+        >
           <input
+            id="learning-link"
             name="referenceLink"
             type="url"
             defaultValue={learning?.referenceLink ?? ""}
-            className="rounded-md border border-slate-300 px-3 py-2 text-sm"
+            placeholder="https://"
+            className={fieldInputClass}
           />
-        </label>
+        </FormField>
       </div>
-      <div className="mt-6 flex justify-end">
-        <button
-          type="submit"
-          className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white"
-        >
-          {submitLabel}
-        </button>
-      </div>
-    </form>
+
+      <FormField label="Description" htmlFor="learning-description" required>
+        <TextareaWithBullet
+          id="learning-description"
+          name="description"
+          defaultValue={learning?.description ?? ""}
+          placeholder="What did you learn, and how will you use it in your work?"
+          rows={8}
+          required
+        />
+      </FormField>
+    </FormCard>
   );
 }

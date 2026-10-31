@@ -1,6 +1,7 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { sendPushToUser } from "@/lib/pushNotifications";
+import { fitText } from "@/lib/fitText";
 
 type NotificationType =
   | "TASK_ASSIGNED"
@@ -13,7 +14,8 @@ type NotificationType =
   | "ATTENDANCE_UPDATED"
   | "LEARNING_UPDATED"
   | "TOOL_USAGE_UPDATED"
-  | "CALENDAR_SHARED";
+  | "CALENDAR_SHARED"
+  | "CALENDAR_RESPONSE";
 
 type NotificationInput = {
   userId: string;
@@ -34,6 +36,7 @@ const visibleNotificationTypes = [
   "LEARNING_UPDATED",
   "TOOL_USAGE_UPDATED",
   "CALENDAR_SHARED",
+  "CALENDAR_RESPONSE",
 ];
 
 export function getVisibleNotificationWhere(
@@ -55,18 +58,22 @@ export async function createNotification({
   message,
   type,
 }: NotificationInput) {
+  // Messages quote titles that can run to any length; the columns hold 191.
+  const shortTitle = fitText(title);
+  const shortMessage = fitText(message);
+
   await prisma.notification.create({
     data: {
       userId,
-      title,
-      message,
+      title: shortTitle,
+      message: shortMessage,
       type,
     },
   });
 
   await sendPushToUser(userId, {
-    title,
-    body: message,
+    title: shortTitle,
+    body: shortMessage,
     url: "/notifications",
   });
 }

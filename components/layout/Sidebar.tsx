@@ -6,6 +6,8 @@ type SidebarProps = {
   isSuperAdmin?: boolean;
   unreadNotifications?: number;
   alertCounts?: Record<string, number | undefined>;
+  /** Calendar entries today and tomorrow, shown beside Calendar. */
+  calendarCounts?: { today: number; tomorrow: number };
 };
 
 function getNavItems(role?: string, isSuperAdmin = false) {
@@ -84,6 +86,7 @@ export default function Sidebar({
   isSuperAdmin = false,
   unreadNotifications = 0,
   alertCounts = {},
+  calendarCounts,
 }: SidebarProps) {
   const navItems = getNavItems(role, isSuperAdmin);
   const dashboardTitle =
@@ -125,6 +128,7 @@ export default function Sidebar({
           items={navItems}
           unreadNotifications={unreadNotifications}
           alertCounts={alertCounts}
+          calendarCounts={calendarCounts}
         />
       </div>
     </aside>

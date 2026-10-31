@@ -33,6 +33,19 @@ export type CalendarVisibility =
 
 export const DEFAULT_CALENDAR_VISIBILITY: CalendarVisibility = "private";
 
+/** How someone a "selected" entry is shared with has answered it. */
+export const CALENDAR_RESPONSES = [
+  { value: "pending", label: "Awaiting reply" },
+  { value: "accepted", label: "Accepted" },
+  { value: "declined", label: "Declined" },
+] as const;
+
+export type CalendarResponse = (typeof CALENDAR_RESPONSES)[number]["value"];
+
+export function isCalendarResponse(value: string): value is CalendarResponse {
+  return CALENDAR_RESPONSES.some((response) => response.value === value);
+}
+
 /**
  * How an entry repeats from its start date: weekly on the weekdays picked for
  * it, or monthly on the day of the month picked -- the month's last day when
@@ -143,8 +156,21 @@ export type CalendarEntry = {
   endTime: string | null;
   notes: string | null;
   visibility: string;
-  /** Who a "selected" entry is shared with, by name; empty otherwise. */
-  sharedWith: { id: string; name: string }[];
+  /**
+   * Who a "selected" entry is shared with, and how each has answered; empty
+   * otherwise.
+   */
+  sharedWith: {
+    id: string;
+    name: string;
+    response: string;
+    /** Why they declined; null otherwise. */
+    reason: string | null;
+    /** ISO, when they last answered; null until they do. */
+    respondedAt: string | null;
+  }[];
+  /** The viewer's own answer when it is shared with them; null otherwise. */
+  myResponse: string | null;
   createdByName: string;
   /** Written by the viewer. Only the author decides who sees an entry. */
   isOwn: boolean;

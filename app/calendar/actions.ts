@@ -327,19 +327,26 @@ export async function saveCalendarEvent(
         previousShareIds = existing.shares.map((share) => share.userId);
       }
 
+      // Only the people taken off lose their share, and only the people added
+      // get one: everyone kept keeps the answer they already gave.
+      const kept = new Set(previousShareIds);
+      const added = shareIds.filter((userId) => !kept.has(userId));
+
       await prisma.$transaction([
         ...(isAuthor
-          ? [prisma.calendarEventShare.deleteMany({ where: { eventId: id } })]
+          ? [
+              prisma.calendarEventShare.deleteMany({
+                where: { eventId: id, userId: { notIn: shareIds } },
+              }),
+              prisma.calendarEventShare.createMany({
+                data: added.map((userId) => ({ eventId: id, userId })),
+                skipDuplicates: true,
+              }),
+            ]
           : []),
         prisma.calendarEvent.update({
           where: { id },
-          data: {
-            ...fields,
-            visibility,
-            ...(isAuthor
-              ? { shares: { create: shareIds.map((userId) => ({ userId })) } }
-              : {}),
-          },
+          data: { ...fields, visibility },
         }),
       ]);
 
@@ -421,6 +428,81 @@ export async function deleteCalendarEvent(
     });
   } catch {
     return { error: "Could not delete the entry. Please try again." };
+  }
+
+  return null;
+}
+
+const MAX_REASON_LENGTH = 2000;
+
+/**
+ * Accepts or declines an entry shared with the viewer, and tells its author.
+ * Declining needs a reason, which everyone invited sees; accepting clears it.
+ * Only someone it is shared with can answer it; they can change their mind,
+ * and the author is told each time the answer changes.
+ */
+export async function respondToCalendarEvent(
+  eventId: string,
+  response: string,
+  reason = ""
+): Promise<{ error: string } | null> {
+  const sessionUser = await getSessionUser();
+  const why = reason.trim();
+
+  if (response !== "accepted" && response !== "declined") {
+    return { error: "Accept or decline the entry." };
+  }
+
+  if (response === "declined" && !why) {
+    return { error: "Say why you can't attend." };
+  }
+
+  if (why.length > MAX_REASON_LENGTH) {
+    return { error: `Keep the reason under ${MAX_REASON_LENGTH} characters.` };
+  }
+
+  const share = await prisma.calendarEventShare.findUnique({
+    where: { eventId_userId: { eventId, userId: sessionUser.id } },
+    select: {
+      response: true,
+      event: { select: { title: true, date: true, createdById: true } },
+    },
+  });
+
+  if (!share) {
+    return { error: "This entry is not shared with you any more." };
+  }
+
+  try {
+    await prisma.calendarEventShare.update({
+      where: { eventId_userId: { eventId, userId: sessionUser.id } },
+      data: {
+        response,
+        responseReason: response === "declined" ? why : null,
+        respondedAt: new Date(),
+      },
+    });
+  } catch {
+    return { error: "Could not save your answer. Please try again." };
+  }
+
+  // Told when the answer changes, or when a decline gives a new reason.
+  if (share.response !== response || response === "declined") {
+    const day = formatCalendarDay(share.event.date.toISOString().slice(0, 10));
+
+    try {
+      await createNotification({
+        userId: share.event.createdById,
+        title: response === "accepted" ? "Calendar entry accepted" : "Calendar entry declined",
+        message:
+          response === "accepted"
+            ? `${sessionUser.name ?? "Someone"} accepted "${share.event.title}" on ${day}.`
+            : `${sessionUser.name ?? "Someone"} declined "${share.event.title}" on ${day}: ${why}`,
+        type: "CALENDAR_RESPONSE",
+      });
+    } catch (error) {
+      console.error("Could not send a calendar response notification", error);
+    }
   }
 
   return null;
