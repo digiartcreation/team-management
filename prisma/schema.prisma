@@ -551,12 +551,16 @@ model CalendarEvent {
 }
 
 /// Someone a "selected" calendar entry is shared with. They see it on their
-/// calendar; only its author changes it.
+/// calendar and answer it -- accept or decline; only its author changes it.
 model CalendarEventShare {
-  id        String        @id @default(cuid())
-  eventId   String
-  userId    String
-  createdAt DateTime      @default(now())
+  id          String        @id @default(cuid())
+  eventId     String
+  userId      String
+  /// "pending", "accepted" or "declined", one of CALENDAR_RESPONSES in
+  /// lib/calendar.ts. Kept when the author edits the entry.
+  response    String        @default("pending")
+  respondedAt DateTime?
+  createdAt   DateTime      @default(now())
   event     CalendarEvent @relation(fields: [eventId], references: [id], onDelete: Cascade)
   user      User          @relation(fields: [userId], references: [id], onDelete: Cascade)
 

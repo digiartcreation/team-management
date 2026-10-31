@@ -48,26 +48,30 @@ export default function SidebarNav({
                 {alertCounts[item.href]}
               </span>
             ) : null}
-            {/* Both show once either has something, so green is always today
-                and gray tomorrow, in that order. */}
+            {/* Each shows only when it has something: green is today, gray
+                tomorrow. */}
             {item.href === "/calendar" &&
             calendarCounts &&
             (calendarCounts.today > 0 || calendarCounts.tomorrow > 0) ? (
               <span className="ml-2 inline-flex gap-1">
-                <span
-                  title={`${calendarCounts.today} today`}
-                  className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white"
-                >
-                  {calendarCounts.today}
-                  <span className="sr-only"> today</span>
-                </span>
-                <span
-                  title={`${calendarCounts.tomorrow} tomorrow`}
-                  className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700"
-                >
-                  {calendarCounts.tomorrow}
-                  <span className="sr-only"> tomorrow</span>
-                </span>
+                {calendarCounts.today > 0 ? (
+                  <span
+                    title={`${calendarCounts.today} today`}
+                    className="rounded-full bg-emerald-500 px-2 py-0.5 text-xs font-semibold text-white"
+                  >
+                    {calendarCounts.today}
+                    <span className="sr-only"> today</span>
+                  </span>
+                ) : null}
+                {calendarCounts.tomorrow > 0 ? (
+                  <span
+                    title={`${calendarCounts.tomorrow} tomorrow`}
+                    className="rounded-full bg-gray-200 px-2 py-0.5 text-xs font-semibold text-gray-700"
+                  >
+                    {calendarCounts.tomorrow}
+                    <span className="sr-only"> tomorrow</span>
+                  </span>
+                ) : null}
               </span>
             ) : null}
             {item.href === "/notifications" && unreadNotifications > 0 ? (

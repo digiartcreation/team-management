@@ -10,6 +10,7 @@ import {
 } from "react";
 import { useRouter } from "next/navigation";
 import CalendarEntryDialog from "@/components/dashboard/CalendarEntryDialog";
+import { CalendarRsvp, responseSummary } from "@/components/dashboard/CalendarResponses";
 import { deleteCalendarEvent } from "@/app/calendar/actions";
 import {
   CALENDAR_EVENT_TYPES,
@@ -291,6 +292,13 @@ export default function DashboardCalendar({
     [days, month, loadMonth, router]
   );
 
+  // An answer to a shared entry: reload the month to show it, and the page
+  // for the menu's counts, which leave declined entries out.
+  const handleResponded = useCallback(() => {
+    void loadMonth(month);
+    router.refresh();
+  }, [loadMonth, month, router]);
+
   function requestDelete(entry: CalendarEntry) {
     setDialog(null);
     setDeleting(entry);
@@ -475,7 +483,9 @@ export default function DashboardCalendar({
                             type="button"
                             onClick={() => openEntry(entry)}
                             title={`${formatCalendarTimes(entry)} · ${entry.title}`}
-                            className={`truncate rounded-sm border-l-2 px-1 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-95 ${tone.edge} ${tone.tint}`}
+                            className={`truncate rounded-sm border-l-2 px-1 py-0.5 text-left text-[11px] leading-tight transition hover:brightness-95 ${tone.edge} ${tone.tint} ${
+                              entry.myResponse === "declined" ? "line-through opacity-50" : ""
+                            }`}
                           >
                             {entry.startTime ? (
                               <span className="font-semibold">
@@ -557,12 +567,36 @@ export default function DashboardCalendar({
                         {calendarEventTypeLabel(entry.type)}
                       </span>
                     </div>
-                    <p className="mt-1 break-words text-sm font-medium text-slate-950">
+                    <p
+                      className={`mt-1 break-words text-sm font-medium ${
+                        entry.myResponse === "declined"
+                          ? "text-slate-400 line-through"
+                          : "text-slate-950"
+                      }`}
+                    >
                       {entry.title}
                     </p>
                     {entry.notes ? (
                       <p className="mt-1 whitespace-pre-line break-words text-xs text-slate-600">
                         {entry.notes}
+                      </p>
+                    ) : null}
+                    {/* Shared with the viewer: their answer. */}
+                    {entry.myResponse !== null ? (
+                      <div className="mt-2.5 border-t border-slate-100 pt-2.5">
+                        <CalendarRsvp
+                          // Remounted when the reload brings a new answer.
+                          key={entry.myResponse}
+                          eventId={entry.id}
+                          response={entry.myResponse}
+                          onResponded={handleResponded}
+                        />
+                      </div>
+                    ) : null}
+                    {/* Their own shared entry: how the people answered. */}
+                    {entry.isOwn && entry.sharedWith.length > 0 ? (
+                      <p className="mt-2 text-[11px] font-medium text-[#770FC2]">
+                        {responseSummary(entry.sharedWith)}
                       </p>
                     ) : null}
                     <div className="mt-2 flex items-center justify-between gap-2">
@@ -600,12 +634,20 @@ export default function DashboardCalendar({
       {dialog ? (
         <CalendarEntryDialog
           key={dialog.entry?.id ?? `new-${dialog.date}`}
-          entry={dialog.entry}
+          // The reloaded copy once an answer is saved, so the dialog shows it.
+          entry={
+            dialog.entry
+              ? (entries.find(
+                  (item) => item.id === dialog.entry?.id && item.date === dialog.entry?.date
+                ) ?? dialog.entry)
+              : null
+          }
           date={dialog.date}
           people={people}
           onClose={() => setDialog(null)}
           onSaved={handleSaved}
           onDelete={requestDelete}
+          onResponded={handleResponded}
         />
       ) : null}
 

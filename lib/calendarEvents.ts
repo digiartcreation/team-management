@@ -8,6 +8,7 @@ import {
   parseRepeatDays,
   type CalendarEntry,
 } from "@/lib/calendar";
+import { minutesFromTime, officeMinutes } from "@/lib/officeTime";
 import { getWatcherOptions } from "@/lib/taskWatchers";
 
 type Viewer = { id: string; role?: string };
@@ -45,11 +46,16 @@ function visibleBetween(viewer: Viewer, from: string, to: string): Prisma.Calend
 }
 
 /**
- * How many entries `viewer` has today and tomorrow on the office clock,
- * repeats included: the two counts beside Calendar in the menu.
+ * How many entries `viewer` still has today and has tomorrow on the office
+ * clock, repeats included: the two counts beside Calendar in the menu. One of
+ * today's that has already ended -- past its end time, or its start time when
+ * it has no end -- no longer counts; an all-day one counts all day. Entries the
+ * viewer declined never count.
  */
 export async function countTodayAndTomorrow(viewer: Viewer) {
+  const now = new Date();
   const today = officeToday();
+  const nowMinutes = officeMinutes(now);
   const tomorrow = new Date(Date.parse(`${today}T00:00:00.000Z`) + 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
@@ -57,15 +63,24 @@ export async function countTodayAndTomorrow(viewer: Viewer) {
     where: visibleBetween(viewer, today, tomorrow),
     select: {
       date: true,
+      startTime: true,
+      endTime: true,
       recurrence: true,
       repeatDays: true,
       repeatMonthDay: true,
       repeatUntil: true,
+      shares: { where: { userId: viewer.id }, select: { response: true } },
     },
   });
   const counts = { today: 0, tomorrow: 0 };
 
   for (const event of events) {
+    if (event.shares[0]?.response === "declined") {
+      continue;
+    }
+
+    const lastTime = event.endTime ?? event.startTime;
+    const endedToday = lastTime !== null && minutesFromTime(lastTime) <= nowMinutes;
     const days = occurrencesBetween(
       {
         seriesDate: event.date.toISOString().slice(0, 10),
@@ -78,7 +93,7 @@ export async function countTodayAndTomorrow(viewer: Viewer) {
       tomorrow
     );
 
-    counts.today += days.includes(today) ? 1 : 0;
+    counts.today += days.includes(today) && !endedToday ? 1 : 0;
     counts.tomorrow += days.includes(tomorrow) ? 1 : 0;
   }
 
@@ -117,7 +132,7 @@ export async function loadCalendarMonth(
       createdAt: true,
       createdBy: { select: { name: true } },
       shares: {
-        select: { user: { select: { id: true, name: true } } },
+        select: { response: true, user: { select: { id: true, name: true } } },
         orderBy: { user: { name: "asc" } },
       },
     },
@@ -139,7 +154,8 @@ export async function loadCalendarMonth(
         endTime: event.endTime,
         notes: event.notes,
         visibility: event.visibility,
-        sharedWith: event.shares.map((share) => share.user),
+        sharedWith: event.shares.map((share) => ({ ...share.user, response: share.response })),
+        myResponse: event.shares.find((share) => share.user.id === viewer.id)?.response ?? null,
         createdByName: event.createdBy.name,
         isOwn: event.createdById === viewer.id,
         canManage: canManageCalendarEvent(viewer, event),

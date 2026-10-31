@@ -9,6 +9,7 @@ import {
 } from "react";
 import { saveCalendarEvent, type CalendarFormState } from "@/app/calendar/actions";
 import CalendarRepeatField from "@/components/dashboard/CalendarRepeatField";
+import { CalendarAttendees, CalendarRsvp } from "@/components/dashboard/CalendarResponses";
 import PeoplePicker from "@/components/ui/PeoplePicker";
 import {
   CALENDAR_EVENT_TYPES,
@@ -21,7 +22,6 @@ import {
   formatCalendarDay,
   formatCalendarTimes,
   formatShortDay,
-  listNames,
   type CalendarEntry,
 } from "@/lib/calendar";
 
@@ -39,6 +39,8 @@ type CalendarEntryDialogProps = {
   /** Called with the day the entry was saved on, and whether it repeats. */
   onSaved: (date: string, repeats: boolean) => void;
   onDelete: (entry: CalendarEntry) => void;
+  /** Called once the viewer accepts or declines an entry shared with them. */
+  onResponded: () => void;
 };
 
 const fieldClass =
@@ -61,6 +63,7 @@ export default function CalendarEntryDialog({
   onClose,
   onSaved,
   onDelete,
+  onResponded,
 }: CalendarEntryDialogProps) {
   const dialogRef = useRef<HTMLDialogElement>(null);
   const [state, formAction, isPending] = useActionState<
@@ -80,14 +83,11 @@ export default function CalendarEntryDialog({
   const [startDate, setStartDate] = useState(entry?.seriesDate ?? date);
   const [recurrence, setRecurrence] = useState(entry?.recurrence ?? "none");
   const readOnly = Boolean(entry && !entry.canManage);
-  // The others a "selected" entry went to. `people` leaves the viewer out, so
-  // checking against it drops them from the list.
-  const alsoSharedWith =
-    entry?.visibility === "selected" && !entry.isOwn
-      ? entry.sharedWith
-          .filter((person) => people.some((other) => other.id === person.id))
-          .map((person) => person.name)
-      : [];
+  // The viewer's own place among the people it is shared with: the one
+  // `people` (everyone but the viewer) leaves out.
+  const viewerShareId = entry?.sharedWith.find(
+    (person) => !people.some((other) => other.id === person.id)
+  )?.id;
   const headingId = `calendar-entry-heading-${entry?.id ?? "new"}`;
 
   useEffect(() => {
@@ -137,12 +137,23 @@ export default function CalendarEntryDialog({
             </p>
           ) : null}
 
+          {entry.myResponse !== null ? (
+            <div className="rounded-lg border border-[#A05DD0]/40 bg-[#F8F7FB] p-3">
+              <CalendarRsvp
+                key={entry.myResponse}
+                eventId={entry.id}
+                response={entry.myResponse}
+                onResponded={onResponded}
+              />
+            </div>
+          ) : null}
+
+          {entry.visibility === "selected" ? (
+            <CalendarAttendees people={entry.sharedWith} viewerId={viewerShareId} />
+          ) : null}
+
           <p className="text-xs text-slate-500">
-            {describeSharing(entry)}
-            {alsoSharedWith.length > 0
-              ? ` Also shared with ${listNames(alsoSharedWith)}.`
-              : ""}{" "}
-            Only {entry.createdByName}
+            {describeSharing(entry)} Only {entry.createdByName}
             {entry.visibility === "everyone" ? " or an admin" : ""} can change
             it.
           </p>
@@ -302,6 +313,10 @@ export default function CalendarEntryDialog({
                   ))}
                 </div>
               </fieldset>
+
+              {visibility === "selected" && entry && entry.sharedWith.length > 0 ? (
+                <CalendarAttendees people={entry.sharedWith} />
+              ) : null}
 
               {visibility === "selected" ? (
                 <PeoplePicker
