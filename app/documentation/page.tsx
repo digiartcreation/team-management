@@ -98,12 +98,16 @@ export default async function DocumentationListPage({
             >
               Search
             </button>
-            <Link
+            {/* A plain link, a full page load like the form: in production a
+                client-side hop that only changes the query string sometimes
+                never finishes, leaving the old filters on screen. */}
+            {/* eslint-disable-next-line @next/next/no-html-link-for-pages -- see above */}
+            <a
               href="/documentation"
               className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
             >
               Reset
-            </Link>
+            </a>
           </div>
         </form>
 

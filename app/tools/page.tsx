@@ -8,6 +8,7 @@ import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteToolUsage } from "@/app/tools/actions";
 
@@ -31,6 +32,23 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   ]);
   const categories = await prisma.toolUsage.findMany({ select: { category: true }, distinct: ["category"], orderBy: { category: "asc" } });
 
+  // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (id: string, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/tools/${id}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      <DeleteMenuAction
+        id={id}
+        action={deleteToolUsage}
+        message="Are you sure you want to delete this tool usage entry?"
+      />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <ModuleReviewMarker module="tools" />
@@ -45,11 +63,65 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
           <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white">Filter</button>
           <Link href="/tools" className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700">Reset</Link>
         </form>
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            entries.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {entries.length === 0 ? <div className="p-8 text-center"><p className="text-sm font-medium text-slate-700">No tool usage entries found.</p><p className="mt-1 text-sm text-slate-500">Entries will appear here after they are added.</p></div> : (
-            <div className="overflow-x-auto"><table className="w-full min-w-[840px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Tool</th>{showEmployeeColumn ? <th className="px-4 py-3">Employee</th> : null}<th className="px-4 py-3">Category</th><th className="px-4 py-3">Purpose</th><th className="px-4 py-3">Time</th><th className="px-4 py-3">Created On</th><th className="px-4 py-3"><span className="sr-only">Row menu</span></th></tr></thead><tbody className="divide-y divide-slate-200">{entries.map((entry) => <tr key={entry.id} className="hover:bg-slate-50"><td className="px-4 py-4 font-medium text-slate-950">{entry.toolName}</td>{showEmployeeColumn ? <td className="px-4 py-4 text-slate-600">{entry.user.name}</td> : null}<td className="px-4 py-4 text-slate-600">{entry.category}</td><td className="px-4 py-4 text-slate-600"><div className="whitespace-pre-line break-words">{entry.purpose}</div>{entry.outcome ? <div className="mt-2 whitespace-pre-line break-words text-xs text-slate-500">{entry.outcome}</div> : null}</td><td className="px-4 py-4 text-slate-600">{entry.timeSpent}</td><td className="px-4 py-4 text-slate-600"><div>{dateFormatter.format(entry.createdAt)}</div>{entry.updatedAt.getTime() !== entry.createdAt.getTime() ? <div className="mt-1 text-xs text-slate-500">Edited on {dateFormatter.format(entry.updatedAt)}</div> : null}</td><td className="px-4 py-4">{entry.user.id === sessionUser.id ? <ActionMenu><Link href={`/tools/${entry.id}/edit`} className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]">Edit</Link><DeleteMenuAction id={entry.id} action={deleteToolUsage} message="Are you sure you want to delete this tool usage entry?" /></ActionMenu> : <span className="text-sm text-slate-400">View only</span>}</td></tr>)}</tbody></table></div>
+            <div className="overflow-x-auto"><table className="w-full min-w-[840px] text-left text-sm"><thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500"><tr><th className="px-4 py-3">Tool</th>{showEmployeeColumn ? <th className="px-4 py-3">Employee</th> : null}<th className="px-4 py-3">Category</th><th className="px-4 py-3">Purpose</th><th className="px-4 py-3">Time</th><th className="px-4 py-3">Created On</th><th className="px-4 py-3"><span className="sr-only">Row menu</span></th></tr></thead><tbody className="divide-y divide-slate-200">{entries.map((entry) => <tr key={entry.id} className="hover:bg-slate-50"><td className="px-4 py-4 font-medium text-slate-950">{entry.toolName}</td>{showEmployeeColumn ? <td className="px-4 py-4 text-slate-600">{entry.user.name}</td> : null}<td className="px-4 py-4 text-slate-600">{entry.category}</td><td className="px-4 py-4 text-slate-600"><div className="whitespace-pre-line break-words">{entry.purpose}</div>{entry.outcome ? <div className="mt-2 whitespace-pre-line break-words text-xs text-slate-500">{entry.outcome}</div> : null}</td><td className="px-4 py-4 text-slate-600">{entry.timeSpent}</td><td className="px-4 py-4 text-slate-600"><div>{dateFormatter.format(entry.createdAt)}</div>{entry.updatedAt.getTime() !== entry.createdAt.getTime() ? <div className="mt-1 text-xs text-slate-500">Edited on {dateFormatter.format(entry.updatedAt)}</div> : null}</td><td className="px-4 py-4">{entry.user.id === sessionUser.id ? rowMenu(entry.id) : <span className="text-sm text-slate-400">View only</span>}</td></tr>)}</tbody></table></div>
           )}
         </section>
+
+        {entries.length > 0 ? (
+          <MobileCardList>
+            {entries.map((entry) => (
+              <MobileCard
+                key={entry.id}
+                title={entry.toolName}
+                subtitle={`${entry.category}${
+                  showEmployeeColumn ? ` · ${entry.user.name}` : ""
+                }`}
+                status={
+                  entry.timeSpent ? (
+                    <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                      {entry.timeSpent}
+                    </span>
+                  ) : null
+                }
+                actions={
+                  entry.user.id === sessionUser.id ? rowMenu(entry.id, "Actions") : null
+                }
+              >
+                <MobileField label="Purpose">
+                  <span className="whitespace-pre-line">{entry.purpose}</span>
+                </MobileField>
+                {entry.outcome ? (
+                  <MobileField label="Outcome">
+                    <span className="whitespace-pre-line">{entry.outcome}</span>
+                  </MobileField>
+                ) : null}
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Category">{entry.category}</MobileField>
+                  {showEmployeeColumn ? (
+                    <MobileField label="Employee">{entry.user.name}</MobileField>
+                  ) : (
+                    <MobileField label="Time">{entry.timeSpent}</MobileField>
+                  )}
+                </div>
+                  <MobileField label="Created On">
+                    {dateFormatter.format(entry.createdAt)}
+                    {entry.updatedAt.getTime() !== entry.createdAt.getTime() ? (
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        Edited on {dateFormatter.format(entry.updatedAt)}
+                      </span>
+                    ) : null}
+                  </MobileField>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
         <PaginationControls page={page} total={totalEntries} pageSize={PAGE_SIZE} basePath="/tools" searchParams={await searchParams} />
       </div>
     </DashboardLayout>

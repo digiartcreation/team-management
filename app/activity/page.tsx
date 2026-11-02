@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 
@@ -106,7 +107,12 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
           </a>
         </form>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            logs.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {logs.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">No activity logs found.</p>
@@ -147,6 +153,39 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
             </div>
           )}
         </section>
+
+        {logs.length > 0 ? (
+          <MobileCardList>
+            {logs.map((log) => (
+              <MobileCard
+                key={log.id}
+                title={<span className="line-clamp-2">{log.description}</span>}
+                subtitle={`${dateFormatter.format(log.createdAt)}${
+                  showUserColumn ? ` · ${log.user.name}` : ""
+                }`}
+                status={
+                  <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                    {log.action}
+                  </span>
+                }
+              >
+                <MobileField label="Description">
+                  <span className="whitespace-pre-line">{log.description}</span>
+                </MobileField>
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Action">{log.action}</MobileField>
+                  <MobileField label="Entity">{log.entityType}</MobileField>
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Time">{dateFormatter.format(log.createdAt)}</MobileField>
+                  {showUserColumn ? (
+                    <MobileField label="User">{log.user.name}</MobileField>
+                  ) : null}
+                </div>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
 
         <PaginationControls
           page={page}

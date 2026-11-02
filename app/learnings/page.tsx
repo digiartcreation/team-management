@@ -8,6 +8,7 @@ import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteLearning } from "@/app/learnings/actions";
 
@@ -68,6 +69,23 @@ export default async function LearningsPage({
     prisma.learning.count({ where }),
   ]);
 
+  // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (id: string, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/learnings/${id}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      <DeleteMenuAction
+        id={id}
+        action={deleteLearning}
+        message="Are you sure you want to delete this learning?"
+      />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <ModuleReviewMarker module="learnings" />
@@ -105,16 +123,24 @@ export default async function LearningsPage({
             >
               Search
             </button>
-            <Link
+            {/* A plain link, a full page load like the form: in production a
+                client-side hop that only changes the query string sometimes
+                never finishes, leaving the old filters on screen. */}
+            <a
               href="/learnings"
               className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
             >
               Reset
-            </Link>
+            </a>
           </div>
         </form>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            learnings.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {learnings.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
@@ -186,19 +212,7 @@ export default async function LearningsPage({
                       </td>
                       <td className="px-4 py-4">
                         {learning.user.id === sessionUser.id ? (
-                          <ActionMenu>
-                            <Link
-                              href={`/learnings/${learning.id}/edit`}
-                              className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                            >
-                              Edit
-                            </Link>
-                            <DeleteMenuAction
-                              id={learning.id}
-                              action={deleteLearning}
-                              message="Are you sure you want to delete this learning?"
-                            />
-                          </ActionMenu>
+                          rowMenu(learning.id)
                         ) : (
                           <span className="text-sm text-slate-400">
                             View only
@@ -212,6 +226,59 @@ export default async function LearningsPage({
             </div>
           )}
         </section>
+
+        {learnings.length > 0 ? (
+          <MobileCardList>
+            {learnings.map((learning) => (
+              <MobileCard
+                key={learning.id}
+                title={learning.title}
+                subtitle={`${learning.category}${
+                  showEmployeeColumn ? ` · ${learning.user.name}` : ""
+                }`}
+                actions={
+                  learning.user.id === sessionUser.id
+                    ? rowMenu(learning.id, "Actions")
+                    : null
+                }
+              >
+                <MobileField label="Description">
+                  <span className="whitespace-pre-line">{learning.description}</span>
+                </MobileField>
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Category">{learning.category}</MobileField>
+                  {showEmployeeColumn ? (
+                    <MobileField label="Employee">{learning.user.name}</MobileField>
+                  ) : null}
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Reference">
+                    {learning.referenceLink ? (
+                      <a
+                        href={learning.referenceLink}
+                        target="_blank"
+                        rel="noreferrer"
+                        className="font-medium text-[#770FC2] hover:underline"
+                      >
+                        Open
+                      </a>
+                    ) : (
+                      <span className="text-slate-400">None</span>
+                    )}
+                  </MobileField>
+                  <MobileField label="Created On">
+                    {dateFormatter.format(learning.createdAt)}
+                    {learning.updatedAt.getTime() !== learning.createdAt.getTime() ? (
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        Edited on {dateFormatter.format(learning.updatedAt)}
+                      </span>
+                    ) : null}
+                  </MobileField>
+                </div>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
         <PaginationControls
           page={page}
           total={totalLearnings}

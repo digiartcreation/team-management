@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteEmployeeButton from "@/components/employees/DeleteEmployeeButton";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import { formatRole } from "@/lib/roles";
@@ -58,6 +59,19 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
     prisma.user.count(),
   ]);
 
+  // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (employeeId: string, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/employees/${employeeId}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      <DeleteEmployeeButton employeeId={employeeId} />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -80,7 +94,12 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
           ) : null}
         </header>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            employees.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {employees.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
@@ -135,15 +154,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                       </td>
                       <td className="px-4 py-4">
                         {isSuperAdmin ? (
-                          <ActionMenu>
-                            <Link
-                              href={`/employees/${employee.id}/edit`}
-                              className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                            >
-                              Edit
-                            </Link>
-                            <DeleteEmployeeButton employeeId={employee.id} />
-                          </ActionMenu>
+                          rowMenu(employee.id)
                         ) : (
                           <span className="text-sm text-slate-400">
                             View only
@@ -157,6 +168,38 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
             </div>
           )}
         </section>
+
+        {employees.length > 0 ? (
+          <MobileCardList>
+            {employees.map((employee) => (
+              <MobileCard
+                key={employee.id}
+                title={employee.name}
+                subtitle={employee.email}
+                status={
+                  <span className="rounded-full bg-slate-100 px-2.5 py-1 text-xs font-medium capitalize text-slate-700">
+                    {formatRole(employee.role)}
+                  </span>
+                }
+                actions={isSuperAdmin ? rowMenu(employee.id, "Actions") : null}
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Domain">
+                    {employee.sector ?? <span className="text-slate-400">Not set</span>}
+                  </MobileField>
+                  <MobileField label="Designation">
+                    {employee.designation ?? (
+                      <span className="text-slate-400">Not set</span>
+                    )}
+                  </MobileField>
+                </div>
+                <MobileField label="Created Date">
+                  {dateFormatter.format(employee.createdAt)}
+                </MobileField>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
         <PaginationControls
           page={page}
           total={totalEmployees}

@@ -121,6 +121,8 @@ function Card({
   watching = false,
   showCompletedAt = false,
   actions = [],
+  moves = [],
+  onMove,
 }: {
   card: BoardCard;
   edge: string;
@@ -138,7 +140,17 @@ function Card({
    * board has Log time, and its completed cards have Close too.
    */
   actions?: { label: string; onClick: () => void }[];
+  /**
+   * The columns the card may move to. Phones cannot drag, so there they are
+   * offered in a Move to picker instead.
+   */
+  moves?: { status: BoardStatus; label: string }[];
+  onMove?: (status: BoardStatus) => void;
 }) {
+  // Phones only: a card there folds to its title and one line, and opens on
+  // a tap. Wider screens always show it whole.
+  const [expanded, setExpanded] = useState(false);
+
   return (
     <article
       draggable={!moving && !watching}
@@ -157,94 +169,155 @@ function Card({
             : "cursor-grab active:cursor-grabbing"
       }`}
     >
-      <h3 className="break-words text-sm font-medium leading-snug text-slate-950">
-        {card.title}
-      </h3>
-
-      {card.clientWork ? (
-        <p className="mt-2 inline-block max-w-full truncate rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">
-          {card.clientWork}
-        </p>
-      ) : null}
-
-      <div className="mt-2 flex items-center justify-between gap-2">
-        <span className="min-w-0 truncate text-xs text-slate-500">
-          {card.clientName ?? "Internal"}
-        </span>
-        {watching ? null : <Avatar name={card.assigneeName} />}
+      {/* A tap anywhere on the title row folds or opens the card on a phone;
+          wider screens ignore it, the card being open there anyway. */}
+      <div
+        onClick={() => setExpanded((current) => !current)}
+        className="flex items-start gap-2 max-md:cursor-pointer"
+      >
+        <h3 className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-slate-950">
+          {card.title}
+        </h3>
+        <button
+          type="button"
+          aria-expanded={expanded}
+          aria-label={expanded ? "Hide task details" : "Show task details"}
+          className="-m-1 shrink-0 rounded p-1 text-slate-400 transition hover:text-[#770FC2] md:hidden"
+        >
+          <svg aria-hidden viewBox="0 0 20 20" className={`h-4 w-4 transition-transform ${expanded ? "rotate-180" : ""}`} fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <path d="M5 7.5l5 5 5-5" />
+          </svg>
+        </button>
       </div>
 
-      {/* Someone else's task, so whose it is is spelled out. */}
-      {watching ? (
-        <div className="mt-2 flex items-center gap-2">
+      {/* Folded on a phone: who, for whom, and how urgent. */}
+      {expanded ? null : (
+        <div className="mt-2 flex items-center gap-2 md:hidden">
           <Avatar name={card.assigneeName} />
-          <span className="min-w-0 truncate text-xs font-medium text-slate-700">
-            {card.assigneeName
-              ? `Assigned to ${card.assigneeName}`
-              : "Unassigned"}
+          <span className="min-w-0 flex-1 truncate text-xs text-slate-500">
+            {card.clientName ?? "Internal"}
+            {card.clientWork ? ` · ${card.clientWork}` : ""}
+          </span>
+          <span
+            className={`shrink-0 rounded px-1.5 py-0.5 text-[11px] font-medium capitalize ${
+              PRIORITY_CHIP[card.priority] ?? PRIORITY_CHIP.low
+            }`}
+          >
+            {card.priority}
           </span>
         </div>
-      ) : null}
+      )}
 
-      {showCompletedAt && card.completedAt ? (
-        <p
-          className={`mt-1 text-[11px] ${
-            card.completedStale ? "font-medium text-red-600" : "text-emerald-700"
-          }`}
-        >
-          Completed {formatOfficeDate(card.completedAt)}
-          {card.completedStale
-            ? ` · over ${COMPLETED_STALE_DAYS} days, close it`
-            : null}
-        </p>
-      ) : null}
-
-      {card.latestReopenNote ? (
-        <p className="mt-2 break-words border-l-2 border-[#A05DD0]/50 pl-2 text-[11px] italic leading-snug text-slate-500">
-          {card.latestReopenNote}
-        </p>
-      ) : null}
-
-      <div className="mt-2 flex flex-wrap gap-1.5">
-        <span
-          className={`rounded px-1.5 py-0.5 text-[11px] font-medium capitalize ${
-            PRIORITY_CHIP[card.priority] ?? PRIORITY_CHIP.low
-          }`}
-        >
-          {card.priority}
-        </span>
-        <Badge>
-          {card.minutes > 0 ? `Log ${formatDuration(card.minutes)}` : "No log"}
-        </Badge>
-        {card.reopenCount > 0 ? (
-          <Badge tone="brand">Reopened {card.reopenCount}x</Badge>
+      <div className={expanded ? "" : "max-md:hidden"}>
+        {card.clientWork ? (
+          <p className="mt-2 inline-block max-w-full truncate rounded bg-sky-50 px-1.5 py-0.5 text-[11px] font-medium text-sky-700">
+            {card.clientWork}
+          </p>
         ) : null}
-        {card.reopenMinutes > 0 ? (
-          <Badge tone="brand">
-            Rework {formatDuration(card.reopenMinutes)}
+  
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <span className="min-w-0 truncate text-xs text-slate-500">
+            {card.clientName ?? "Internal"}
+          </span>
+          {watching ? null : <Avatar name={card.assigneeName} />}
+        </div>
+  
+        {/* Someone else's task, so whose it is is spelled out. */}
+        {watching ? (
+          <div className="mt-2 flex items-center gap-2">
+            <Avatar name={card.assigneeName} />
+            <span className="min-w-0 truncate text-xs font-medium text-slate-700">
+              {card.assigneeName
+                ? `Assigned to ${card.assigneeName}`
+                : "Unassigned"}
+            </span>
+          </div>
+        ) : null}
+  
+        {showCompletedAt && card.completedAt ? (
+          <p
+            className={`mt-1 text-[11px] ${
+              card.completedStale ? "font-medium text-red-600" : "text-emerald-700"
+            }`}
+          >
+            Completed {formatOfficeDate(card.completedAt)}
+            {card.completedStale
+              ? ` · over ${COMPLETED_STALE_DAYS} days, close it`
+              : null}
+          </p>
+        ) : null}
+  
+        {card.latestReopenNote ? (
+          <p className="mt-2 break-words border-l-2 border-[#A05DD0]/50 pl-2 text-[11px] italic leading-snug text-slate-500">
+            {card.latestReopenNote}
+          </p>
+        ) : null}
+  
+        <div className="mt-2 flex flex-wrap gap-1.5">
+          <span
+            className={`rounded px-1.5 py-0.5 text-[11px] font-medium capitalize ${
+              PRIORITY_CHIP[card.priority] ?? PRIORITY_CHIP.low
+            }`}
+          >
+            {card.priority}
+          </span>
+          <Badge>
+            {card.minutes > 0 ? `Log ${formatDuration(card.minutes)}` : "No log"}
           </Badge>
+          {card.reopenCount > 0 ? (
+            <Badge tone="brand">Reopened {card.reopenCount}x</Badge>
+          ) : null}
+          {card.reopenMinutes > 0 ? (
+            <Badge tone="brand">
+              Rework {formatDuration(card.reopenMinutes)}
+            </Badge>
+          ) : null}
+        </div>
+  
+        {actions.length > 0 ? (
+          <div
+            className={`mt-3 grid gap-2 ${
+              actions.length > 1 ? "grid-cols-2" : "grid-cols-1"
+            }`}
+          >
+            {actions.map((action) => (
+              <button
+                key={action.label}
+                type="button"
+                onClick={action.onClick}
+                disabled={moving}
+                className="w-full rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-1.5 text-xs font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF] disabled:opacity-60"
+              >
+                {action.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
+  
+        {moves.length > 0 && onMove ? (
+          <label className="mt-3 flex items-center gap-2 md:hidden">
+            <span className="shrink-0 text-xs font-medium text-slate-500">Move to</span>
+            <select
+              // Always back on the prompt: picking a column is the action.
+              value=""
+              onChange={(event) => {
+                if (event.target.value) {
+                  onMove(event.target.value as BoardStatus);
+                }
+              }}
+              disabled={moving}
+              className="min-w-0 flex-1 rounded-md border border-slate-300 bg-white px-2.5 py-1.5 text-xs disabled:opacity-60"
+            >
+              <option value="">Choose a column...</option>
+              {moves.map((move) => (
+                <option key={move.status} value={move.status}>
+                  {move.label}
+                </option>
+              ))}
+            </select>
+          </label>
         ) : null}
       </div>
-
-      {actions.length > 0 ? (
-        <div
-          className={`mt-3 grid gap-2 ${
-            actions.length > 1 ? "grid-cols-2" : "grid-cols-1"
-          }`}
-        >
-          {actions.map((action) => (
-            <button
-              key={action.label}
-              type="button"
-              onClick={action.onClick}
-              disabled={moving}
-              className="w-full rounded-md border border-[#A05DD0]/45 bg-[#F8F7FB] px-3 py-1.5 text-xs font-medium text-[#770FC2] transition hover:border-[#A05DD0] hover:bg-[#F3E8FF] disabled:opacity-60"
-            >
-              {action.label}
-            </button>
-          ))}
-        </div>
-      ) : null}
     </article>
   );
 }
@@ -384,31 +457,38 @@ export default function TaskBoard({
     };
   }
 
+  /** A card dropped on a column, or picked for one from a phone's Move to. */
+  function moveCard(source: DragCard, target: BoardStatus, group: string) {
+    if (!canDropOn(target, group, source)) {
+      return;
+    }
+
+    if (target === "reopened") {
+      setReopenReason("");
+      setReopenCause(DEFAULT_REOPEN_CAUSE);
+      setReopenPrompt(source);
+      return;
+    }
+
+    // Same rule as the Tasks page: a task is only called finished with an
+    // entry saying how long it took.
+    if (target === "completed") {
+      setTimePrompt({ ...source, completing: true });
+      return;
+    }
+
+    submitStatus(source.id, target);
+  }
+
   function handleDrop(target: BoardStatus, group: string) {
     return (event: React.DragEvent<HTMLDivElement>) => {
       event.preventDefault();
       const source = dragCard;
       setDragCard(null);
 
-      if (!source || !canDropOn(target, group, source)) {
-        return;
+      if (source) {
+        moveCard(source, target, group);
       }
-
-      if (target === "reopened") {
-        setReopenReason("");
-        setReopenCause(DEFAULT_REOPEN_CAUSE);
-        setReopenPrompt(source);
-        return;
-      }
-
-      // Same rule as the Tasks page: a task is only called finished with an
-      // entry saying how long it took.
-      if (target === "completed") {
-        setTimePrompt({ ...source, completing: true });
-        return;
-      }
-
-      submitStatus(source.id, target);
     };
   }
 
@@ -488,49 +568,44 @@ export default function TaskBoard({
                       Nothing here
                     </p>
                   ) : (
-                    column.cards.map((card) => (
-                      <Card
-                        key={card.id}
-                        card={card}
-                        edge={accent.edge}
-                        moving={movingCardId === card.id}
-                        onDragStart={handleDragStart(card, column.status, group)}
-                        onDragEnd={() => setDragCard(null)}
-                        watching={watching}
-                        showCompletedAt={column.status === "completed"}
-                        actions={
-                          watching
-                            ? [
-                                {
-                                  label: "Log time",
-                                  onClick: () =>
-                                    setTimePrompt({
-                                      id: card.id,
-                                      title: card.title,
-                                      status: column.status,
-                                      reopenCount: card.reopenCount,
-                                      group,
-                                      completing: false,
-                                      logs: card.timeLogs,
-                                    }),
-                                },
-                                ...(column.status === "completed"
-                                  ? [
-                                      {
-                                        label: "Close",
-                                        onClick: () =>
-                                          setClosePrompt({
-                                            id: card.id,
-                                            title: card.title,
-                                            status: column.status,
-                                            reopenCount: card.reopenCount,
-                                            group,
-                                          }),
-                                      },
-                                    ]
-                                  : []),
-                              ]
-                            : column.status === "completed"
+                    column.cards.map((card) => {
+                      const source: DragCard = {
+                        id: card.id,
+                        title: card.title,
+                        status: column.status,
+                        reopenCount: card.reopenCount,
+                        group,
+                      };
+
+                      return (
+                        <Card
+                          key={card.id}
+                          card={card}
+                          edge={accent.edge}
+                          moving={movingCardId === card.id}
+                          onDragStart={handleDragStart(card, column.status, group)}
+                          onDragEnd={() => setDragCard(null)}
+                          watching={watching}
+                          showCompletedAt={column.status === "completed"}
+                          // A watcher's cards stay put, as they do not drag.
+                          moves={
+                            watching
+                              ? []
+                              : boardColumns
+                                  .filter((target) =>
+                                    canDropOn(target.status, group, source)
+                                  )
+                                  .map((target) => ({
+                                    status: target.status,
+                                    label: target.label,
+                                  }))
+                          }
+                          onMove={(target) => {
+                            setError(null);
+                            moveCard(source, target, group);
+                          }}
+                          actions={
+                            watching
                               ? [
                                   {
                                     label: "Log time",
@@ -542,26 +617,58 @@ export default function TaskBoard({
                                         reopenCount: card.reopenCount,
                                         group,
                                         completing: false,
-                                        timeOnly: true,
                                         logs: card.timeLogs,
                                       }),
                                   },
-                                  {
-                                    label: "Close",
-                                    onClick: () =>
-                                      setClosePrompt({
-                                        id: card.id,
-                                        title: card.title,
-                                        status: column.status,
-                                        reopenCount: card.reopenCount,
-                                        group,
-                                      }),
-                                  },
+                                  ...(column.status === "completed"
+                                    ? [
+                                        {
+                                          label: "Close",
+                                          onClick: () =>
+                                            setClosePrompt({
+                                              id: card.id,
+                                              title: card.title,
+                                              status: column.status,
+                                              reopenCount: card.reopenCount,
+                                              group,
+                                            }),
+                                        },
+                                      ]
+                                    : []),
                                 ]
-                              : undefined
-                        }
-                      />
-                    ))
+                              : column.status === "completed"
+                                ? [
+                                    {
+                                      label: "Log time",
+                                      onClick: () =>
+                                        setTimePrompt({
+                                          id: card.id,
+                                          title: card.title,
+                                          status: column.status,
+                                          reopenCount: card.reopenCount,
+                                          group,
+                                          completing: false,
+                                          timeOnly: true,
+                                          logs: card.timeLogs,
+                                        }),
+                                    },
+                                    {
+                                      label: "Close",
+                                      onClick: () =>
+                                        setClosePrompt({
+                                          id: card.id,
+                                          title: card.title,
+                                          status: column.status,
+                                          reopenCount: card.reopenCount,
+                                          group,
+                                        }),
+                                    },
+                                  ]
+                                : undefined
+                          }
+                        />
+                      );
+                    })
                   )}
                 </div>
 

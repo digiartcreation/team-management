@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import { updateFeedbackStatus } from "@/app/feedback/actions";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
@@ -26,6 +27,34 @@ export default async function FeedbackSubmissionsPage() {
     include: { user: { select: { name: true } } },
   });
 
+  // Status and a note back to whoever sent it, in the table and on a phone card.
+  const reviewForm = (submission: (typeof submissions)[number]) => (
+    <form action={updateFeedbackStatus} className="grid gap-2">
+      <input type="hidden" name="id" value={submission.id} />
+      <select
+        name="status"
+        defaultValue={submission.status}
+        aria-label="Status"
+        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+      >
+        <option>Open</option>
+        <option>Under Review</option>
+        <option>Resolved</option>
+        <option>Closed</option>
+      </select>
+      <input
+        name="adminResponse"
+        defaultValue={submission.adminResponse ?? ""}
+        placeholder="Response note"
+        aria-label="Response note"
+        className="rounded-md border border-slate-300 px-2 py-1 text-xs"
+      />
+      <button className="rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white">
+        Update
+      </button>
+    </form>
+  );
+
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -47,7 +76,12 @@ export default async function FeedbackSubmissionsPage() {
             </Link>
           </div>
         </header>
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            submissions.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {submissions.length === 0 ? (
             <div className="p-8 text-center text-sm text-slate-500">
               No feedback submissions found.
@@ -89,19 +123,7 @@ export default async function FeedbackSubmissionsPage() {
                       <td className="px-4 py-4 text-slate-600">{dateFormatter.format(submission.createdAt)}</td>
                       {isAdmin ? (
                         <td className="px-4 py-4">
-                          <form action={updateFeedbackStatus} className="grid gap-2">
-                            <input type="hidden" name="id" value={submission.id} />
-                            <select name="status" defaultValue={submission.status} className="rounded-md border border-slate-300 px-2 py-1 text-xs">
-                              <option>Open</option>
-                              <option>Under Review</option>
-                              <option>Resolved</option>
-                              <option>Closed</option>
-                            </select>
-                            <input name="adminResponse" defaultValue={submission.adminResponse ?? ""} placeholder="Response note" className="rounded-md border border-slate-300 px-2 py-1 text-xs" />
-                            <button className="rounded-md bg-slate-950 px-2 py-1 text-xs font-medium text-white">
-                              Update
-                            </button>
-                          </form>
+                          {reviewForm(submission)}
                         </td>
                       ) : null}
                     </tr>
@@ -111,6 +133,43 @@ export default async function FeedbackSubmissionsPage() {
             </div>
           )}
         </section>
+
+        {submissions.length > 0 ? (
+          <MobileCardList>
+            {submissions.map((submission) => (
+              <MobileCard
+                key={submission.id}
+                title={submission.title}
+                subtitle={`${submission.type} · ${dateFormatter.format(submission.createdAt)}${
+                  isAdmin ? ` · ${submission.user.name}` : ""
+                }`}
+                status={
+                  <span className="whitespace-nowrap rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-700">
+                    {submission.status}
+                  </span>
+                }
+              >
+                <MobileField label="Description">
+                  <span className="whitespace-pre-line">{submission.description}</span>
+                </MobileField>
+                {submission.adminResponse ? (
+                  <MobileField label="Admin Response">
+                    <span className="block rounded-md bg-[#F3E8FF] p-2 text-xs text-[#6B1BBD]">
+                      {submission.adminResponse}
+                    </span>
+                  </MobileField>
+                ) : null}
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Type">{submission.type}</MobileField>
+                  <MobileField label="Priority">{submission.priority}</MobileField>
+                </div>
+                {isAdmin ? (
+                  <MobileField label="Admin Review">{reviewForm(submission)}</MobileField>
+                ) : null}
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
       </div>
     </DashboardLayout>
   );

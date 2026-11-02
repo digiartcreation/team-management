@@ -4,6 +4,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteBasePrice } from "@/app/base-prices/actions";
 import { SECTOR_OPTIONS, getSectorDesignations } from "@/lib/designations";
@@ -48,6 +49,23 @@ export default async function BasePricesPage() {
         rank(getSectorDesignations(b.sector), b.designation)
   );
 
+  // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (id: string, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/base-prices/${id}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      <DeleteMenuAction
+        id={id}
+        action={deleteBasePrice}
+        message="Are you sure you want to delete this base price?"
+      />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -68,7 +86,12 @@ export default async function BasePricesPage() {
           </Link>
         </header>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            basePrices.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {basePrices.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
@@ -112,19 +135,7 @@ export default async function BasePricesPage() {
                           {formatInr(basePrice.basePrice.toNumber())} / hour
                         </td>
                         <td className="px-4 py-4">
-                          <ActionMenu>
-                            <Link
-                              href={`/base-prices/${basePrice.id}/edit`}
-                              className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                            >
-                              Edit
-                            </Link>
-                            <DeleteMenuAction
-                              id={basePrice.id}
-                              action={deleteBasePrice}
-                              message="Are you sure you want to delete this base price?"
-                            />
-                          </ActionMenu>
+                          {rowMenu(basePrice.id)}
                         </td>
                       </tr>
                   ))}
@@ -133,6 +144,34 @@ export default async function BasePricesPage() {
             </div>
           )}
         </section>
+
+        {basePrices.length > 0 ? (
+          <MobileCardList>
+            {basePrices.map((basePrice) => (
+              <MobileCard
+                key={basePrice.id}
+                title={basePrice.service}
+                subtitle={`${basePrice.designation} · ${basePrice.sector}`}
+                status={
+                  <span className="whitespace-nowrap text-sm font-semibold text-[#770FC2]">
+                    {formatInr(basePrice.basePrice.toNumber())}/hr
+                  </span>
+                }
+                actions={rowMenu(basePrice.id, "Actions")}
+              >
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="Domain">{basePrice.sector}</MobileField>
+                  <MobileField label="Designation">{basePrice.designation}</MobileField>
+                </div>
+                <MobileField label="Base Price">
+                  <span className="font-medium text-[#770FC2]">
+                    {formatInr(basePrice.basePrice.toNumber())} / hour
+                  </span>
+                </MobileField>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
       </div>
     </DashboardLayout>
   );

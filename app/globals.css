@@ -162,9 +162,38 @@
     color: var(--color-secondary) !important;
   }
 
+  /*
+    Positioned, so it is the containing block of anything absolutely placed
+    inside it and clips it. A table's last header holds an sr-only "Row menu"
+    label, which is absolutely positioned; without this it sat at the far end
+    of the wide table, outside the scroller, and phones zoomed the whole page
+    out to fit it.
+  */
   .overflow-x-auto {
+    position: relative;
     max-width: 100%;
     -webkit-overflow-scrolling: touch;
+  }
+
+  /* The phone menu slides in from the left. */
+  .mobile-drawer[open] {
+    animation: mobile-drawer-in 200ms ease-out;
+  }
+
+  .mobile-drawer[open]::backdrop {
+    animation: mobile-drawer-fade 200ms ease-out;
+  }
+
+  @keyframes mobile-drawer-in {
+    from {
+      transform: translateX(-100%);
+    }
+  }
+
+  @keyframes mobile-drawer-fade {
+    from {
+      opacity: 0;
+    }
   }
 
   @media (max-width: 640px) {

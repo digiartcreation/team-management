@@ -5,17 +5,22 @@ import { usePathname } from "next/navigation";
 import LogoutButton from "@/components/layout/LogoutButton";
 import PushNotificationToggle from "@/components/notifications/PushNotificationToggle";
 
-type NavItem = {
+export type NavItem = {
   label: string;
   href: string;
 };
 
-type SidebarNavProps = {
+export type SidebarNavProps = {
   items: NavItem[];
   unreadNotifications?: number;
   alertCounts?: Record<string, number | undefined>;
   /** Calendar entries today (green) and tomorrow (gray), beside Calendar. */
   calendarCounts?: { today: number; tomorrow: number };
+  /**
+   * "sidebar" for the desktop sidebar; "drawer" for the phone menu, a plain
+   * column with larger rows to tap.
+   */
+  variant?: "sidebar" | "drawer";
 };
 
 export default function SidebarNav({
@@ -23,11 +28,19 @@ export default function SidebarNav({
   unreadNotifications = 0,
   alertCounts = {},
   calendarCounts,
+  variant = "sidebar",
 }: SidebarNavProps) {
   const pathname = usePathname();
+  const drawer = variant === "drawer";
 
   return (
-    <nav className="flex max-w-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0">
+    <nav
+      className={
+        drawer
+          ? "flex flex-col gap-1"
+          : "flex max-w-full gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible lg:pb-0"
+      }
+    >
       {items.map((item) => {
         const isActive =
           item.href === "/" ? pathname === "/" : pathname.startsWith(item.href);
@@ -36,13 +49,18 @@ export default function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
-            className={`whitespace-nowrap rounded-md px-3 py-2 text-sm font-medium transition duration-200 ${
+            aria-current={isActive ? "page" : undefined}
+            className={`whitespace-nowrap rounded-md px-3 text-sm font-medium transition duration-200 ${
+              drawer ? "flex items-center py-2.5" : "py-2"
+            } ${
               isActive
                 ? "bg-[#6B1BBD] text-white shadow-sm"
                 : "text-[#4B5563] hover:bg-[#F3E8FF] hover:text-[#770FC2]"
             }`}
           >
-            <span>{item.label}</span>
+            <span className={drawer ? "min-w-0 flex-1 truncate" : undefined}>
+              {item.label}
+            </span>
             {alertCounts[item.href] ? (
               <span className="ml-2 rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
                 {alertCounts[item.href]}
@@ -82,7 +100,13 @@ export default function SidebarNav({
           </Link>
         );
       })}
-      <div className="flex flex-col gap-2 pt-2 lg:mt-2">
+      <div
+        className={
+          drawer
+            ? "mt-3 flex flex-col gap-3 border-t border-[#E5E7EB] pt-4"
+            : "flex flex-col gap-2 pt-2 lg:mt-2"
+        }
+      >
         <PushNotificationToggle compact />
         <div className="min-w-fit pl-3">
           <LogoutButton />
