@@ -183,6 +183,10 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
                 }
                 actions={isSuperAdmin ? rowMenu(employee.id, "Actions") : null}
               >
+                {/* The line under the name cuts a long address short. */}
+                <MobileField label="Email">
+                  <span className="break-all">{employee.email}</span>
+                </MobileField>
                 <div className="grid grid-cols-2 gap-3">
                   <MobileField label="Domain">
                     {employee.sector ?? <span className="text-slate-400">Not set</span>}

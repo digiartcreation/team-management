@@ -8,7 +8,10 @@ import type { ReactNode } from "react";
  * server components without any script.
  */
 export function MobileCardList({ children }: { children: ReactNode }) {
-  return <div className="grid gap-3 md:hidden">{children}</div>;
+  // grid-cols-1 is minmax(0, 1fr): without it the one column grows to fit
+  // the longest unbroken line -- an email, a long designation -- and every
+  // card runs off the right of the screen.
+  return <div className="grid grid-cols-1 gap-3 md:hidden">{children}</div>;
 }
 
 export function MobileCard({
@@ -29,8 +32,10 @@ export function MobileCard({
   children?: ReactNode;
 }) {
   return (
-    <details className="group rounded-lg border border-slate-200 bg-white shadow-sm transition open:border-[#A05DD0]/50 open:shadow-md">
-      <summary className="flex cursor-pointer list-none items-start gap-3 px-4 py-3.5 [&::-webkit-details-marker]:hidden">
+    <details className="group min-w-0 rounded-lg border border-slate-200 bg-white shadow-sm transition open:border-[#A05DD0]/50 open:shadow-md">
+      {/* A soft brand ring for the keyboard instead of the browser's heavy
+          black outline, which also showed after a tap. */}
+      <summary className="flex cursor-pointer list-none items-start gap-3 rounded-lg px-4 py-3.5 outline-none focus-visible:ring-2 focus-visible:ring-[#A05DD0]/50 [&::-webkit-details-marker]:hidden">
         <span className="min-w-0 flex-1">
           <span className="block break-words text-sm font-semibold leading-snug text-slate-950">
             {title}
