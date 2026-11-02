@@ -37,7 +37,14 @@ function initialsOf(name: string) {
   return letters.toUpperCase();
 }
 
-export default function Avatar({ name }: { name: string | null }) {
+export default function Avatar({
+  name,
+  size = "sm",
+}: {
+  name: string | null;
+  /** "lg" for a profile's header. */
+  size?: "sm" | "lg";
+}) {
   if (!name) {
     return (
       <span
@@ -52,7 +59,9 @@ export default function Avatar({ name }: { name: string | null }) {
   return (
     <span
       title={name}
-      className={`flex h-7 w-7 items-center justify-center rounded-full text-[10px] font-semibold text-white ${tintFor(name)}`}
+      className={`flex shrink-0 items-center justify-center rounded-full font-semibold text-white ${
+        size === "lg" ? "h-16 w-16 text-xl" : "h-7 w-7 text-[10px]"
+      } ${tintFor(name)}`}
     >
       {initialsOf(name)}
     </span>

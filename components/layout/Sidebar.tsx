@@ -11,6 +11,9 @@ type SidebarProps = {
   calendarCounts?: { today: number; tomorrow: number };
 };
 
+/** Last in every menu: the viewer's own details and password. */
+const PROFILE_ITEM = { label: "My Profile", href: "/profile" };
+
 function getNavItems(role?: string, isSuperAdmin = false) {
   if (role === "manager") {
     return [
@@ -25,6 +28,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      PROFILE_ITEM,
     ];
   }
 
@@ -41,6 +45,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      PROFILE_ITEM,
     ];
   }
 
@@ -79,7 +84,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Calendar", href: "/calendar" }
   );
 
-  return adminItems;
+  return [...adminItems, PROFILE_ITEM];
 }
 
 export default function Sidebar({

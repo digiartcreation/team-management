@@ -5,6 +5,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
+import { TaskDetailsButton } from "@/components/tasks/TaskDetailsDialog";
 import TaskStatusControl from "@/components/tasks/TaskStatusControl";
 import {
   formatDuration,
@@ -700,14 +701,14 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   {tasks.map((task) => (
                     <tr key={task.id} className="hover:bg-slate-50">
                       <td className="px-4 py-4">
-                        <div className="font-medium text-slate-950">
+                        {/* The title opens the full task, description and
+                            all; the list itself stays short. */}
+                        <TaskDetailsButton
+                          taskId={task.id}
+                          className="text-left font-medium text-slate-950 transition hover:text-[#770FC2] hover:underline"
+                        >
                           {task.title}
-                        </div>
-                        {task.description ? (
-                          <div className="mt-1 whitespace-pre-line break-words text-slate-500">
-                            {task.description}
-                          </div>
-                        ) : null}
+                        </TaskDetailsButton>
                         <ReopenNotes task={task} />
                       </td>
                       <td className="px-4 py-4 text-slate-600">
@@ -766,13 +767,18 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
                   task.client?.name ?? "Internal"
                 }`}
                 status={<StatusPill status={task.status} />}
-                actions={<TaskActions task={task} {...actionRights} />}
+                actions={
+                  <>
+                    <TaskDetailsButton
+                      taskId={task.id}
+                      className="flex h-8 items-center rounded-md bg-[#770FC2] px-3 text-sm font-medium text-white transition hover:bg-[#6B1BBD]"
+                    >
+                      View details
+                    </TaskDetailsButton>
+                    <TaskActions task={task} {...actionRights} />
+                  </>
+                }
               >
-                {task.description ? (
-                  <MobileField label="Description">
-                    <span className="whitespace-pre-line">{task.description}</span>
-                  </MobileField>
-                ) : null}
                 <div className="grid grid-cols-2 gap-3">
                   <MobileField label="Priority">
                     <PriorityPill priority={task.priority} />

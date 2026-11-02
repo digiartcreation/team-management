@@ -1,6 +1,7 @@
 import { ReactNode } from "react";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import LogoutButton from "@/components/layout/LogoutButton";
 import Sidebar from "@/components/layout/Sidebar";
 import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
 import { getVisibleNotificationWhere } from "@/lib/notifications";
@@ -20,6 +21,34 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
         isSuperAdmin?: boolean;
       })
     | undefined;
+
+  // Made inactive (or deleted) while signed in: the session lives on, but
+  // the app does not open for it.
+  if (sessionUser?.id) {
+    const account = await prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: { isActive: true },
+    });
+
+    if (!account?.isActive) {
+      return (
+        <main className="flex min-h-screen items-center justify-center bg-[#F8F7FB] px-4">
+          <div className="w-full max-w-md rounded-lg border border-[#E5E7EB] bg-white p-6 text-center shadow-sm">
+            <h1 className="text-lg font-semibold text-[#1F2937]">
+              Your account is inactive
+            </h1>
+            <p className="mt-2 text-sm text-[#6B7280]">
+              Ask an admin to make it active again, then sign in.
+            </p>
+            <div className="mt-5 flex justify-center">
+              <LogoutButton />
+            </div>
+          </div>
+        </main>
+      );
+    }
+  }
+
   const unreadNotifications = sessionUser?.id
     ? sessionUser.role === "admin"
       ? 0

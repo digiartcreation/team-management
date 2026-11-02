@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import ReopenCauseField from "@/components/tasks/ReopenCauseField";
+import TaskDetailsDialog from "@/components/tasks/TaskDetailsDialog";
 import Avatar from "@/components/ui/Avatar";
 import { formatDuration } from "@/lib/duration";
 import { formatOfficeDate } from "@/lib/officeTime";
@@ -123,6 +124,7 @@ function Card({
   actions = [],
   moves = [],
   onMove,
+  onOpenDetails,
 }: {
   card: BoardCard;
   edge: string;
@@ -146,6 +148,8 @@ function Card({
    */
   moves?: { status: BoardStatus; label: string }[];
   onMove?: (status: BoardStatus) => void;
+  /** Opens the task's full details. */
+  onOpenDetails: () => void;
 }) {
   // Phones only: a card there folds to its title and one line, and opens on
   // a tap. Wider screens always show it whole.
@@ -169,14 +173,26 @@ function Card({
             : "cursor-grab active:cursor-grabbing"
       }`}
     >
-      {/* A tap anywhere on the title row folds or opens the card on a phone;
-          wider screens ignore it, the card being open there anyway. */}
+      {/* The title row: on a phone a tap folds or opens the card, which has
+          a View full details button once open; on wider screens, where the
+          card is always open, the title opens the details. */}
       <div
-        onClick={() => setExpanded((current) => !current)}
+        onClick={() => {
+          if (window.matchMedia("(min-width: 768px)").matches) {
+            onOpenDetails();
+          } else {
+            setExpanded((current) => !current);
+          }
+        }}
         className="flex items-start gap-2 max-md:cursor-pointer"
       >
         <h3 className="min-w-0 flex-1 break-words text-sm font-medium leading-snug text-slate-950">
-          {card.title}
+          <button
+            type="button"
+            className="text-left md:transition md:hover:text-[#770FC2] md:hover:underline"
+          >
+            {card.title}
+          </button>
         </h3>
         <button
           type="button"
@@ -274,6 +290,14 @@ function Card({
           ) : null}
         </div>
   
+        <button
+          type="button"
+          onClick={onOpenDetails}
+          className="mt-3 w-full rounded-md bg-[#770FC2] px-3 py-1.5 text-xs font-medium text-white transition hover:bg-[#6B1BBD] md:hidden"
+        >
+          View full details
+        </button>
+
         {actions.length > 0 ? (
           <div
             className={`mt-3 grid gap-2 ${
@@ -398,6 +422,7 @@ export default function TaskBoard({
   const [reopenCause, setReopenCause] = useState<ReopenCause>(DEFAULT_REOPEN_CAUSE);
   const [closePrompt, setClosePrompt] = useState<DragCard | null>(null);
   const [timePrompt, setTimePrompt] = useState<TimePrompt | null>(null);
+  const [detailsTaskId, setDetailsTaskId] = useState<string | null>(null);
   // Read by the save handler, which has to stay stable for the dialog's effect.
   const timePromptRef = useRef<TimePrompt | null>(null);
   timePromptRef.current = timePrompt;
@@ -604,6 +629,7 @@ export default function TaskBoard({
                             setError(null);
                             moveCard(source, target, group);
                           }}
+                          onOpenDetails={() => setDetailsTaskId(card.id)}
                           actions={
                             watching
                               ? [
@@ -855,6 +881,14 @@ export default function TaskBoard({
             </button>
           </div>
         </PromptDialog>
+      ) : null}
+
+      {detailsTaskId ? (
+        <TaskDetailsDialog
+          key={detailsTaskId}
+          taskId={detailsTaskId}
+          onClose={() => setDetailsTaskId(null)}
+        />
       ) : null}
 
       {timePrompt ? (

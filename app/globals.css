@@ -310,6 +310,11 @@
   min-height: 22rem;
 }
 
+/* A task description: a few lines to start, growing as it is written. */
+.doc-editor.doc-editor-compact .ck-editor__editable {
+  min-height: 9rem;
+}
+
 /*
   The global div { min-width: 0 } and svg { max-width: 100% } let the editor's
   toolbar buttons squeeze down to nothing, and CKEditor only folds buttons into

@@ -10,7 +10,9 @@ datasource db {
 model User {
   id                   String             @id @default(cuid())
   name                 String
-  email                String
+  /// Unique: one account per address. Checked in app/employees/actions.ts
+  /// too, so a clear message shows instead of a database error.
+  email                String             @unique
   password             String
   /// "superadmin", "admin", "manager" or "member". A super admin has every
   /// admin permission plus the Base Price menu; see lib/roles.ts.
@@ -20,6 +22,9 @@ model User {
   /// One of DESIGNATION_OPTIONS in lib/designations.ts, and part of `sector`
   /// unless it is "Intern", which fits any sector or none.
   designation          String?
+  /// An inactive employee cannot sign in and is left out of the lists new
+  /// work is assigned from; everything they did stays.
+  isActive             Boolean            @default(true)
   createdAt           DateTime           @default(now())
   updatedAt            DateTime           @updatedAt
   teamId               String?
@@ -172,7 +177,9 @@ model BasePrice {
 model Task {
   id           String   @id @default(cuid())
   title        String
-  description  String?
+  /// HTML from the task form's editor (sanitised on save), or plain text on
+  /// tasks written before it; see lib/taskDescription.ts. TEXT: no length cap.
+  description  String?  @db.Text
   status       String   @default("pending")
   priority     String   @default("medium")
   assignedToId String?

@@ -44,6 +44,9 @@ export default async function EditTeamPage({ params }: EditTeamPageProps) {
       },
     }),
     prisma.user.findMany({
+      // Inactive employees stay listed only while they are in this team, so
+      // saving it does not take them out.
+      where: { OR: [{ isActive: true }, { teamId: id }] },
       orderBy: {
         name: "asc",
       },

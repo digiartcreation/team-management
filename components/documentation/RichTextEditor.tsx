@@ -48,6 +48,12 @@ type RichTextEditorProps = {
    */
   images?: boolean;
   placeholder?: string;
+  /**
+   * "basic" for a task's description: bold, italic, underline, lists and
+   * links, in a shorter box. What it makes is sanitised by
+   * lib/taskDescription.ts, which allows exactly that.
+   */
+  variant?: "full" | "basic";
 };
 
 /**
@@ -181,24 +187,71 @@ const TEXT_ONLY_CONFIG: EditorConfig = {
   placeholder: "Write here.",
 };
 
+/** A task description's few tools: no headings, images, tables or code. */
+const BASIC_CONFIG: EditorConfig = {
+  licenseKey: "GPL",
+  plugins: [
+    AutoLink,
+    Autoformat,
+    Bold,
+    Essentials,
+    Italic,
+    Link,
+    List,
+    Paragraph,
+    PasteFromOffice,
+    RemoveFormat,
+    Strikethrough,
+    Underline,
+  ],
+  toolbar: {
+    items: [
+      "bold",
+      "italic",
+      "underline",
+      "strikethrough",
+      "|",
+      "bulletedList",
+      "numberedList",
+      "|",
+      "link",
+      "removeFormat",
+      "|",
+      "undo",
+      "redo",
+    ],
+    shouldNotGroupWhenFull: false,
+  },
+  link: {
+    addTargetToExternalLinks: true,
+    defaultProtocol: "https://",
+  },
+  placeholder: "What needs doing, links, notes...",
+};
+
 export default function RichTextEditor({
   initialData,
   onChange,
   images = true,
   placeholder,
+  variant = "full",
 }: RichTextEditorProps) {
   // Built once: the editor reads its config when it starts and not after.
   const config = useMemo(
     () => ({
-      ...(images ? EDITOR_CONFIG : TEXT_ONLY_CONFIG),
+      ...(variant === "basic"
+        ? BASIC_CONFIG
+        : images
+          ? EDITOR_CONFIG
+          : TEXT_ONLY_CONFIG),
       initialData,
       ...(placeholder ? { placeholder } : {}),
     }),
-    [initialData, images, placeholder]
+    [initialData, images, placeholder, variant]
   );
 
   return (
-    <div className="doc-editor">
+    <div className={variant === "basic" ? "doc-editor doc-editor-compact" : "doc-editor"}>
       <CKEditor
         editor={ClassicEditor}
         config={config}

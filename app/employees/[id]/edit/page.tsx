@@ -42,6 +42,7 @@ export default async function EditEmployeePage({
       role: true,
       sector: true,
       designation: true,
+      isActive: true,
     },
   });
 
