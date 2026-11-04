@@ -1,4 +1,5 @@
 import Image from "next/image";
+import MobileNav from "@/components/layout/MobileNav";
 import SidebarNav from "@/components/layout/SidebarNav";
 
 type SidebarProps = {
@@ -9,6 +10,9 @@ type SidebarProps = {
   /** Calendar entries today and tomorrow, shown beside Calendar. */
   calendarCounts?: { today: number; tomorrow: number };
 };
+
+/** Last in every menu: the viewer's own details and password. */
+const PROFILE_ITEM = { label: "My Profile", href: "/profile" };
 
 function getNavItems(role?: string, isSuperAdmin = false) {
   if (role === "manager") {
@@ -24,6 +28,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      PROFILE_ITEM,
     ];
   }
 
@@ -40,6 +45,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Feedback Center", href: "/feedback/submissions" },
       { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
+      PROFILE_ITEM,
     ];
   }
 
@@ -78,7 +84,7 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "Calendar", href: "/calendar" }
   );
 
-  return adminItems;
+  return [...adminItems, PROFILE_ITEM];
 }
 
 export default function Sidebar({
@@ -99,38 +105,49 @@ export default function Sidebar({
           : "Admin Dashboard";
 
   return (
-    <aside className="flex border-b border-[#E5E7EB] bg-white text-[#1F2937] shadow-sm lg:min-h-screen lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">
-      <div className="flex w-full flex-col gap-4 p-4 lg:p-6">
-        <div className="rounded-lg border border-[#E5E7EB] bg-[#F8F7FB] p-3">
-          <div className="flex items-center gap-3">
-            <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md">
-              <Image
-                src="/digiart-logo.jpg"
-                alt="Digiart Creation logo"
-                fill
-                sizes="44px"
-                className="object-contain"
-                priority
-              />
-            </div>
-            <div className="min-w-0">
-              <p className="whitespace-nowrap text-base font-semibold leading-tight text-[#1F2937] lg:text-[15px] xl:text-base">
-                Digiart Creation
-              </p>
-              <p className="mt-1 whitespace-nowrap text-xs font-medium text-[#6B7280]">
-                {dashboardTitle}
-              </p>
+    <>
+      <MobileNav
+        title={dashboardTitle}
+        homeHref={navItems[0].href}
+        items={navItems}
+        unreadNotifications={unreadNotifications}
+        alertCounts={alertCounts}
+        calendarCounts={calendarCounts}
+      />
+      {/* Wide screens only; below that, the bar and menu above stand in. */}
+      <aside className="hidden border-b border-[#E5E7EB] bg-white text-[#1F2937] shadow-sm lg:flex lg:min-h-screen lg:w-64 lg:flex-col lg:border-b-0 lg:border-r">
+        <div className="flex w-full flex-col gap-4 p-4 lg:p-6">
+          <div className="rounded-lg border border-[#E5E7EB] bg-[#F8F7FB] p-3">
+            <div className="flex items-center gap-3">
+              <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md">
+                <Image
+                  src="/digiart-logo.jpg"
+                  alt="Digiart Creation logo"
+                  fill
+                  sizes="44px"
+                  className="object-contain"
+                  priority
+                />
+              </div>
+              <div className="min-w-0">
+                <p className="whitespace-nowrap text-base font-semibold leading-tight text-[#1F2937] lg:text-[15px] xl:text-base">
+                  Digiart Creation
+                </p>
+                <p className="mt-1 whitespace-nowrap text-xs font-medium text-[#6B7280]">
+                  {dashboardTitle}
+                </p>
+              </div>
             </div>
           </div>
+  
+          <SidebarNav
+            items={navItems}
+            unreadNotifications={unreadNotifications}
+            alertCounts={alertCounts}
+            calendarCounts={calendarCounts}
+          />
         </div>
-
-        <SidebarNav
-          items={navItems}
-          unreadNotifications={unreadNotifications}
-          alertCounts={alertCounts}
-          calendarCounts={calendarCounts}
-        />
-      </div>
-    </aside>
+      </aside>
+    </>
   );
 }

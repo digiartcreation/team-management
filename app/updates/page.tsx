@@ -8,6 +8,7 @@ import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteDailyUpdate } from "@/app/updates/actions";
 
@@ -123,6 +124,23 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
   const showEmployeeFilter =
     sessionUser.role === "admin" || sessionUser.role === "manager";
 
+  // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (id: string, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/updates/${id}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      <DeleteMenuAction
+        id={id}
+        action={deleteDailyUpdate}
+        message="Are you sure you want to delete this daily update?"
+      />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <ModuleReviewMarker module="updates" />
@@ -207,7 +225,12 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
           </div>
         </form>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            updates.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {updates.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
@@ -257,19 +280,7 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
                       </td>
                       <td className="px-4 py-4">
                         {update.user.id === sessionUser.id ? (
-                          <ActionMenu>
-                            <Link
-                              href={`/updates/${update.id}/edit`}
-                              className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                            >
-                              Edit
-                            </Link>
-                            <DeleteMenuAction
-                              id={update.id}
-                              action={deleteDailyUpdate}
-                              message="Are you sure you want to delete this daily update?"
-                            />
-                          </ActionMenu>
+                          rowMenu(update.id)
                         ) : (
                           <span className="text-sm text-slate-400">
                             View only
@@ -283,6 +294,56 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
             </div>
           )}
         </section>
+
+        {updates.length > 0 ? (
+          <MobileCardList>
+            {updates.map((update) => (
+              <MobileCard
+                key={update.id}
+                title={
+                  <span className="line-clamp-2 whitespace-pre-line">
+                    {update.todaysTasks}
+                  </span>
+                }
+                subtitle={`${dateFormatter.format(update.createdAt)}${
+                  showEmployeeColumn ? ` · ${update.user.name}` : ""
+                }`}
+                status={
+                  update.blockers ? (
+                    <span className="whitespace-nowrap rounded-full bg-red-50 px-2 py-0.5 text-xs font-medium text-red-600">
+                      Blocker
+                    </span>
+                  ) : null
+                }
+                actions={
+                  update.user.id === sessionUser.id
+                    ? rowMenu(update.id, "Actions")
+                    : null
+                }
+              >
+                <MobileField label="Today's Tasks">
+                  <span className="whitespace-pre-line">{update.todaysTasks}</span>
+                </MobileField>
+                <MobileField label="Blockers">
+                  <span className="whitespace-pre-line">{update.blockers || "None"}</span>
+                </MobileField>
+                <div className="grid grid-cols-2 gap-3">
+                  {showEmployeeColumn ? (
+                    <MobileField label="Employee">{update.user.name}</MobileField>
+                  ) : null}
+                  <MobileField label="Created On">
+                    {dateFormatter.format(update.createdAt)}
+                    {update.updatedAt.getTime() !== update.createdAt.getTime() ? (
+                      <span className="mt-0.5 block text-xs text-slate-500">
+                        Edited on {dateFormatter.format(update.updatedAt)}
+                      </span>
+                    ) : null}
+                  </MobileField>
+                </div>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
         <PaginationControls
           page={page}
           total={totalUpdates}

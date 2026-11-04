@@ -42,13 +42,22 @@ export async function POST(request: Request) {
         id: true,
         role: true,
         password: true,
+        isActive: true,
       },
     });
 
     const roles = [];
+    let inactive = false;
 
     for (const user of users) {
       if (await bcrypt.compare(normalizedPassword, user.password)) {
+        // The right password on an inactive account: the login page says
+        // so, rather than calling the password wrong.
+        if (!user.isActive) {
+          inactive = true;
+          continue;
+        }
+
         roles.push({
           role: user.role,
           label: getRoleLabel(user.role),
@@ -56,7 +65,9 @@ export async function POST(request: Request) {
       }
     }
 
-    return NextResponse.json({ roles });
+    return NextResponse.json(
+      roles.length === 0 && inactive ? { roles, inactive: true } : { roles }
+    );
   } catch {
     return NextResponse.json({ roles: [] }, { status: 500 });
   }

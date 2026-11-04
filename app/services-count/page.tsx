@@ -363,11 +363,11 @@ export default async function ServicesCountPage({
         </div>
 
         {/* Totals */}
-        <section className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <section className="grid grid-cols-2 gap-3 lg:grid-cols-4">
           {tiles.map((tile) => (
             <div key={tile.label} className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
               <p className={labelClass}>{tile.label}</p>
-              <p className="mt-1 text-2xl font-semibold tabular-nums text-slate-950">{tile.value}</p>
+              <p className="mt-1 break-words text-xl font-semibold tabular-nums text-slate-950 sm:text-2xl">{tile.value}</p>
               <p className="mt-0.5 text-xs text-slate-500">{tile.detail}</p>
             </div>
           ))}

@@ -21,7 +21,9 @@ export default async function NewTeamPage() {
     redirect("/teams");
   }
 
+  // Inactive employees are not put in a new team.
   const employees = await prisma.user.findMany({
+    where: { isActive: true },
     orderBy: {
       name: "asc",
     },

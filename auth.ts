@@ -25,8 +25,9 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
         // that or a stray space / capital letter fails an otherwise valid login.
         const normalizedEmail = email.trim().toLowerCase();
 
+        // An inactive employee cannot sign in (see the Employees page).
         const users = await prisma.user.findMany({
-          where: { email: normalizedEmail },
+          where: { email: normalizedEmail, isActive: true },
         });
 
         if (users.length === 0) {

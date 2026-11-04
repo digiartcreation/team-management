@@ -160,7 +160,11 @@ export default function LoginPage() {
       const roles = getSafeRoles(data);
 
       if (roles.length === 0) {
-        setError("Invalid email or password.");
+        setError(
+          data && typeof data === "object" && "inactive" in data
+            ? "This account is inactive. Ask an admin to make it active again."
+            : "Invalid email or password."
+        );
         return;
       }
 

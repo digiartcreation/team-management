@@ -7,6 +7,7 @@ import DeleteTeamButton from "@/components/teams/DeleteTeamButton";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -58,6 +59,19 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
     prisma.team.count(),
   ]);
 
+  // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (teamId: string, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/teams/${teamId}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      <DeleteTeamButton teamId={teamId} />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -80,7 +94,12 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
           ) : null}
         </header>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            teams.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {teams.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
@@ -130,15 +149,7 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
                       </td>
                       <td className="px-4 py-4">
                         {isAdmin ? (
-                          <ActionMenu>
-                            <Link
-                              href={`/teams/${team.id}/edit`}
-                              className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                            >
-                              Edit
-                            </Link>
-                            <DeleteTeamButton teamId={team.id} />
-                          </ActionMenu>
+                          rowMenu(team.id)
                         ) : (
                           <span className="text-sm text-slate-400">
                             View only
@@ -152,6 +163,35 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
             </div>
           )}
         </section>
+
+        {teams.length > 0 ? (
+          <MobileCardList>
+            {teams.map((team) => (
+              <MobileCard
+                key={team.id}
+                title={team.name}
+                subtitle={`${team._count.members} ${
+                  team._count.members === 1 ? "member" : "members"
+                }`}
+                actions={isAdmin ? rowMenu(team.id, "Actions") : null}
+              >
+                <MobileField label="Description">
+                  <span className="whitespace-pre-line">
+                    {team.description || "No description"}
+                  </span>
+                </MobileField>
+                <MobileField label="Members">
+                  {team.members.length > 0
+                    ? team.members.map((member) => member.name).join(", ")
+                    : "No members assigned"}
+                </MobileField>
+                <MobileField label="Created On">
+                  {dateFormatter.format(team.createdAt)}
+                </MobileField>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
         <PaginationControls
           page={page}
           total={totalTeams}

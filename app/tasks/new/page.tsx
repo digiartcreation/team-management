@@ -53,12 +53,11 @@ export default async function NewTaskPage({ searchParams }: NewTaskPageProps) {
   const [employees, teams, clients, watcherOptions] = await Promise.all([
     prisma.user.findMany({
       // An employee without a team can still add a task -- for themselves.
+      // Inactive employees are not given new work.
       where:
         isMember && !currentUser?.teamId
           ? { id: sessionUser.id }
-          : teamId
-            ? { teamId }
-            : undefined,
+          : { isActive: true, ...(teamId ? { teamId } : {}) },
       orderBy: {
         name: "asc",
       },

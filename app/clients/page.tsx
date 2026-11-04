@@ -7,6 +7,7 @@ import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import ActionMenu from "@/components/ui/ActionMenu";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
 import { deleteClient, deleteClientSop } from "@/app/clients/actions";
 import { formatFileSize } from "@/lib/uploads";
@@ -97,6 +98,157 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
     prisma.client.count({ where }),
   ]);
 
+  /*
+    The pieces of a client's row, shared by the table and the phone cards so
+    the two always say the same thing.
+  */
+  type ClientRow = (typeof clients)[number];
+
+  const contactOf = (client: ClientRow) => (
+    <>
+      <div>{client.contactPerson || "No contact person"}</div>
+      {client.email ? (
+        <div className="mt-1 text-xs text-slate-500">{client.email}</div>
+      ) : null}
+      {client.phone ? (
+        <div className="mt-1 text-xs text-slate-500">{client.phone}</div>
+      ) : null}
+    </>
+  );
+
+  const peopleOf = (client: ClientRow) => (
+    <>
+      <div>
+        <span className="text-xs text-slate-500">Owner: </span>
+        {client.owner || <span className="text-slate-400">Not set</span>}
+      </div>
+      <div className="mt-1">
+        <span className="text-xs text-slate-500">Communication: </span>
+        {client.communicationPerson || (
+          <span className="text-slate-400">Not set</span>
+        )}
+      </div>
+    </>
+  );
+
+  const servicesOf = (client: ClientRow) => {
+    // Pre-mapping clients still show their legacy services, with payment
+    // terms blank until the client is edited once.
+    const services =
+      client.serviceMappings.length > 0
+        ? toServiceMappings(client.serviceMappings)
+        : seedMappingsFromLegacy(client.services);
+
+    return services.length > 0 ? (
+      <div className="grid gap-1.5">
+        {services.map((mapping) => (
+          <div key={mapping.service} className="flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
+              {formatServiceLabel(mapping)}
+            </span>
+            {/* Included services carry no amount by design. */}
+            {mapping.paymentType !== INCLUDED &&
+            mapping.percentage === null &&
+            mapping.packageAmount === null &&
+            mapping.perUnitAmount === null ? (
+              <span className="text-xs text-slate-400">payment not set</span>
+            ) : (
+              <span className="text-xs font-medium text-slate-600">
+                {formatPaymentTerms(mapping)}
+              </span>
+            )}
+          </div>
+        ))}
+      </div>
+    ) : (
+      <span className="text-xs text-slate-400">No services assigned</span>
+    );
+  };
+
+  const sopOf = (client: ClientRow) => (
+    <>
+      {client.sopContent ? (
+        <Link
+          href={`/clients/${client.id}/sop`}
+          className="font-medium text-[#770FC2] hover:underline"
+        >
+          View SOP
+        </Link>
+      ) : null}
+      {client.sop ? (
+        <div className={client.sopContent ? "mt-1.5" : undefined}>
+          <a
+            href={`/api/clients/${client.id}/sop`}
+            target="_blank"
+            rel="noreferrer"
+            title={client.sop.fileName}
+            className="block max-w-48 truncate text-xs font-medium text-[#770FC2] hover:underline"
+          >
+            {client.sop.fileName}
+          </a>
+          <div className="mt-0.5 text-xs text-slate-500">
+            {formatFileSize(client.sop.size)}
+          </div>
+        </div>
+      ) : null}
+      {!client.sopContent && !client.sop ? (
+        <span className="text-xs text-slate-400">No SOP</span>
+      ) : null}
+    </>
+  );
+
+  const statusPill = (status: string) => (
+    <span
+      className={`whitespace-nowrap rounded-full px-2 py-0.5 text-xs font-medium ${
+        status === "Active"
+          ? "bg-emerald-50 text-emerald-700"
+          : "bg-slate-100 text-slate-600"
+      }`}
+    >
+      {status}
+    </span>
+  );
+
+  const createdOf = (client: ClientRow) => (
+    <>
+      <div>{dateFormatter.format(client.createdAt)}</div>
+      <div className="mt-1 text-xs text-slate-500">by {client.createdBy.name}</div>
+    </>
+  );
+
+  // A ⋯ menu in the table, a labelled one on a phone card.
+  const rowMenu = (client: ClientRow, trigger?: string) => (
+    <ActionMenu trigger={trigger}>
+      <Link
+        href={`/clients/${client.id}/edit`}
+        className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+      >
+        Edit
+      </Link>
+      {client.sopContent || client.sop ? (
+        <Link
+          href={`/clients/${client.id}/sop`}
+          className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
+        >
+          View SOP
+        </Link>
+      ) : null}
+      {client.sop ? (
+        <DeleteMenuAction
+          id={client.id}
+          action={deleteClientSop}
+          label="Delete SOP file"
+          message="Are you sure you want to delete this client’s uploaded SOP file? The SOP text stays."
+        />
+      ) : null}
+      <DeleteMenuAction
+        id={client.id}
+        action={deleteClient}
+        message="Are you sure you want to delete this client?"
+      />
+    </ActionMenu>
+  );
+
   return (
     <DashboardLayout>
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
@@ -139,15 +291,23 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           <button className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white">
             Filter
           </button>
-          <Link
+          {/* A plain link, a full page load like Filter: in production a
+              client-side hop that only changes the query string sometimes
+              never finishes, leaving the old filters on screen. */}
+          <a
             href="/clients"
             className="inline-flex items-center justify-center rounded-md border border-slate-300 px-4 py-2 text-sm font-medium text-slate-700"
           >
             Reset
-          </Link>
+          </a>
         </form>
 
-        <section className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+        {/* Phones get cards, the list below; the table is for wider screens. */}
+        <section
+          className={`overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm ${
+            clients.length > 0 ? "hidden md:block" : ""
+          }`}
+        >
           {clients.length === 0 ? (
             <div className="p-8 text-center">
               <p className="text-sm font-medium text-slate-700">
@@ -177,177 +337,69 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
                   </tr>
                 </thead>
                 <tbody className="divide-y divide-slate-200">
-                  {clients.map((client) => {
-                    // Pre-mapping clients still show their legacy services, with
-                    // payment terms blank until the client is edited once.
-                    const services =
-                      client.serviceMappings.length > 0
-                        ? toServiceMappings(client.serviceMappings)
-                        : seedMappingsFromLegacy(client.services);
-
-                    return (
-                      <tr key={client.id} className="hover:bg-slate-50">
-                        <td className="px-4 py-4 font-medium text-slate-950">
-                          {client.name}
-                          {client.notes ? (
-                            <div className="mt-1 whitespace-pre-line break-words text-xs text-slate-500">
-                              {client.notes}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          <div>
-                            {client.contactPerson || "No contact person"}
+                  {clients.map((client) => (
+                    <tr key={client.id} className="hover:bg-slate-50">
+                      <td className="px-4 py-4 font-medium text-slate-950">
+                        {client.name}
+                        {client.notes ? (
+                          <div className="mt-1 whitespace-pre-line break-words text-xs text-slate-500">
+                            {client.notes}
                           </div>
-                          {client.email ? (
-                            <div className="mt-1 text-xs text-slate-500">
-                              {client.email}
-                            </div>
-                          ) : null}
-                          {client.phone ? (
-                            <div className="mt-1 text-xs text-slate-500">
-                              {client.phone}
-                            </div>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          <div>
-                            <span className="text-xs text-slate-500">
-                              Owner:{" "}
-                            </span>
-                            {client.owner || (
-                              <span className="text-slate-400">Not set</span>
-                            )}
-                          </div>
-                          <div className="mt-1">
-                            <span className="text-xs text-slate-500">
-                              Communication:{" "}
-                            </span>
-                            {client.communicationPerson || (
-                              <span className="text-slate-400">Not set</span>
-                            )}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          {services.length > 0 ? (
-                            <div className="grid gap-1.5">
-                              {services.map((mapping) => (
-                                <div
-                                  key={mapping.service}
-                                  className="flex flex-wrap items-center gap-1.5"
-                                >
-                                  <span className="rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
-                                    {formatServiceLabel(mapping)}
-                                  </span>
-                                  {/* Included services carry no amount by design. */}
-                                  {mapping.paymentType !== INCLUDED &&
-                                  mapping.percentage === null &&
-                                  mapping.packageAmount === null &&
-                                  mapping.perUnitAmount === null ? (
-                                    <span className="text-xs text-slate-400">
-                                      payment not set
-                                    </span>
-                                  ) : (
-                                    <span className="text-xs font-medium text-slate-600">
-                                      {formatPaymentTerms(mapping)}
-                                    </span>
-                                  )}
-                                </div>
-                              ))}
-                            </div>
-                          ) : (
-                            <span className="text-xs text-slate-400">
-                              No services assigned
-                            </span>
-                          )}
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          {client.sopContent ? (
-                            <Link
-                              href={`/clients/${client.id}/sop`}
-                              className="font-medium text-[#770FC2] hover:underline"
-                            >
-                              View SOP
-                            </Link>
-                          ) : null}
-                          {client.sop ? (
-                            <div className={client.sopContent ? "mt-1.5" : undefined}>
-                              <a
-                                href={`/api/clients/${client.id}/sop`}
-                                target="_blank"
-                                rel="noreferrer"
-                                title={client.sop.fileName}
-                                className="block max-w-48 truncate text-xs font-medium text-[#770FC2] hover:underline"
-                              >
-                                {client.sop.fileName}
-                              </a>
-                              <div className="mt-0.5 text-xs text-slate-500">
-                                {formatFileSize(client.sop.size)}
-                              </div>
-                            </div>
-                          ) : null}
-                          {!client.sopContent && !client.sop ? (
-                            <span className="text-xs text-slate-400">
-                              No SOP
-                            </span>
-                          ) : null}
-                        </td>
-                        <td className="px-4 py-4">
-                          <span
-                            className={`rounded-full px-2 py-0.5 text-xs font-medium ${
-                              client.status === "Active"
-                                ? "bg-emerald-50 text-emerald-700"
-                                : "bg-slate-100 text-slate-600"
-                            }`}
-                          >
-                            {client.status}
-                          </span>
-                        </td>
-                        <td className="px-4 py-4 text-slate-600">
-                          <div>{dateFormatter.format(client.createdAt)}</div>
-                          <div className="mt-1 text-xs text-slate-500">
-                            by {client.createdBy.name}
-                          </div>
-                        </td>
-                        <td className="px-4 py-4">
-                          <ActionMenu>
-                            <Link
-                              href={`/clients/${client.id}/edit`}
-                              className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                            >
-                              Edit
-                            </Link>
-                            {client.sopContent || client.sop ? (
-                              <Link
-                                href={`/clients/${client.id}/sop`}
-                                className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"
-                              >
-                                View SOP
-                              </Link>
-                            ) : null}
-                            {client.sop ? (
-                              <DeleteMenuAction
-                                id={client.id}
-                                action={deleteClientSop}
-                                label="Delete SOP file"
-                                message="Are you sure you want to delete this client’s uploaded SOP file? The SOP text stays."
-                              />
-                            ) : null}
-                            <DeleteMenuAction
-                              id={client.id}
-                              action={deleteClient}
-                              message="Are you sure you want to delete this client?"
-                            />
-                          </ActionMenu>
-                        </td>
-                      </tr>
-                    );
-                  })}
+                        ) : null}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {contactOf(client)}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {peopleOf(client)}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {servicesOf(client)}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {sopOf(client)}
+                      </td>
+                      <td className="px-4 py-4">{statusPill(client.status)}</td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {createdOf(client)}
+                      </td>
+                      <td className="px-4 py-4">{rowMenu(client)}</td>
+                    </tr>
+                  ))}
                 </tbody>
               </table>
             </div>
           )}
         </section>
+
+        {clients.length > 0 ? (
+          <MobileCardList>
+            {clients.map((client) => (
+              <MobileCard
+                key={client.id}
+                title={client.name}
+                subtitle={client.contactPerson || client.email || "No contact person"}
+                status={statusPill(client.status)}
+                actions={rowMenu(client, "Actions")}
+              >
+                {client.notes ? (
+                  <MobileField label="Notes">
+                    <span className="whitespace-pre-line">{client.notes}</span>
+                  </MobileField>
+                ) : null}
+                <MobileField label="Contact">{contactOf(client)}</MobileField>
+                <MobileField label="Owner / Communication">
+                  {peopleOf(client)}
+                </MobileField>
+                <MobileField label="Services">{servicesOf(client)}</MobileField>
+                <div className="grid grid-cols-2 gap-3">
+                  <MobileField label="SOP">{sopOf(client)}</MobileField>
+                  <MobileField label="Created On">{createdOf(client)}</MobileField>
+                </div>
+              </MobileCard>
+            ))}
+          </MobileCardList>
+        ) : null}
 
         <PaginationControls
           page={page}

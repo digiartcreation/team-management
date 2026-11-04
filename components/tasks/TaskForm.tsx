@@ -1,6 +1,7 @@
 import ClickToSubmitForm from "@/components/ui/ClickToSubmitForm";
 import SubmitButton from "@/components/ui/SubmitButton";
-import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
+import TaskDescriptionField from "@/components/tasks/TaskDescriptionField";
+import { taskDescriptionHtml } from "@/lib/taskDescription";
 import ClientWorkField, {
   type TaskClientOption,
 } from "@/components/tasks/ClientWorkField";
@@ -105,17 +106,10 @@ export default function TaskForm({
           />
         </label>
 
-        <label className="grid gap-2">
-          <span className="text-sm font-medium text-slate-700">
-            Description
-          </span>
-          <TextareaWithBullet
-            name="description"
-            defaultValue={task?.description ?? ""}
-            rows={4}
-            className="resize-none rounded-md border border-slate-300 px-3 py-2 text-sm outline-none transition focus:border-slate-500 focus:ring-2 focus:ring-slate-200"
-          />
-        </label>
+        {/* Plain text from before the editor comes in as paragraphs. */}
+        <TaskDescriptionField
+          initialContent={taskDescriptionHtml(task?.description) ?? ""}
+        />
 
         <div className="grid gap-5 md:grid-cols-2">
           <label className="grid gap-2">

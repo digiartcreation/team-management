@@ -65,12 +65,15 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
     }),
     prisma.user.findMany({
       // An employee without a team can only keep the task for themselves.
+      // Inactive employees are not offered, unless this task is already
+      // theirs: dropping them from the list would unassign it on save.
       where:
         isMember && !currentUser?.teamId
           ? { id: sessionUser.id }
-          : teamId
-            ? { teamId }
-            : undefined,
+          : {
+              ...(teamId ? { teamId } : {}),
+              OR: [{ isActive: true }, { tasks: { some: { id } } }],
+            },
       orderBy: {
         name: "asc",
       },
@@ -100,7 +103,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
   // Need the task itself, so they cannot join the Promise.all above.
   const [clients, watcherOptions] = await Promise.all([
     getTaskClientOptions(task.clientId),
-    getWatcherOptions(),
+    getWatcherOptions(watcherIds),
   ]);
 
   return (

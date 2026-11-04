@@ -18,6 +18,7 @@ import {
 } from "@/lib/services";
 import { clientWorkLabels } from "@/lib/clientServices";
 import { formatDuration } from "@/lib/duration";
+import { sanitizeTaskDescription } from "@/lib/taskDescription";
 import { officeDate, officeInstant } from "@/lib/officeTime";
 import {
   canCloseFrom,
@@ -356,13 +357,15 @@ async function resolveClientMapping(
 async function validateTaskRelations(
   assignedToId: string | null,
   teamId: string | null,
-  managerTeamId?: string
+  managerTeamId?: string,
+  /** The task being edited, which may stay with an assignee made inactive. */
+  taskId?: string
 ) {
   const [assignedUser, team] = await Promise.all([
     assignedToId
       ? prisma.user.findUnique({
           where: { id: assignedToId },
-          select: { id: true, teamId: true },
+          select: { id: true, teamId: true, isActive: true },
         })
       : Promise.resolve(null),
     teamId
@@ -375,6 +378,17 @@ async function validateTaskRelations(
 
   if (assignedToId && !assignedUser) {
     throw new Error("Assigned employee not found.");
+  }
+
+  // Inactive employees get no new work; a task already theirs can be edited.
+  if (assignedUser && !assignedUser.isActive) {
+    const alreadyTheirs = taskId
+      ? await prisma.task.count({ where: { id: taskId, assignedToId: assignedUser.id } })
+      : 0;
+
+    if (!alreadyTheirs) {
+      throw new Error("This employee is inactive and cannot be given new tasks.");
+    }
   }
 
   if (teamId && !team) {
@@ -397,7 +411,8 @@ export async function createTask(formData: FormData) {
   const isMember = sessionUser.role !== "admin" && sessionUser.role !== "manager";
 
   const title = getValue(formData, "title");
-  const description = getValue(formData, "description");
+  // Editor HTML, sanitised; null when there is no text in it.
+  const description = sanitizeTaskDescription(getValue(formData, "description"));
   // An employee who leaves the assignee blank has made the task for themselves.
   const requestedAssigneeId = optionalValue(getValue(formData, "assignedToId"));
   const assignedToId = isMember
@@ -450,7 +465,7 @@ export async function createTask(formData: FormData) {
     const task = await prisma.task.create({
       data: {
         title,
-        description: description || null,
+        description,
         assignedToId,
         teamId,
         clientId,
@@ -507,7 +522,8 @@ export async function updateTask(formData: FormData) {
 
   const id = getValue(formData, "id");
   const title = getValue(formData, "title");
-  const description = getValue(formData, "description");
+  // Editor HTML, sanitised; null when there is no text in it.
+  const description = sanitizeTaskDescription(getValue(formData, "description"));
   // As on create, an employee who clears the assignee keeps the task.
   const requestedAssigneeId = optionalValue(getValue(formData, "assignedToId"));
   const assignedToId = isMember
@@ -535,7 +551,7 @@ export async function updateTask(formData: FormData) {
     throw new Error("Invalid task status or priority.");
   }
 
-  await validateTaskRelations(assignedToId, teamId, managerTeamId);
+  await validateTaskRelations(assignedToId, teamId, managerTeamId, id);
   const { clientId, clientWork } = await resolveClientMapping(
     requestedClientId,
     requestedClientWork
@@ -599,7 +615,7 @@ export async function updateTask(formData: FormData) {
       where: { id },
       data: {
         title,
-        description: description || null,
+        description,
         assignedToId,
         teamId,
         clientId,

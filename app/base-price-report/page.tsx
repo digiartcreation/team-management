@@ -326,12 +326,15 @@ export default async function BasePriceReportPage({
             >
               Apply
             </button>
-            <Link
+            {/* A plain link, a full page load like the form: in production a
+                client-side hop that only changes the query string sometimes
+                never finishes, leaving the old filters on screen. */}
+            <a
               href={reportHref({ view })}
               className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
             >
               Reset
-            </Link>
+            </a>
           </div>
         </form>
 

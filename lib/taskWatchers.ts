@@ -2,11 +2,14 @@ import { prisma } from "@/lib/prisma";
 import { formatRole } from "@/lib/roles";
 
 /**
- * Everyone who can be added as a watcher: every user, from every team and in
- * every role, admins included.
+ * Everyone who can be added as a watcher: every active user, from every team
+ * and in every role, admins included. `keepIds` -- the watchers a task
+ * already has -- stay listed even when inactive, so saving it does not drop
+ * them.
  */
-export async function getWatcherOptions() {
+export async function getWatcherOptions(keepIds: string[] = []) {
   const people = await prisma.user.findMany({
+    where: { OR: [{ isActive: true }, { id: { in: keepIds } }] },
     orderBy: { name: "asc" },
     select: { id: true, name: true, role: true },
   });

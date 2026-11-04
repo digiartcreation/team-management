@@ -25,9 +25,13 @@ type ActionMenuProps = {
 };
 
 type Position = {
-  right: number;
+  /** Lined up with the trigger's right edge, or its left when that has room. */
+  right?: number;
+  left?: number;
   top?: number;
   bottom?: number;
+  /** The room on the side it opens to; a taller menu scrolls inside it. */
+  maxHeight: number;
 };
 
 const ActionMenuContext = createContext<{ close: () => void } | null>(null);
@@ -74,14 +78,29 @@ export default function ActionMenu({
     }
 
     const rect = triggerEl.getBoundingClientRect();
-    const fitsBelow =
-      rect.bottom + GAP + menu.offsetHeight <= window.innerHeight - EDGE;
+    const roomBelow = window.innerHeight - rect.bottom - GAP - EDGE;
+    const roomAbove = rect.top - GAP - EDGE;
+    // Below when it fits, else on whichever side has more room -- on a phone
+    // neither may hold it all, and it then scrolls instead of running off the
+    // screen. scrollHeight, as the cap may already be holding it short.
+    const below = menu.scrollHeight <= roomBelow || roomBelow >= roomAbove;
+    // Hanging left from the trigger's right edge, unless that would run off
+    // the left of the screen -- a trigger near the left, as on a phone card
+    // -- when it hangs right from the trigger's left edge instead.
+    const hangsLeft = rect.right - menu.offsetWidth >= EDGE;
 
     setPosition({
-      right: Math.max(EDGE, window.innerWidth - rect.right),
-      ...(fitsBelow
-        ? { top: rect.bottom + GAP }
-        : { bottom: window.innerHeight - rect.top + GAP }),
+      ...(hangsLeft
+        ? { right: Math.max(EDGE, window.innerWidth - rect.right) }
+        : {
+            left: Math.max(
+              EDGE,
+              Math.min(rect.left, window.innerWidth - menu.offsetWidth - EDGE)
+            ),
+          }),
+      ...(below
+        ? { top: rect.bottom + GAP, maxHeight: roomBelow }
+        : { bottom: window.innerHeight - rect.top + GAP, maxHeight: roomAbove }),
     });
   }, []);
 
@@ -209,11 +228,13 @@ export default function ActionMenu({
               style={{
                 position: "fixed",
                 right: position?.right,
+                left: position?.left,
                 top: position?.top,
                 bottom: position?.bottom,
+                maxHeight: position?.maxHeight,
                 visibility: position ? "visible" : "hidden",
               }}
-              className="z-50 min-w-44 max-w-[calc(100vw-1rem)] rounded-md border border-[#E5E7EB] bg-white p-1 text-left shadow-lg"
+              className="z-50 min-w-44 max-w-[calc(100vw-1rem)] overflow-y-auto overscroll-contain rounded-md border border-[#E5E7EB] bg-white p-1 text-left shadow-lg"
             >
               <div className="grid gap-1">
                 <ActionMenuContext.Provider value={menu}>
