@@ -34,12 +34,25 @@ const nextConfig: NextConfig = {
         // all, while unchanged JS chunks (same content hash) still load.
         //
         // Hashed assets under /_next/static are content-addressed and keep
-        // their own long-lived immutable caching.
-        source: "/((?!_next/static|_next/image).*)",
+        // their own long-lived immutable caching. Images get the rule below.
+        source:
+          "/((?!_next/static|_next/image|.*\\.(?:png|jpe?g|gif|svg|webp|ico)$).*)",
         headers: [
           {
             key: "Cache-Control",
             value: "private, no-store, max-age=0, must-revalidate",
+          },
+        ],
+      },
+      {
+        // Images such as the logo (also the browser-tab icon) and the
+        // favicon: browsers keep them for a day rather than fetching them on
+        // every page, so a new logo can take up to a day to show.
+        source: "/((?!_next/).*\\.(?:png|jpe?g|gif|svg|webp|ico))",
+        headers: [
+          {
+            key: "Cache-Control",
+            value: "public, max-age=86400",
           },
         ],
       },
