@@ -16,6 +16,9 @@ const nextConfig: NextConfig = {
     // CPUs but caps the processes an account may run, so the build died with
     // "spawn node EAGAIN". One worker is plenty for this many pages.
     cpus: 1,
+    // Resizing images for next/image (the logo in the menu) can otherwise use
+    // a thread per two CPUs, which counts against the same process limit.
+    imgOptConcurrency: 1,
   },
   async headers() {
     return [
