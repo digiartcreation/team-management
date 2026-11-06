@@ -173,6 +173,8 @@ export async function updateClient(formData: FormData) {
             create: serviceMappings,
           },
         },
+        // Unused, and the whole row would bring back the SOP text.
+        select: { id: true },
       }),
     ];
 
@@ -182,6 +184,8 @@ export async function updateClient(formData: FormData) {
           where: { clientId: id },
           create: { ...sop, clientId: id, uploadedById: sessionUser.id },
           update: { ...sop, uploadedById: sessionUser.id },
+          // Unused, and the whole row would read the file back (up to 10 MB).
+          select: { id: true },
         })
       );
     } else if (removeSop) {

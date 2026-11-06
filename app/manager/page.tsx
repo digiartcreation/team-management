@@ -5,7 +5,7 @@ import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import WatchingBoard from "@/components/dashboard/WatchingBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
+import { columnTotal, loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
 
 // Only used by the welcome header, which is commented out for now.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -33,28 +33,29 @@ export default async function ManagerDashboardPage() {
     redirect("/member");
   }
 
-  // A manager can be added as a watcher on any team’s task, team or not.
-  const watched = await loadWatchedBoard(sessionUser.id ?? "__no_user__");
-
-  const manager = await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: {
-      name: true,
-      role: true,
-      teamId: true,
-      team: {
-        select: {
-          name: true,
-          _count: {
-            select: {
-              members: true,
-              tasks: true,
+  const [watched, manager] = await Promise.all([
+    // A manager can be added as a watcher on any team’s task, team or not.
+    loadWatchedBoard(sessionUser.id ?? "__no_user__"),
+    prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: {
+        name: true,
+        role: true,
+        teamId: true,
+        team: {
+          select: {
+            name: true,
+            _count: {
+              select: {
+                members: true,
+                tasks: true,
+              },
             },
           },
         },
       },
-    },
-  });
+    }),
+  ]);
 
   if (!manager?.teamId || !manager.team) {
     return (
@@ -82,39 +83,13 @@ export default async function ManagerDashboardPage() {
     );
   }
 
-  const [
-    backlogTasks,
-    inProgressTasks,
-    completedTasks,
-    reopenedTasks,
-    board,
-  ] = await Promise.all([
-    prisma.task.count({
-      where: {
-        teamId: manager.teamId,
-        status: "pending",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        teamId: manager.teamId,
-        status: "in_progress",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        teamId: manager.teamId,
-        status: "completed",
-      },
-    }),
-    prisma.task.count({
-      where: {
-        teamId: manager.teamId,
-        status: "reopened",
-      },
-    }),
-    loadTaskBoard({ teamId: manager.teamId }),
-  ]);
+  const board = await loadTaskBoard({ teamId: manager.teamId });
+
+  // The stat cards count the same tasks as the board's column headers.
+  const backlogTasks = columnTotal(board, "pending");
+  const inProgressTasks = columnTotal(board, "in_progress");
+  const completedTasks = columnTotal(board, "completed");
+  const reopenedTasks = columnTotal(board, "reopened");
 
   return (
     <DashboardLayout>

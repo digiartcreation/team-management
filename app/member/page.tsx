@@ -5,7 +5,7 @@ import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import WatchingBoard from "@/components/dashboard/WatchingBoard";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import { loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
+import { columnTotal, loadTaskBoard, loadWatchedBoard } from "@/lib/taskBoard";
 
 // Only used by the welcome header, which is commented out for now.
 // eslint-disable-next-line @typescript-eslint/no-unused-vars
@@ -33,39 +33,33 @@ export default async function MemberDashboardPage() {
     redirect("/manager");
   }
 
-  const member = await prisma.user.findUnique({
-    where: { id: sessionUser.id },
-    select: {
-      name: true,
-      role: true,
-      team: {
-        select: {
-          name: true,
-        },
-      },
-    },
-  });
-
   // Spelled out rather than left as sessionUser.id: an undefined id is a
   // filter Prisma drops, which would put every task in the workspace on one
   // employee's board. No such user exists, so this matches nothing instead.
   const ownTasks = { assignedToId: sessionUser.id ?? "__no_user__" };
 
-  const [
-    backlogTasks,
-    inProgressTasks,
-    completedTasks,
-    reopenedTasks,
-    board,
-    watched,
-  ] = await Promise.all([
-    prisma.task.count({ where: { ...ownTasks, status: "pending" } }),
-    prisma.task.count({ where: { ...ownTasks, status: "in_progress" } }),
-    prisma.task.count({ where: { ...ownTasks, status: "completed" } }),
-    prisma.task.count({ where: { ...ownTasks, status: "reopened" } }),
+  const [member, board, watched] = await Promise.all([
+    prisma.user.findUnique({
+      where: { id: sessionUser.id },
+      select: {
+        name: true,
+        role: true,
+        team: {
+          select: {
+            name: true,
+          },
+        },
+      },
+    }),
     loadTaskBoard(ownTasks),
     loadWatchedBoard(ownTasks.assignedToId),
   ]);
+
+  // The stat cards count the same tasks as the board's column headers.
+  const backlogTasks = columnTotal(board, "pending");
+  const inProgressTasks = columnTotal(board, "in_progress");
+  const completedTasks = columnTotal(board, "completed");
+  const reopenedTasks = columnTotal(board, "reopened");
 
   return (
     <DashboardLayout>

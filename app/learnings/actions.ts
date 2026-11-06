@@ -6,7 +6,6 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 
 const categories = new Set([
   "Development",
@@ -78,16 +77,6 @@ export async function createLearning(formData: FormData) {
       entityId: learning.id,
       description: `Created learning ${title}`,
     });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdminsAndTeamManagers({
-      actorUserId: sessionUser.id,
-      title: "New learning published",
-      message: `${user?.name ?? "A team member"} published learning: ${title}`,
-      type: "LEARNING_UPDATED",
-    });
   } catch (error) {
     handleLearningError(error);
   }
@@ -137,16 +126,6 @@ export async function updateLearning(formData: FormData) {
       entityType: "learning",
       entityId: id,
       description: `Updated learning ${title}`,
-    });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdminsAndTeamManagers({
-      actorUserId: sessionUser.id,
-      title: "Learning entry updated",
-      message: `${user?.name ?? "A team member"} updated learning: ${title}`,
-      type: "LEARNING_UPDATED",
     });
   } catch (error) {
     handleLearningError(error);

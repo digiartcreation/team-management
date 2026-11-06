@@ -206,11 +206,21 @@ function buildTrend(
     return { granularity: "day", trend: [] };
   }
 
-  const times = logs.map((log) => log.date.getTime());
+  // A loop rather than Math.min(...times): spreading one argument per log
+  // overflows the call stack once a long range covers about 100,000 entries.
+  let earliest = Infinity;
+  let latest = -Infinity;
+
+  for (const log of logs) {
+    const time = log.date.getTime();
+    earliest = Math.min(earliest, time);
+    latest = Math.max(latest, time);
+  }
+
   // A set range is drawn in full, empty days included, so a quiet week shows as
   // a gap rather than disappearing.
-  const start = startOfUtcDay(from ?? new Date(Math.min(...times)));
-  const end = startOfUtcDay(to ?? new Date(Math.max(...times)));
+  const start = startOfUtcDay(from ?? new Date(earliest));
+  const end = startOfUtcDay(to ?? new Date(latest));
   const granularity = granularityFor(start, end);
 
   const buckets = new Map<string, TrendBucket>();

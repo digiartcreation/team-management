@@ -2,9 +2,10 @@ import NextAuth from "next-auth";
 import Credentials from "next-auth/providers/credentials";
 import bcrypt from "bcryptjs";
 import { prisma } from "@/lib/prisma";
-import { isSuperAdminRole } from "@/lib/roles";
+import { authConfig } from "@/auth.config";
 
 export const { handlers, auth, signIn, signOut } = NextAuth({
+  ...authConfig,
   providers: [
     Credentials({
       credentials: {
@@ -68,37 +69,4 @@ export const { handlers, auth, signIn, signOut } = NextAuth({
       },
     }),
   ],
-  session: {
-    strategy: "jwt",
-  },
-  callbacks: {
-    jwt({ token, user }) {
-      if (user) {
-        const appUser = user as typeof user & { role?: string };
-
-        token.id = user.id;
-        // A super admin works as an admin everywhere, so the session carries
-        // "admin" and the extra Base Price access rides on isSuperAdmin.
-        token.isSuperAdmin = isSuperAdminRole(appUser.role);
-        token.role = token.isSuperAdmin ? "admin" : appUser.role;
-      }
-
-      return token;
-    },
-    session({ session, token }) {
-      if (session.user) {
-        const sessionUser = session.user as typeof session.user & {
-          id?: string;
-          role?: string;
-          isSuperAdmin?: boolean;
-        };
-
-        sessionUser.id = token.id as string;
-        sessionUser.role = token.role as string;
-        sessionUser.isSuperAdmin = token.isSuperAdmin === true;
-      }
-
-      return session;
-    },
-  },
 });

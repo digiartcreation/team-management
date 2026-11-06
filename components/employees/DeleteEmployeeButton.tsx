@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { deleteEmployee } from "@/app/employees/actions";
 
@@ -11,7 +10,6 @@ type DeleteEmployeeButtonProps = {
 export default function DeleteEmployeeButton({
   employeeId,
 }: DeleteEmployeeButtonProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleDelete() {
@@ -25,7 +23,6 @@ export default function DeleteEmployeeButton({
 
     startTransition(async () => {
       await deleteEmployee(employeeId);
-      router.refresh();
     });
   }
 

@@ -5,14 +5,17 @@ import LogoutButton from "@/components/layout/LogoutButton";
 import Sidebar from "@/components/layout/Sidebar";
 import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
 import { getVisibleNotificationWhere } from "@/lib/notifications";
-import { getSidebarAlertCounts } from "@/lib/moduleAlerts";
+import { getSidebarAlertCounts, type ModuleKey } from "@/lib/moduleAlerts";
 import { countTodayAndTomorrow } from "@/lib/calendarEvents";
+import { getViewerAccount } from "@/lib/viewer";
 
 type DashboardLayoutProps = {
   children: ReactNode;
+  /** The module this page lists, marked as reviewed: see getSidebarAlertCounts. */
+  reviewModule?: ModuleKey;
 };
 
-export default async function DashboardLayout({ children }: DashboardLayoutProps) {
+export default async function DashboardLayout({ children, reviewModule }: DashboardLayoutProps) {
   const session = await auth();
   const sessionUser = session?.user as
     | (NonNullable<typeof session>["user"] & {
@@ -21,15 +24,37 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
         isSuperAdmin?: boolean;
       })
     | undefined;
+  const userId = sessionUser?.id;
+
+  // Everything the menu and the banner show, read together rather than one
+  // query after another.
+  const [account, unreadNotifications, visibleNotifications, moduleAlertCounts, calendarCounts] =
+    await Promise.all([
+      userId ? getViewerAccount(userId) : null,
+      userId && sessionUser?.role !== "admin"
+        ? prisma.notification.count({
+            where: getVisibleNotificationWhere(userId, {
+              isRead: false,
+            }),
+          })
+        : 0,
+      userId
+        ? prisma.notification.findMany({
+            where: getVisibleNotificationWhere(userId, {
+              isRead: false,
+              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+            }),
+            orderBy: { createdAt: "desc" },
+            take: 8,
+          })
+        : [],
+      getSidebarAlertCounts(userId, sessionUser?.role, reviewModule),
+      userId ? countTodayAndTomorrow({ id: userId, role: sessionUser?.role }) : undefined,
+    ]);
 
   // Made inactive (or deleted) while signed in: the session lives on, but
   // the app does not open for it.
-  if (sessionUser?.id) {
-    const account = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { isActive: true },
-    });
-
+  if (userId) {
     if (!account?.isActive) {
       return (
         <main className="flex min-h-screen items-center justify-center bg-[#F8F7FB] px-4">
@@ -49,32 +74,6 @@ export default async function DashboardLayout({ children }: DashboardLayoutProps
     }
   }
 
-  const unreadNotifications = sessionUser?.id
-    ? sessionUser.role === "admin"
-      ? 0
-      : await prisma.notification.count({
-        where: getVisibleNotificationWhere(sessionUser.id, {
-          isRead: false,
-        }),
-      })
-    : 0;
-  const visibleNotifications = sessionUser?.id
-    ? await prisma.notification.findMany({
-        where: getVisibleNotificationWhere(sessionUser.id, {
-          isRead: false,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-        }),
-        orderBy: { createdAt: "desc" },
-        take: 8,
-      })
-    : [];
-  const moduleAlertCounts = await getSidebarAlertCounts(
-    sessionUser?.id,
-    sessionUser?.role
-  );
-  const calendarCounts = sessionUser?.id
-    ? await countTodayAndTomorrow({ id: sessionUser.id, role: sessionUser.role })
-    : undefined;
   const sidebarAlertCounts = {
     "/tasks": moduleAlertCounts.tasks,
     "/updates": moduleAlertCounts.updates,

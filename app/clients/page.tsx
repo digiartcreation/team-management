@@ -74,6 +74,9 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
       where,
       ...getPagination(page),
       orderBy: { createdAt: "desc" },
+      // SOP text can run long and the list only shows whether there is any,
+      // which the query below answers without sending it.
+      omit: { sopContent: true },
       include: {
         createdBy: {
           select: { id: true, name: true },
@@ -97,6 +100,18 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
     }),
     prisma.client.count({ where }),
   ]);
+  const withSopText = new Set(
+    (
+      await prisma.client.findMany({
+        where: {
+          id: { in: clients.map((client) => client.id) },
+          sopContent: { not: null },
+          NOT: { sopContent: "" },
+        },
+        select: { id: true },
+      })
+    ).map((client) => client.id)
+  );
 
   /*
     The pieces of a client's row, shared by the table and the phone cards so
@@ -167,7 +182,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
 
   const sopOf = (client: ClientRow) => (
     <>
-      {client.sopContent ? (
+      {withSopText.has(client.id) ? (
         <Link
           href={`/clients/${client.id}/sop`}
           className="font-medium text-[#770FC2] hover:underline"
@@ -176,7 +191,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
         </Link>
       ) : null}
       {client.sop ? (
-        <div className={client.sopContent ? "mt-1.5" : undefined}>
+        <div className={withSopText.has(client.id) ? "mt-1.5" : undefined}>
           <a
             href={`/api/clients/${client.id}/sop`}
             target="_blank"
@@ -191,7 +206,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
           </div>
         </div>
       ) : null}
-      {!client.sopContent && !client.sop ? (
+      {!withSopText.has(client.id) && !client.sop ? (
         <span className="text-xs text-slate-400">No SOP</span>
       ) : null}
     </>
@@ -225,7 +240,7 @@ export default async function ClientsPage({ searchParams }: ClientsPageProps) {
       >
         Edit
       </Link>
-      {client.sopContent || client.sop ? (
+      {withSopText.has(client.id) || client.sop ? (
         <Link
           href={`/clients/${client.id}/sop`}
           className="rounded px-3 py-2 text-sm text-[#1F2937] transition hover:bg-[#F3E8FF] hover:text-[#770FC2]"

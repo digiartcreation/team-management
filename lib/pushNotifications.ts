@@ -1,4 +1,5 @@
 import crypto from "crypto";
+import { after } from "next/server";
 import { prisma } from "@/lib/prisma";
 
 type PushPayload = {
@@ -18,9 +19,16 @@ type WebPushModule = {
       endpoint: string;
       keys: { p256dh: string; auth: string };
     },
-    payload: string
+    payload: string,
+    options?: { timeout?: number }
   ) => Promise<unknown>;
 };
+
+/**
+ * How long one push service may take to answer. web-push has no limit of its
+ * own, so a push service that never answered kept the work waiting forever.
+ */
+const PUSH_TIMEOUT_MS = 10_000;
 
 const dynamicImport = new Function(
   "modulePath",
@@ -31,7 +39,15 @@ export function hashEndpoint(endpoint: string) {
   return crypto.createHash("sha256").update(endpoint).digest("hex");
 }
 
-async function getWebPush() {
+// Loaded and given the VAPID keys once per server process, not per push.
+let webPushReady: Promise<WebPushModule | null> | undefined;
+
+function getWebPush() {
+  webPushReady ??= loadWebPush();
+  return webPushReady;
+}
+
+async function loadWebPush() {
   const publicKey = process.env.NEXT_PUBLIC_VAPID_PUBLIC_KEY;
   const privateKey = process.env.VAPID_PRIVATE_KEY;
   const subject = process.env.VAPID_SUBJECT;
@@ -75,13 +91,40 @@ export async function sendPushToUser(userId: string, payload: PushPayload) {
               auth: subscription.auth,
             },
           },
-          JSON.stringify(payload)
+          JSON.stringify(payload),
+          { timeout: PUSH_TIMEOUT_MS }
         );
       } catch (error) {
+        const statusCode = (error as { statusCode?: number }).statusCode;
+
+        // 404 / 410: the browser has dropped this subscription for good.
+        // Switch it off so later notifications stop trying it; subscribing
+        // again from that browser turns it back on (app/api/push/subscribe).
+        if (statusCode === 404 || statusCode === 410) {
+          await prisma.pushSubscription
+            .update({ where: { id: subscription.id }, data: { enabled: false } })
+            .catch(() => {});
+          return;
+        }
+
         console.error("Push notification delivery failed.", error);
       }
     })
   );
+}
+
+/**
+ * Sends the push once the response has gone out, so whoever saved the change
+ * does not wait on the push services. The notification row itself is written
+ * before this, so pages and counts are unchanged.
+ */
+export function sendPushAfterResponse(userId: string, payload: PushPayload) {
+  try {
+    after(() => sendPushToUser(userId, payload));
+  } catch {
+    // Outside a request (a script, say) there is no response to wait for.
+    void sendPushToUser(userId, payload);
+  }
 }
 
 export async function notifyUsersWithPush(

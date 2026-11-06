@@ -91,8 +91,11 @@ export default async function DocumentationViewPage({
             <ul className="grid max-h-[70vh] gap-0.5 overflow-y-auto">
               {index.map((entry) => (
                 <li key={entry.id}>
+                  {/* No prefetch: the index can list hundreds of documents,
+                      each one a server request when prefetched in view. */}
                   <Link
                     href={`/documentation/${entry.id}`}
+                    prefetch={false}
                     aria-current={entry.id === doc.id ? "page" : undefined}
                     className={`block break-words rounded px-2 py-1.5 text-sm transition ${
                       entry.id === doc.id

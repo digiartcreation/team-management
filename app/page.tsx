@@ -48,13 +48,8 @@ export default async function Home() {
     role?: string;
   };
 
-  // Every team's work, split into a board per person, and the tasks this
-  // admin was added to as a watcher.
-  const [boards, watched] = await Promise.all([
-    loadTaskBoardsByAssignee(),
-    loadWatchedBoard(sessionUser.id ?? "__no_user__"),
-  ]);
-
+  // Redirect first: every sign-in lands here, and the boards below are the
+  // heaviest queries in the app, so a manager or employee must not load them.
   if (sessionUser.role === "manager") {
     redirect("/manager");
   }
@@ -62,6 +57,13 @@ export default async function Home() {
   if (sessionUser.role === "member") {
     redirect("/member");
   }
+
+  // Every team's work, split into a board per person, and the tasks this
+  // admin was added to as a watcher.
+  const [boards, watched] = await Promise.all([
+    loadTaskBoardsByAssignee(),
+    loadWatchedBoard(sessionUser.id ?? "__no_user__"),
+  ]);
 
   return (
     <DashboardLayout>

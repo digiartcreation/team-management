@@ -2,6 +2,7 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import {
   minutesFromTime,
+  officeDate,
   officeInstant,
   officeMinutes,
 } from "@/lib/officeTime";
@@ -44,13 +45,46 @@ export function autoCheckOutTime(day: Date, checkInTime: Date, now: Date) {
 }
 
 /**
+ * The latest stored day whose cut-off has passed at `now`: today once the
+ * office clock reads 10 PM, yesterday until then. Only sessions on or before
+ * it can be closed, so the read below skips everyone checked in right now.
+ */
+function lastSettledDay(now: Date) {
+  const today = officeDate(now);
+  return isCheckOutClosed(now) ? today : new Date(today.getTime() - 24 * 60 * 60 * 1000);
+}
+
+// The sweep already running, by the day it settles through. Requests landing
+// together (the morning rush on the attendance page) share it rather than
+// each reading and closing the same sessions.
+let sweeping: { day: string; done: Promise<void> } | null = null;
+
+/**
  * Checks out every session still open past its day's cut-off. There is no
  * background job, so the attendance page and the check-in / check-out actions
  * run this first; any day they show or change is already settled.
  */
-export async function closeExpiredSessions(now: Date) {
+export function closeExpiredSessions(now: Date) {
+  const day = lastSettledDay(now).toISOString();
+
+  if (sweeping?.day !== day) {
+    const done = sweepExpiredSessions(now).finally(() => {
+      if (sweeping?.done === done) {
+        sweeping = null;
+      }
+    });
+    sweeping = { day, done };
+  }
+
+  return sweeping.done;
+}
+
+async function sweepExpiredSessions(now: Date) {
   const open = await prisma.attendanceSession.findMany({
-    where: { checkOutTime: null },
+    where: {
+      checkOutTime: null,
+      attendance: { date: { lte: lastSettledDay(now) } },
+    },
     select: {
       id: true,
       checkInTime: true,

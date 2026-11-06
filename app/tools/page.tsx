@@ -3,10 +3,10 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
-import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
@@ -22,7 +22,7 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   const showEmployeeColumn = sessionUser.role !== "member";
   const { q, category } = await searchParams;
   const page = getPage((await searchParams).page);
-  const currentUser = sessionUser.role === "manager" ? await prisma.user.findUnique({ where: { id: sessionUser.id }, select: { teamId: true } }) : null;
+  const currentUser = sessionUser.role === "manager" ? await getViewerAccount(sessionUser.id) : null;
   const where: Prisma.ToolUsageWhereInput = sessionUser.role === "admin" ? {} : sessionUser.role === "manager" ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } } : { userId: sessionUser.id };
   if (q?.trim()) where.toolName = { contains: q.trim() };
   if (category?.trim()) where.category = category.trim();
@@ -50,8 +50,7 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   );
 
   return (
-    <DashboardLayout>
-      <ModuleReviewMarker module="tools" />
+    <DashboardLayout reviewModule="tools">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div><p className="text-sm font-medium uppercase tracking-normal text-slate-500">AI Tools</p><h1 className="mt-2 text-2xl font-semibold text-slate-950">AI & Tools Usage</h1></div>

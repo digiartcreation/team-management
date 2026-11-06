@@ -1,7 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
 import LogoutButton from "@/components/layout/LogoutButton";
 import PushNotificationToggle from "@/components/notifications/PushNotificationToggle";
 
@@ -31,7 +32,15 @@ export default function SidebarNav({
   variant = "sidebar",
 }: SidebarNavProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const drawer = variant === "drawer";
+  // Every page here is rendered per request, so the default prefetch of each
+  // menu link in view cost the server one request per link on every page
+  // load. Prefetching when a link is about to be used keeps clicks quick.
+  // AUTO, as <Link> itself uses: only the loading skeleton. router.prefetch
+  // defaults to FULL, which renders the whole page -- its queries, and the
+  // menu badge marking that module reviewed -- just because of a hover.
+  const prefetch = (href: string) => router.prefetch(href, { kind: PrefetchKind.AUTO });
 
   return (
     <nav
@@ -49,6 +58,10 @@ export default function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
+            prefetch={false}
+            onMouseEnter={() => prefetch(item.href)}
+            onFocus={() => prefetch(item.href)}
+            onTouchStart={() => prefetch(item.href)}
             aria-current={isActive ? "page" : undefined}
             className={`whitespace-nowrap rounded-md px-3 text-sm font-medium transition duration-200 ${
               drawer ? "flex items-center py-2.5" : "py-2"
