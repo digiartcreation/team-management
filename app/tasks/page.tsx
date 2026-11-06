@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
 import { TaskDetailsButton } from "@/components/tasks/TaskDetailsDialog";
@@ -15,7 +16,6 @@ import {
 } from "@/lib/duration";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
-import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
 import MobileFilters from "@/components/ui/MobileFilters";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
@@ -102,7 +102,9 @@ const taskInclude = {
   },
 } satisfies Prisma.TaskInclude;
 
-type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude }>;
+const taskOmit = { description: true } satisfies Prisma.TaskOmit;
+
+type TaskRow = Prisma.TaskGetPayload<{ include: typeof taskInclude; omit: typeof taskOmit }>;
 
 /*
   The pieces of a task's row, shared by the table and the phone cards so the
@@ -340,10 +342,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
 
   const currentUser =
     sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
+      ? await getViewerAccount(sessionUser.id)
       : null;
   const managerTeamId =
     sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
@@ -427,6 +426,9 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       orderBy: {
         createdAt: "desc",
       },
+      // The list never shows the description (the details dialog loads it
+      // when opened), and it is unbounded TEXT.
+      omit: taskOmit,
       include: taskInclude,
     }),
     prisma.task.count({ where }),
@@ -478,8 +480,7 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   ].filter(Boolean).length;
 
   return (
-    <DashboardLayout>
-      <ModuleReviewMarker module="tasks" />
+    <DashboardLayout reviewModule="tasks">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>

@@ -182,8 +182,15 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const filters = await searchParams;
   const view = isReportView(filters.view) ? filters.view : DEFAULT_REPORT_VIEW;
   const definition = REPORT_VIEW_DEFINITIONS[view];
-  const from = parseDateInput(filters.from);
-  const to = parseDateInput(filters.to);
+  // With no dates chosen the report opens on this month, as the Base Price
+  // Report does. There is no "All time": it read every entry ever logged, so
+  // the page got slower every month.
+  const presets = datePresets(todayUtcMidnight());
+  const thisMonth = presets.find((preset) => preset.label === "This month")!;
+  const dates: { from?: string; to?: string } =
+    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisMonth;
+  const from = parseDateInput(dates.from);
+  const to = parseDateInput(dates.to);
 
   // Every service a task has actually been mapped to. It both fills the filter
   // and turns the chosen service back into the exact stored values, since
@@ -239,7 +246,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     where.date = {
       ...(from ? { gte: from } : {}),
       // Inclusive of the chosen day, whatever time the entry carries.
-      ...(to && filters.to ? { lte: endOfDay(filters.to) } : {}),
+      ...(to && dates.to ? { lte: endOfDay(dates.to) } : {}),
     };
   }
 
@@ -363,10 +370,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   }
 
   const scope = scopeParts.join(" · ");
-  const fileStem = `time-report-${view}-${filters.from ?? "start"}-to-${filters.to ?? "today"}`;
-  const presets = datePresets(todayUtcMidnight());
+  const fileStem = `time-report-${view}-${dates.from ?? "start"}-to-${dates.to ?? "today"}`;
   const activePreset = presets.find(
-    (preset) => preset.from === filters.from && preset.to === filters.to
+    (preset) => preset.from === dates.from && preset.to === dates.to
   );
   const previous = kpis.previous;
 
@@ -425,16 +431,6 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           </nav>
 
           <div className="flex flex-wrap gap-1.5">
-            <Link
-              href={reportHref({ ...filters, from: undefined, to: undefined })}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                !filters.from && !filters.to
-                  ? "bg-slate-900 text-white ring-slate-900"
-                  : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
-              }`}
-            >
-              All time
-            </Link>
             {presets.map((preset) => (
               <Link
                 key={preset.label}
@@ -457,12 +453,12 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
 
           <label className="grid gap-1.5">
             <span className={labelClass}>From</span>
-            <input name="from" type="date" defaultValue={filters.from ?? ""} className={inputClass} />
+            <input name="from" type="date" defaultValue={dates.from ?? ""} className={inputClass} />
           </label>
 
           <label className="grid gap-1.5">
             <span className={labelClass}>To</span>
-            <input name="to" type="date" defaultValue={filters.to ?? ""} className={inputClass} />
+            <input name="to" type="date" defaultValue={dates.to ?? ""} className={inputClass} />
           </label>
 
           <label className="grid gap-1.5">

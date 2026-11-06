@@ -3,6 +3,7 @@ import { redirect } from "next/navigation";
 import { taskDescriptionText } from "@/lib/taskDescription";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { formatTaskStatus } from "@/lib/taskStatus";
 
@@ -34,10 +35,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const query = q?.trim() ?? "";
   const currentUser =
     sessionUser.role === "manager" || sessionUser.role === "member"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
+      ? await getViewerAccount(sessionUser.id)
       : null;
   const memberScope = sessionUser.role === "member";
   const managerTeamId = sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
@@ -64,10 +62,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
         includeModule("employees") ? prisma.user.findMany({ where: { ...userWhere, ...(createdAt ? { createdAt } : {}), OR: [{ name: { contains: query } }, { email: { contains: query } }] }, take: 5 }) : [],
         includeModule("teams") ? prisma.team.findMany({ where: teamWhere, take: 5 }) : [],
         includeModule("tasks") ? prisma.task.findMany({ where: { ...taskWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }, take: 5 }) : [],
-        includeModule("updates") ? prisma.dailyUpdate.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), todaysTasks: { contains: query } }, include: { user: true }, take: 5 }) : [],
-        includeModule("learnings") ? prisma.learning.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }, include: { user: true }, take: 5 }) : [],
-        includeModule("tools") ? prisma.toolUsage.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), toolName: { contains: query } }, include: { user: true }, take: 5 }) : [],
-        includeModule("activity") ? prisma.activityLog.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), description: { contains: query } }, include: { user: true }, take: 5 }) : [],
+        includeModule("updates") ? prisma.dailyUpdate.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), todaysTasks: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],
+        includeModule("learnings") ? prisma.learning.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],
+        includeModule("tools") ? prisma.toolUsage.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), toolName: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],
+        includeModule("activity") ? prisma.activityLog.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), description: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],
       ])
     : [[], [], [], [], [], [], []];
   return (

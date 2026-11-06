@@ -6,8 +6,6 @@ import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import {
   canManageCalendarEvent,
-  describeRepeat,
-  formatCalendarDay,
   isCalendarEventType,
   isCalendarRecurrence,
   isCalendarTime,
@@ -18,7 +16,6 @@ import {
   type CalendarRecurrence,
   type CalendarVisibility,
 } from "@/lib/calendar";
-import { createNotification } from "@/lib/notifications";
 
 /** The title column is a VARCHAR(191). */
 const MAX_TITLE_LENGTH = 191;
@@ -209,45 +206,6 @@ async function resolveShareIds(
 }
 
 /**
- * Tells the people newly added to a "selected" entry. Best effort: the entry
- * is already saved, so a failed notification is not reported as a failed save.
- */
-async function notifySharedWith(
-  ids: string[],
-  previousIds: string[],
-  actorName: string | null | undefined,
-  entry: CalendarEntryInput
-) {
-  const previous = new Set(previousIds);
-  const repeats = describeRepeat({
-    seriesDate: entry.day,
-    recurrence: entry.recurrence,
-    repeatDays: entry.repeatDays,
-    repeatMonthDay: entry.repeatMonthDay,
-    repeatUntil: entry.repeatUntil?.toISOString().slice(0, 10) ?? null,
-  });
-
-  for (const userId of ids) {
-    if (previous.has(userId)) {
-      continue;
-    }
-
-    try {
-      await createNotification({
-        userId,
-        title: "Calendar entry shared",
-        message: repeats
-          ? `${actorName ?? "Someone"} shared "${entry.title}" with you: ${repeats}, from ${formatCalendarDay(entry.day)}.`
-          : `${actorName ?? "Someone"} shared "${entry.title}" on ${formatCalendarDay(entry.day)} with you.`,
-        type: "CALENDAR_SHARED",
-      });
-    } catch (error) {
-      console.error("Could not send a calendar share notification", error);
-    }
-  }
-}
-
-/**
  * The activity log line for an entry. Admins and managers read the log, so an
  * entry not shared with everyone is logged without its title.
  */
@@ -388,8 +346,6 @@ export async function saveCalendarEvent(
     return { error: "Could not save the entry. Please try again." };
   }
 
-  await notifySharedWith(shareIds, previousShareIds, sessionUser.name, entry);
-
   return { ok: true, date: entry.day, repeats: entry.recurrence !== "none" };
 }
 
@@ -463,10 +419,7 @@ export async function respondToCalendarEvent(
 
   const share = await prisma.calendarEventShare.findUnique({
     where: { eventId_userId: { eventId, userId: sessionUser.id } },
-    select: {
-      response: true,
-      event: { select: { title: true, date: true, createdById: true } },
-    },
+    select: { response: true },
   });
 
   if (!share) {
@@ -484,25 +437,6 @@ export async function respondToCalendarEvent(
     });
   } catch {
     return { error: "Could not save your answer. Please try again." };
-  }
-
-  // Told when the answer changes, or when a decline gives a new reason.
-  if (share.response !== response || response === "declined") {
-    const day = formatCalendarDay(share.event.date.toISOString().slice(0, 10));
-
-    try {
-      await createNotification({
-        userId: share.event.createdById,
-        title: response === "accepted" ? "Calendar entry accepted" : "Calendar entry declined",
-        message:
-          response === "accepted"
-            ? `${sessionUser.name ?? "Someone"} accepted "${share.event.title}" on ${day}.`
-            : `${sessionUser.name ?? "Someone"} declined "${share.event.title}" on ${day}: ${why}`,
-        type: "CALENDAR_RESPONSE",
-      });
-    } catch (error) {
-      console.error("Could not send a calendar response notification", error);
-    }
   }
 
   return null;

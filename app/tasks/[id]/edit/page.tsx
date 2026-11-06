@@ -2,6 +2,7 @@ import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import TaskForm from "@/components/tasks/TaskForm";
 import { updateTask } from "@/app/tasks/actions";
@@ -33,10 +34,7 @@ export default async function EditTaskPage({ params }: EditTaskPageProps) {
   const { id } = await params;
 
   const currentUser = scopedToTeam
-    ? await prisma.user.findUnique({
-        where: { id: sessionUser.id },
-        select: { teamId: true },
-      })
+    ? await getViewerAccount(sessionUser.id)
     : null;
 
   const teamId = scopedToTeam ? currentUser?.teamId ?? "__no_team__" : undefined;

@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import MonthFilter from "@/components/attendance/MonthFilter";
 import Avatar from "@/components/ui/Avatar";
+import SubmitButton from "@/components/ui/SubmitButton";
 import { checkIn, checkOut } from "@/app/attendance/actions";
 import { SUPER_ADMIN } from "@/lib/roles";
 import {
@@ -314,7 +315,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   const isLateForCheckIn = isRedCheckIn(now);
   const checkInClosed = isCheckOutClosed(now);
   const todayDate = officeDate(now);
-  const [earliest, ownTodayRecord] = await Promise.all([
+  const [earliest, ownTodayRecord, firstCheckIn, staff] = await Promise.all([
     prisma.attendanceRecord.findFirst({
       where,
       orderBy: { date: "asc" },
@@ -326,7 +327,25 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
           include: { sessions: sessionSelect },
         })
       : null,
+    // Leave is counted from the first day anyone checked in, never before.
+    // For a super admin that is the query above (no filter), so it is not
+    // run twice.
+    isSuperAdmin
+      ? null
+      : prisma.attendanceRecord.findFirst({
+          orderBy: { date: "asc" },
+          select: { date: true },
+        }),
+    // Whose leave to count: everyone who checks in (all but super admins) for
+    // the super admin's view, yourself for everyone else's.
+    prisma.user.findMany({
+      where: isSuperAdmin
+        ? { role: { not: SUPER_ADMIN } }
+        : { id: sessionUser.id ?? "__no_user__" },
+      select: { id: true, name: true, createdAt: true },
+    }),
   ]);
+  const trackingStart = isSuperAdmin ? earliest : firstCheckIn;
 
   // The filter offers every month from the first recorded day to this one, and
   // opens on this month.
@@ -339,26 +358,11 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   const { month } = await searchParams;
   const selectedMonth = month && months.includes(month) ? month : currentMonth;
 
-  const [records, trackingStart, staff] = await Promise.all([
-    prisma.attendanceRecord.findMany({
-      where: { ...where, date: monthRange(selectedMonth) },
-      orderBy: { date: "desc" },
-      include: recordInclude,
-    }),
-    // Leave is counted from the first day anyone checked in, never before.
-    prisma.attendanceRecord.findFirst({
-      orderBy: { date: "asc" },
-      select: { date: true },
-    }),
-    // Whose leave to count: everyone who checks in (all but super admins) for
-    // the super admin's view, yourself for everyone else's.
-    prisma.user.findMany({
-      where: isSuperAdmin
-        ? { role: { not: SUPER_ADMIN } }
-        : { id: sessionUser.id ?? "__no_user__" },
-      select: { id: true, name: true, createdAt: true },
-    }),
-  ]);
+  const records = await prisma.attendanceRecord.findMany({
+    where: { ...where, date: monthRange(selectedMonth) },
+    orderBy: { date: "desc" },
+    include: recordInclude,
+  });
   const todaySessions = ownTodayRecord ? sessionsOf(ownTodayRecord) : [];
   const today = summariseSessions(todaySessions, now);
   const isMember = sessionUser.role === "member";
@@ -472,9 +476,12 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
               {/* One button that flips: in when out, out when in, as often as needed. */}
               {today.open ? (
                 <form action={checkOut} className="grid gap-2">
-                  <button className="w-full rounded-md border border-[#770FC2] px-4 py-2.5 text-sm font-medium text-[#770FC2] transition hover:bg-[#F3E8FF]">
+                  <SubmitButton
+                    pendingLabel="Checking out..."
+                    className="w-full rounded-md border border-[#770FC2] px-4 py-2.5 text-sm font-medium text-[#770FC2] transition hover:bg-[#F3E8FF]"
+                  >
                     Check-Out
-                  </button>
+                  </SubmitButton>
                   {ownTodayRecord ? (
                     <p className="text-center text-xs text-slate-500">
                       Check out by {formatClock(CHECK_OUT_CUTOFF)}. If you
@@ -501,7 +508,9 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                 </div>
               ) : (
                 <form action={checkIn}>
-                  <button
+                  {/* Locks while saving: two quick clicks opened two sessions. */}
+                  <SubmitButton
+                    pendingLabel="Checking in..."
                     className={`w-full rounded-md px-4 py-2.5 text-sm font-medium text-white transition ${
                       isLateForCheckIn
                         ? "bg-red-600 hover:bg-red-700"
@@ -509,7 +518,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                     }`}
                   >
                     {todaySessions.length > 0 ? "Check-In Again" : "Check-In"}
-                  </button>
+                  </SubmitButton>
                 </form>
               )}
             </div>

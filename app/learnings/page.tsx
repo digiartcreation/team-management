@@ -3,10 +3,10 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
-import ModuleReviewMarker from "@/components/layout/ModuleReviewMarker";
 import ActionMenu from "@/components/ui/ActionMenu";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
@@ -40,10 +40,7 @@ export default async function LearningsPage({
   const showEmployeeColumn = sessionUser.role !== "member";
   const currentUser =
     sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
+      ? await getViewerAccount(sessionUser.id)
       : null;
 
   const where: Prisma.LearningWhereInput =
@@ -87,8 +84,7 @@ export default async function LearningsPage({
   );
 
   return (
-    <DashboardLayout>
-      <ModuleReviewMarker module="learnings" />
+    <DashboardLayout reviewModule="learnings">
       <div className="mx-auto flex w-full max-w-7xl flex-col gap-6 px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <header className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
           <div>

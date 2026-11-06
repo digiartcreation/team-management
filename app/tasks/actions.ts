@@ -6,8 +6,6 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { createNotification } from "@/lib/notifications";
-import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 import {
   ALL_SERVICE_OPTIONS,
   DEFAULT_VIDEO_WEIGHTAGE,
@@ -284,26 +282,6 @@ async function resolveWatcherIds(formData: FormData, assignedToId: string | null
   return ids;
 }
 
-async function notifyNewWatchers(
-  watcherIds: string[],
-  previousIds: string[],
-  actorUserId: string,
-  title: string
-) {
-  const previous = new Set(previousIds);
-
-  for (const userId of watcherIds) {
-    if (!previous.has(userId) && userId !== actorUserId) {
-      await createNotification({
-        userId,
-        title: "Added as watcher",
-        message: `You were added as a watcher on: ${title}`,
-        type: "TASK_ASSIGNED",
-      });
-    }
-  }
-}
-
 function handlePrismaTaskError(error: unknown): never {
   if (error instanceof Prisma.PrismaClientKnownRequestError) {
     if (error.code === "P2025") {
@@ -488,23 +466,6 @@ export async function createTask(formData: FormData) {
       entityId: task.id,
       description: `Created task ${title}`,
     });
-    if (isMember) {
-      await notifyAdminsAndTeamManagers({
-        actorUserId: sessionUser.id,
-        title: "Task added",
-        message: `${sessionUser.name ?? "An employee"} added task "${title}".`,
-        type: "TASK_UPDATED",
-      });
-    }
-    if (assignedToId && assignedToId !== sessionUser.id) {
-      await createNotification({
-        userId: assignedToId,
-        title: "Task assigned",
-        message: `You were assigned: ${title}`,
-        type: "TASK_ASSIGNED",
-      });
-    }
-    await notifyNewWatchers(watcherIds, [], sessionUser.id, title);
   } catch (error) {
     handlePrismaTaskError(error);
   }
@@ -576,7 +537,6 @@ export async function updateTask(formData: FormData) {
         teamId: true,
         reopenCount: true,
         completedAt: true,
-        watchers: { select: { userId: true } },
       },
     });
 
@@ -662,53 +622,6 @@ export async function updateTask(formData: FormData) {
         ? `Reopened task ${title} (reopen ${reopenCycle})`
         : `Updated task ${title}`,
     });
-    if (isMember) {
-      await notifyAdminsAndTeamManagers({
-        actorUserId: sessionUser.id,
-        title: "Task edited",
-        message: `${sessionUser.name ?? "An employee"} edited task "${title}".`,
-        type: "TASK_UPDATED",
-      });
-    }
-    await notifyNewWatchers(
-      watcherIds,
-      previous.watchers.map((watcher) => watcher.userId),
-      sessionUser.id,
-      title
-    );
-    // Nobody needs telling about a change they made to their own task.
-    if (assignedToId && assignedToId !== sessionUser.id) {
-      if (assignedToId !== previous.assignedToId) {
-        await createNotification({
-          userId: assignedToId,
-          title: "Task assigned",
-          message: `You were assigned: ${title}`,
-          type: "TASK_ASSIGNED",
-        });
-      }
-      if (status === "completed" && previous.status !== "completed") {
-        await createNotification({
-          userId: assignedToId,
-          title: "Task completed",
-          message: `Task completed: ${title}`,
-          type: "TASK_COMPLETED",
-        });
-      } else if (reopenCycle) {
-        await createNotification({
-          userId: assignedToId,
-          title: "Task reopened",
-          message: `Task reopened for more work: ${title}`,
-          type: "TASK_UPDATED",
-        });
-      } else if (previous.status !== status) {
-        await createNotification({
-          userId: assignedToId,
-          title: "Task updated",
-          message: `Task status changed: ${title}`,
-          type: "TASK_UPDATED",
-        });
-      }
-    }
   } catch (error) {
     handlePrismaTaskError(error);
   }
@@ -767,12 +680,6 @@ export async function deleteTask(id: string) {
         entityType: "task",
         entityId: id,
         description: `Deleted task ${task.title}`,
-      });
-      await notifyAdminsAndTeamManagers({
-        actorUserId: sessionUser.id,
-        title: "Task deleted",
-        message: `${sessionUser.name ?? "An employee"} deleted task "${task.title}".`,
-        type: "TASK_UPDATED",
       });
     }
   } catch (error) {
@@ -954,57 +861,6 @@ export async function updateOwnTaskStatus(formData: FormData) {
         ? `Reopened task ${task.title} (reopen ${reopenCycle})`
         : `Updated task status for ${task.title}`,
     });
-    if (sessionUser.role === "member") {
-      const user = await prisma.user.findUnique({
-        where: { id: sessionUser.id },
-        select: { name: true },
-      });
-      await notifyAdminsAndTeamManagers({
-        actorUserId: sessionUser.id,
-        title:
-          status === "completed"
-            ? "Task completed"
-            : reopenCycle
-              ? "Task reopened"
-              : "Task status updated",
-        message: `${user?.name ?? "An employee"} marked task "${task.title}" as ${formatTaskStatus(status)}.`,
-        type: "TASK_UPDATED",
-      });
-
-      // An employee can only move someone else's task by closing it as a
-      // watcher, and the assignee should hear their task was signed off.
-      if (task.assignedToId && task.assignedToId !== sessionUser.id) {
-        await createNotification({
-          userId: task.assignedToId,
-          title: "Task closed",
-          message: `${user?.name ?? "A watcher"} closed your task: ${task.title}`,
-          type: "TASK_UPDATED",
-        });
-      }
-    } else if (task.assignedToId && task.assignedToId !== sessionUser.id) {
-      if (status === "completed" && task.status !== "completed") {
-        await createNotification({
-          userId: task.assignedToId,
-          title: "Task completed",
-          message: `Task completed: ${task.title}`,
-          type: "TASK_COMPLETED",
-        });
-      } else if (reopenCycle) {
-        await createNotification({
-          userId: task.assignedToId,
-          title: "Task reopened",
-          message: `Task reopened for more work: ${task.title}`,
-          type: "TASK_UPDATED",
-        });
-      } else if (task.status !== status) {
-        await createNotification({
-          userId: task.assignedToId,
-          title: "Task updated",
-          message: `Task status changed: ${task.title}`,
-          type: "TASK_UPDATED",
-        });
-      }
-    }
   } catch (error) {
     handlePrismaTaskError(error);
   }
@@ -1190,6 +1046,8 @@ export async function logTaskTime(
   revalidatePath("/tasks");
   revalidatePath("/reports");
   revalidatePath("/");
+  revalidatePath("/manager");
+  revalidatePath("/member");
 
   return { ok: true };
 }

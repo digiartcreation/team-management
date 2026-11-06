@@ -6,7 +6,6 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -62,16 +61,6 @@ export async function createToolUsage(formData: FormData) {
       entityId: entry.id,
       description: `Created tool usage for ${toolName}`,
     });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdminsAndTeamManagers({
-      actorUserId: sessionUser.id,
-      title: "AI tool usage logged",
-      message: `${user?.name ?? "A team member"} logged tool usage for ${toolName}.`,
-      type: "TOOL_USAGE_UPDATED",
-    });
   } catch (error) {
     handleToolError(error);
   }
@@ -116,16 +105,6 @@ export async function updateToolUsage(formData: FormData) {
       entityType: "tool_usage",
       entityId: id,
       description: `Updated tool usage for ${toolName}`,
-    });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdminsAndTeamManagers({
-      actorUserId: sessionUser.id,
-      title: "Tool usage updated",
-      message: `${user?.name ?? "A team member"} updated tool usage for ${toolName}.`,
-      type: "TOOL_USAGE_UPDATED",
     });
   } catch (error) {
     handleToolError(error);

@@ -1,29 +1,11 @@
 import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
-import { sendPushToUser } from "@/lib/pushNotifications";
-import { fitText } from "@/lib/fitText";
+import { sendPushAfterResponse } from "@/lib/pushNotifications";
 
-type NotificationType =
-  | "TASK_ASSIGNED"
-  | "TASK_UPDATED"
-  | "TASK_COMPLETED"
-  | "DAILY_UPDATE_CREATED"
-  | "ANNOUNCEMENT"
-  | "FEEDBACK_SUBMITTED"
-  | "FEEDBACK_UPDATED"
-  | "ATTENDANCE_UPDATED"
-  | "LEARNING_UPDATED"
-  | "TOOL_USAGE_UPDATED"
-  | "CALENDAR_SHARED"
-  | "CALENDAR_RESPONSE";
-
-type NotificationInput = {
-  userId: string;
-  title: string;
-  message: string;
-  type: NotificationType;
-};
-
+// Activities (tasks, updates, learnings, tools, feedback, attendance,
+// calendar) no longer create notifications; only announcements and admin
+// broadcasts do. The older types stay listed so earlier notifications still
+// show on the Notifications page.
 const visibleNotificationTypes = [
   "ANNOUNCEMENT",
   "TASK_ASSIGNED",
@@ -52,32 +34,6 @@ export function getVisibleNotificationWhere(
   };
 }
 
-export async function createNotification({
-  userId,
-  title,
-  message,
-  type,
-}: NotificationInput) {
-  // Messages quote titles that can run to any length; the columns hold 191.
-  const shortTitle = fitText(title);
-  const shortMessage = fitText(message);
-
-  await prisma.notification.create({
-    data: {
-      userId,
-      title: shortTitle,
-      message: shortMessage,
-      type,
-    },
-  });
-
-  await sendPushToUser(userId, {
-    title: shortTitle,
-    body: shortMessage,
-    url: "/notifications",
-  });
-}
-
 export async function createAnnouncementNotifications(
   title: string,
   message: string
@@ -101,13 +57,11 @@ export async function createAnnouncementNotifications(
     })),
   });
 
-  await Promise.all(
-    users.map((user) =>
-      sendPushToUser(user.id, {
-        title,
-        body: message,
-        url: "/",
-      })
-    )
-  );
+  for (const user of users) {
+    sendPushAfterResponse(user.id, {
+      title,
+      body: message,
+      url: "/",
+    });
+  }
 }

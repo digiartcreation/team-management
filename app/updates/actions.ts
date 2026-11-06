@@ -6,7 +6,6 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
-import { notifyAdminsAndTeamManagers } from "@/lib/recipientNotifications";
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -67,16 +66,6 @@ export async function createDailyUpdate(formData: FormData) {
       entityId: update.id,
       description: "Created daily update",
     });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdminsAndTeamManagers({
-      actorUserId: sessionUser.id,
-      title: "Daily update created",
-      message: `${user?.name ?? "A user"} submitted a daily update.`,
-      type: "DAILY_UPDATE_CREATED",
-    });
   } catch (error) {
     handleUpdateError(error);
   }
@@ -124,16 +113,6 @@ export async function updateDailyUpdate(formData: FormData) {
       entityType: "daily_update",
       entityId: id,
       description: "Updated daily update",
-    });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdminsAndTeamManagers({
-      actorUserId: sessionUser.id,
-      title: "Daily update updated",
-      message: `${user?.name ?? "A user"} updated a daily update.`,
-      type: "DAILY_UPDATE_CREATED",
     });
   } catch (error) {
     handleUpdateError(error);

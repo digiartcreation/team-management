@@ -5,9 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { SUPER_ADMIN } from "@/lib/roles";
 import { logActivity } from "@/lib/activity";
-import { createNotification } from "@/lib/notifications";
 import { closeExpiredSessions, isCheckOutClosed } from "@/lib/autoCheckOut";
 import {
   minutesFromTime,
@@ -26,25 +24,6 @@ async function getSessionUser() {
 
   if (!sessionUser?.id) redirect("/login");
   return sessionUser as typeof sessionUser & { id: string };
-}
-
-/** Only super admins see everyone's attendance, so only they hear about it. */
-async function notifySuperAdmins(message: string) {
-  const admins = await prisma.user.findMany({
-    where: { role: SUPER_ADMIN },
-    select: { id: true },
-  });
-
-  await Promise.all(
-    admins.map((admin) =>
-      createNotification({
-        userId: admin.id,
-        title: "Attendance update",
-        message,
-        type: "ATTENDANCE_UPDATED",
-      })
-    )
-  );
 }
 
 /** Today's day row with its sessions, oldest first. */
@@ -144,17 +123,6 @@ export async function checkIn() {
       ? "Recorded attendance check-in"
       : "Checked in again",
   });
-
-  // Super admins hear about the start of the day, not about every break.
-  if (firstOfDay) {
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifySuperAdmins(
-      `New attendance check-in recorded for ${user?.name ?? "a team member"}.`
-    );
-  }
 
   revalidatePath("/attendance");
 }

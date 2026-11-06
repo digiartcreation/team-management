@@ -2,6 +2,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import PaginationControls from "@/components/layout/PaginationControls";
@@ -31,10 +32,7 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
 
   const currentUser =
     sessionUser.role === "manager"
-      ? await prisma.user.findUnique({
-          where: { id: sessionUser.id },
-          select: { teamId: true },
-        })
+      ? await getViewerAccount(sessionUser.id)
       : null;
 
   const managerTeamId = currentUser?.teamId ?? "__no_team__";

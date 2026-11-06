@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { deleteTask } from "@/app/tasks/actions";
 
@@ -9,7 +8,6 @@ type DeleteTaskButtonProps = {
 };
 
 export default function DeleteTaskButton({ taskId }: DeleteTaskButtonProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleDelete() {
@@ -23,7 +21,6 @@ export default function DeleteTaskButton({ taskId }: DeleteTaskButtonProps) {
 
     startTransition(async () => {
       await deleteTask(taskId);
-      router.refresh();
     });
   }
 

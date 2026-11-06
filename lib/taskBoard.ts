@@ -68,6 +68,14 @@ export type BoardColumn = {
 };
 
 /**
+ * Every task in one column of a board, not just the ones with a card: the
+ * dashboards' stat cards read these rather than counting the same tasks again.
+ */
+export function columnTotal(columns: BoardColumn[], status: BoardStatus) {
+  return columns.find((column) => column.status === status)?.total ?? 0;
+}
+
+/**
  * Loads the dashboard board for whichever slice of tasks the caller owns --
  * everything for an admin, one team for a manager, one person for an employee.
  * The counts come from a single grouped query so the column headers stay true

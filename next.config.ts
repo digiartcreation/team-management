@@ -35,8 +35,10 @@ const nextConfig: NextConfig = {
         //
         // Hashed assets under /_next/static are content-addressed and keep
         // their own long-lived immutable caching. Images get the rule below.
+        // Documentation images set their own: an id always names the same
+        // bytes, and a header from here would replace the route's.
         source:
-          "/((?!_next/static|_next/image|.*\\.(?:png|jpe?g|gif|svg|webp|ico)$).*)",
+          "/((?!_next/static|_next/image|api/documentation/images/|.*\\.(?:png|jpe?g|gif|svg|webp|ico)$).*)",
         headers: [
           {
             key: "Cache-Control",

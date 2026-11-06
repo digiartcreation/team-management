@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import MenuActionButton from "@/components/ui/MenuActionButton";
 
@@ -17,7 +16,6 @@ export default function DeleteMenuAction({
   message,
   label = "Delete",
 }: DeleteMenuActionProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleDelete() {
@@ -27,7 +25,6 @@ export default function DeleteMenuAction({
 
     startTransition(async () => {
       await action(id);
-      router.refresh();
     });
   }
 

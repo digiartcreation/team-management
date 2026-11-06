@@ -6,6 +6,12 @@ import { markAllNotificationsRead, markNotificationRead } from "@/app/notificati
 import { getVisibleNotificationWhere } from "@/lib/notifications";
 import ActionMenu from "@/components/ui/ActionMenu";
 import PushNotificationToggle from "@/components/notifications/PushNotificationToggle";
+import PaginationControls from "@/components/layout/PaginationControls";
+import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
+
+type NotificationsPageProps = {
+  searchParams: Promise<{ page?: string }>;
+};
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -15,17 +21,26 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   minute: "2-digit",
 });
 
-export default async function NotificationsPage() {
+export default async function NotificationsPage({ searchParams }: NotificationsPageProps) {
   const session = await auth();
   if (!session?.user) redirect("/login");
   const sessionUser = session.user as typeof session.user & { id?: string; role?: string };
   if (!sessionUser.id) redirect("/login");
   if (sessionUser.role === "admin") redirect("/");
-  const notifications = await prisma.notification.findMany({
-    where: getVisibleNotificationWhere(sessionUser.id),
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { name: true } } },
-  });
+  const filters = await searchParams;
+  const page = getPage(filters.page);
+  const where = getVisibleNotificationWhere(sessionUser.id);
+  // One page at a time: notifications are never deleted, so the full list
+  // only grows.
+  const [notifications, totalNotifications] = await Promise.all([
+    prisma.notification.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      include: { user: { select: { name: true } } },
+      ...getPagination(page),
+    }),
+    prisma.notification.count({ where }),
+  ]);
 
   return (
     <DashboardLayout>
@@ -87,6 +102,13 @@ export default async function NotificationsPage() {
             </div>
           )}
         </section>
+        <PaginationControls
+          page={page}
+          total={totalNotifications}
+          pageSize={PAGE_SIZE}
+          basePath="/notifications"
+          searchParams={filters}
+        />
       </div>
     </DashboardLayout>
   );

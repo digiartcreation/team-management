@@ -214,6 +214,16 @@ model Task {
   @@index([assignedToId], map: "Task_assignedToId_fkey")
   @@index([teamId], map: "Task_teamId_fkey")
   @@index([clientId], map: "Task_clientId_fkey")
+  /// Board columns and status counts.
+  @@index([status])
+  /// The menu's "new since you last looked" badge.
+  @@index([updatedAt])
+  /// Services Count's completed-in-range filter.
+  @@index([completedAt])
+  /// The Tasks list, newest first.
+  @@index([createdAt])
+  /// The client work filter's list of distinct values.
+  @@index([clientWork])
 }
 
 /// Someone following a task they are not assigned to. A watcher sees the task
@@ -298,6 +308,10 @@ model DailyUpdate {
   user           User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "DailyUpdate_userId_fkey")
+  /// The Updates list, newest day first.
+  @@index([date])
+  /// The menu badge.
+  @@index([updatedAt])
 }
 
 model Learning {
@@ -314,6 +328,8 @@ model Learning {
   user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "Learning_userId_fkey")
+  /// The menu badge.
+  @@index([updatedAt])
 }
 
 model ToolUsage {
@@ -332,6 +348,8 @@ model ToolUsage {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "ToolUsage_userId_fkey")
+  /// The menu badge.
+  @@index([updatedAt])
 }
 
 model ResearchDocument {
@@ -359,6 +377,10 @@ model ActivityLog {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "ActivityLog_userId_fkey")
+  /// The Activity list, newest first.
+  @@index([createdAt])
+  /// The Activity type filter.
+  @@index([entityType])
 }
 
 model Notification {
@@ -375,6 +397,8 @@ model Notification {
 
   @@index([userId], map: "Notification_userId_fkey")
   @@index([expiresAt])
+  /// Unread counts and the banner, on every page.
+  @@index([userId, isRead, createdAt])
 }
 
 model ModuleReview {
@@ -456,6 +480,8 @@ model AttendanceSession {
   attendance   AttendanceRecord @relation(fields: [attendanceId], references: [id], onDelete: Cascade)
 
   @@index([attendanceId])
+  /// Finding sessions still open, on every attendance view.
+  @@index([checkOutTime])
 }
 
 /// A page in the Documentation menu: a heading and a body written in CKEditor.

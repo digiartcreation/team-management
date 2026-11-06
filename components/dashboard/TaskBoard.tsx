@@ -1,7 +1,6 @@
 "use client";
 
 import Link from "next/link";
-import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import ReopenCauseField from "@/components/tasks/ReopenCauseField";
@@ -412,7 +411,6 @@ export default function TaskBoard({
   dashboardPath,
   watching = false,
 }: TaskBoardProps) {
-  const router = useRouter();
   const [, startTransition] = useTransition();
   const [dragCard, setDragCard] = useState<DragCard | null>(null);
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
@@ -433,8 +431,9 @@ export default function TaskBoard({
 
     startTransition(async () => {
       try {
+        // The action revalidates, so its response already carries the
+        // refreshed board; a router.refresh() here rendered it again.
         await updateOwnTaskStatus(statusFormData(id, status, reopen));
-        router.refresh();
       } catch (submitError) {
         setError(
           submitError instanceof Error
@@ -542,14 +541,12 @@ export default function TaskBoard({
     const prompt = timePromptRef.current;
     setTimePrompt(null);
 
+    // Saving the time already refreshed the board (logTaskTime revalidates).
     if (prompt?.completing) {
       submitStatus(prompt.id, "completed");
-    } else {
-      router.refresh();
     }
-    // submitStatus only touches state setters and the router.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [router]);
+    // submitStatus only touches state setters, so this never goes stale.
+  }, []);
 
   function renderColumns(group: string, boardColumns: BoardColumn[]) {
     return (

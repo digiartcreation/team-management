@@ -5,9 +5,7 @@ import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ADMIN_ROLES } from "@/lib/roles";
 import { logActivity } from "@/lib/activity";
-import { createNotification } from "@/lib/notifications";
 
 const feedbackTypes = new Set(["Suggestion", "Issue Report"]);
 const priorities = new Set(["Low", "Medium", "High"]);
@@ -42,24 +40,6 @@ function handleFeedbackError(error: unknown): never {
   throw error;
 }
 
-async function notifyAdmins(title: string, message: string) {
-  const admins = await prisma.user.findMany({
-    where: { role: { in: ADMIN_ROLES } },
-    select: { id: true },
-  });
-
-  await Promise.all(
-    admins.map((admin) =>
-      createNotification({
-        userId: admin.id,
-        title,
-        message,
-        type: "FEEDBACK_SUBMITTED",
-      })
-    )
-  );
-}
-
 export async function createFeedbackSubmission(formData: FormData) {
   const sessionUser = await getSessionUser();
   const type = getValue(formData, "type");
@@ -89,14 +69,6 @@ export async function createFeedbackSubmission(formData: FormData) {
       entityId: submission.id,
       description: `Created ${type.toLowerCase()} submission`,
     });
-    const user = await prisma.user.findUnique({
-      where: { id: sessionUser.id },
-      select: { name: true },
-    });
-    await notifyAdmins(
-      `${type} submitted`,
-      `${user?.name ?? "A team member"} submitted ${title}.`
-    );
   } catch (error) {
     handleFeedbackError(error);
   }
@@ -127,13 +99,7 @@ export async function updateFeedbackStatus(formData: FormData) {
         status,
         adminResponse: adminResponse || null,
       },
-      select: { id: true, userId: true, title: true },
-    });
-    await createNotification({
-      userId: submission.userId,
-      title: "Feedback status updated",
-      message: "Your feedback submission status has been updated.",
-      type: "FEEDBACK_UPDATED",
+      select: { id: true, title: true },
     });
     await logActivity({
       userId: sessionUser.id,

@@ -1,6 +1,5 @@
 "use client";
 
-import { useRouter } from "next/navigation";
 import { useTransition } from "react";
 import { deleteTeam } from "@/app/teams/actions";
 
@@ -9,7 +8,6 @@ type DeleteTeamButtonProps = {
 };
 
 export default function DeleteTeamButton({ teamId }: DeleteTeamButtonProps) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   function handleDelete() {
@@ -23,7 +21,6 @@ export default function DeleteTeamButton({ teamId }: DeleteTeamButtonProps) {
 
     startTransition(async () => {
       await deleteTeam(teamId);
-      router.refresh();
     });
   }
 
