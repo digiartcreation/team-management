@@ -89,7 +89,7 @@ export default function BreakdownTable({
         <div>
           <h2 className="text-base font-semibold text-slate-950">Detailed breakdown</h2>
           <p className="mt-0.5 text-xs text-slate-500">
-            {groups.length} {groups.length === 1 ? "group" : "groups"} · click a row to show its tasks
+            {groups.length} {groups.length === 1 ? "group" : "groups"} · open a group to see its tasks
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -124,44 +124,178 @@ export default function BreakdownTable({
           Nothing matches &ldquo;{query}&rdquo;.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-[860px] text-left text-sm">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-5 py-3 font-semibold">{groupHeading}</th>
-                {detailHeadings.map((heading) => (
-                  <th key={heading} className="px-4 py-3 font-semibold">
-                    {heading}
-                  </th>
-                ))}
-                {showPeople ? <th className="px-4 py-3 font-semibold">People</th> : null}
-                <th className="px-4 py-3 text-right font-semibold">Time</th>
-                <th className="w-40 px-5 py-3 font-semibold">Share</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {visible.map((group) => {
-                const isOpen = open.has(group.key) || Boolean(needle);
-                const share = total > 0 ? (group.minutes / total) * 100 : 0;
+        <>
+          {/* Phones: a card per group that opens to its tasks, in place of the
+              wide table. The open state and search are shared with the table. */}
+          <div className="divide-y divide-slate-100 md:hidden">
+            {visible.map((group) => (
+              <GroupCard
+                key={group.key}
+                group={group}
+                isOpen={open.has(group.key) || Boolean(needle)}
+                onToggle={() => toggle(group.key)}
+                share={total > 0 ? (group.minutes / total) * 100 : 0}
+                detailHeadings={detailHeadings}
+                showPeople={showPeople}
+              />
+            ))}
+          </div>
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-[860px] text-left text-sm">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-semibold">{groupHeading}</th>
+                  {detailHeadings.map((heading) => (
+                    <th key={heading} className="px-4 py-3 font-semibold">
+                      {heading}
+                    </th>
+                  ))}
+                  {showPeople ? <th className="px-4 py-3 font-semibold">People</th> : null}
+                  <th className="px-4 py-3 text-right font-semibold">Time</th>
+                  <th className="w-40 px-5 py-3 font-semibold">Share</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {visible.map((group) => {
+                  const isOpen = open.has(group.key) || Boolean(needle);
+                  const share = total > 0 ? (group.minutes / total) * 100 : 0;
 
-                return (
-                  <GroupRows
-                    key={group.key}
-                    group={group}
-                    isOpen={isOpen}
-                    onToggle={() => toggle(group.key)}
-                    share={share}
-                    columnCount={columnCount}
-                    detailHeadings={detailHeadings}
-                    showPeople={showPeople}
-                  />
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                  return (
+                    <GroupRows
+                      key={group.key}
+                      group={group}
+                      isOpen={isOpen}
+                      onToggle={() => toggle(group.key)}
+                      share={share}
+                      columnCount={columnCount}
+                      detailHeadings={detailHeadings}
+                      showPeople={showPeople}
+                    />
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </section>
+  );
+}
+
+/** The phone form of one group: folded to its name and time, open to its tasks. */
+function GroupCard({
+  group,
+  isOpen,
+  onToggle,
+  share,
+  detailHeadings,
+  showPeople,
+}: {
+  group: ReportGroup;
+  isOpen: boolean;
+  onToggle: () => void;
+  share: number;
+  detailHeadings: string[];
+  showPeople: boolean;
+}) {
+  return (
+    <div className={isOpen ? "bg-[#FAF7FD]/60" : undefined}>
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isOpen}
+        className="flex w-full items-start gap-3 px-4 py-3.5 text-left transition hover:bg-[#F3E8FF] focus-visible:bg-[#F3E8FF] focus-visible:outline-none"
+      >
+        <span className="mt-0.5">
+          <Chevron open={isOpen} />
+        </span>
+        <span className="min-w-0 flex-1">
+          <span className="block break-words text-sm font-semibold text-slate-950">
+            {group.label}
+          </span>
+          <span className="mt-1 flex flex-wrap items-center gap-1.5">
+            <span className="rounded-full bg-white px-2 py-0.5 text-[11px] font-medium text-slate-500 ring-1 ring-slate-200">
+              {group.tasks.length} {group.tasks.length === 1 ? "task" : "tasks"}
+            </span>
+            {group.reopenMinutes > 0 ? (
+              <span className="rounded-full bg-orange-50 px-2 py-0.5 text-[11px] font-medium text-orange-700 ring-1 ring-orange-200">
+                {formatDuration(group.reopenMinutes)} rework
+              </span>
+            ) : null}
+          </span>
+          <span className="mt-2 flex items-center gap-2">
+            <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-[#EDE3F7]">
+              <span className="block h-full rounded-full bg-[#770FC2]" style={{ width: `${share}%` }} />
+            </span>
+            <span className="w-9 text-right text-xs tabular-nums text-slate-500">
+              {Math.round(share)}%
+            </span>
+          </span>
+        </span>
+        <span className="shrink-0 text-sm font-semibold tabular-nums text-slate-950">
+          {formatDuration(group.minutes)}
+        </span>
+      </button>
+
+      {isOpen ? (
+        <ul className="grid gap-2 px-4 pb-4">
+          {group.tasks.map((task) => (
+            <li key={task.taskId} className="rounded-lg border border-slate-200 bg-white p-3">
+              <div className="flex items-start justify-between gap-3">
+                <p className="min-w-0 break-words text-sm font-medium text-slate-800">{task.title}</p>
+                <div className="shrink-0 text-right tabular-nums">
+                  <p className="text-sm font-medium text-slate-800">{formatDuration(task.minutes)}</p>
+                  {task.reopenMinutes > 0 ? (
+                    <p className="text-xs text-orange-700">
+                      {formatDuration(task.reopenMinutes)} rework
+                    </p>
+                  ) : null}
+                </div>
+              </div>
+              {task.completedAt ? (
+                <p className="mt-1 text-xs text-emerald-700">
+                  Completed {formatOfficeDate(task.completedAt)}
+                </p>
+              ) : null}
+              {task.reopenCount > 0 ? (
+                <p className="mt-1 text-xs font-medium text-[#770FC2]">
+                  Reopened {task.reopenCount} {task.reopenCount === 1 ? "time" : "times"}
+                </p>
+              ) : null}
+              {detailHeadings.length > 0 ? (
+                <dl className="mt-2 grid grid-cols-2 gap-2">
+                  {task.details.map((detail, index) => (
+                    <div key={detailHeadings[index]} className="min-w-0">
+                      <dt className="text-[11px] font-medium uppercase tracking-wide text-slate-400">
+                        {detailHeadings[index]}
+                      </dt>
+                      <dd className="break-words text-sm text-slate-600">
+                        {detail ?? <span className="text-xs text-slate-400">Not mapped</span>}
+                      </dd>
+                    </div>
+                  ))}
+                </dl>
+              ) : null}
+              {showPeople && task.people.length > 0 ? (
+                <div className="mt-2 flex flex-wrap gap-1">
+                  {task.people.map((person) => (
+                    <span
+                      key={person.userId}
+                      className="rounded-md bg-slate-100 px-2 py-0.5 text-xs text-slate-700"
+                    >
+                      {person.name}
+                      {task.people.length > 1 ? (
+                        <span className="ml-1 text-slate-400">{formatDuration(person.minutes)}</span>
+                      ) : null}
+                    </span>
+                  ))}
+                </div>
+              ) : null}
+            </li>
+          ))}
+        </ul>
+      ) : null}
+    </div>
   );
 }
 

@@ -2,24 +2,12 @@ import { prisma } from "@/lib/prisma";
 import { Prisma } from "@prisma/client";
 import { sendPushAfterResponse } from "@/lib/pushNotifications";
 
-// Activities (tasks, updates, learnings, tools, feedback, attendance,
-// calendar) no longer create notifications; only announcements and admin
-// broadcasts do. The older types stay listed so earlier notifications still
-// show on the Notifications page.
-const visibleNotificationTypes = [
-  "ANNOUNCEMENT",
-  "TASK_ASSIGNED",
-  "TASK_UPDATED",
-  "TASK_COMPLETED",
-  "DAILY_UPDATE_CREATED",
-  "FEEDBACK_SUBMITTED",
-  "FEEDBACK_UPDATED",
-  "ATTENDANCE_UPDATED",
-  "LEARNING_UPDATED",
-  "TOOL_USAGE_UPDATED",
-  "CALENDAR_SHARED",
-  "CALENDAR_RESPONSE",
-];
+// Only announcements and admin broadcasts (both "ANNOUNCEMENT") are shown --
+// in the banner, the unread count and the Notifications page. Activities
+// (tasks, updates, learnings, tools, feedback, attendance, calendar) no longer
+// create notifications, and the ones they created before stay hidden; the
+// rows are kept, not deleted.
+const visibleNotificationTypes = ["ANNOUNCEMENT"];
 
 export function getVisibleNotificationWhere(
   userId: string,

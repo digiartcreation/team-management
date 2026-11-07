@@ -22,7 +22,7 @@ function ResultSection({ title, items }: { title: string; items: { id: string; l
   return (
     <section className="rounded-lg border border-slate-200 bg-white p-6 shadow-sm">
       <h2 className="text-lg font-semibold text-slate-950">{title}</h2>
-      {items.length === 0 ? <p className="mt-4 text-sm text-slate-500">No matches.</p> : <div className="mt-4 grid gap-3">{items.map((item) => <Link key={item.id} href={item.href} className="rounded-md border border-slate-200 p-3 transition hover:bg-slate-50"><div className="whitespace-pre-line break-words font-medium text-slate-950">{item.label}</div>{item.description ? <div className="mt-1 whitespace-pre-line break-words text-sm text-slate-500">{item.description}</div> : null}</Link>)}</div>}
+      {items.length === 0 ? <p className="mt-4 text-sm text-slate-500">No matches.</p> : <div className="mt-4 grid gap-3">{items.map((item) => <Link key={item.id} href={item.href} className="rounded-md border border-slate-200 p-3 transition hover:bg-slate-50"><div className="whitespace-pre-line break-words font-medium text-slate-950">{item.label}</div>{/* Folded to three lines on a phone; the result opens the full entry. */}{item.description ? <div className="mt-1 whitespace-pre-line break-words text-sm text-slate-500 max-md:line-clamp-3">{item.description}</div> : null}</Link>)}</div>}
     </section>
   );
 }
