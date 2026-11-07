@@ -5,6 +5,7 @@ import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import MonthFilter from "@/components/attendance/MonthFilter";
 import Avatar from "@/components/ui/Avatar";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import SubmitButton from "@/components/ui/SubmitButton";
 import { checkIn, checkOut } from "@/app/attendance/actions";
 import { SUPER_ADMIN } from "@/lib/roles";
@@ -150,6 +151,110 @@ function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
 }
 
+/** Green for an on-time first check-in, red past the late line. */
+function firstInClass(checkIn: Date | null) {
+  if (!checkIn) return "text-slate-600";
+  return isRedCheckIn(checkIn) ? "text-red-600" : "text-emerald-700";
+}
+
+/**
+ * The phone version of AttendanceTable: one folded card per day showing the
+ * date, the times and the status, which opens on a tap to the rest of the row.
+ */
+function AttendanceCards({
+  rows,
+  now,
+  detailed,
+}: {
+  rows: DayRow[];
+  now: Date;
+  detailed: boolean;
+}) {
+  return (
+    <div className="p-3 md:hidden">
+      <MobileCardList>
+        {rows.map((row) => {
+          if (row.kind === "leave") {
+            return (
+              <MobileCard
+                key={`leave-${row.date.getTime()}`}
+                title={dateFormatter.format(row.date)}
+                subtitle="No check-in"
+                status={<StatusBadge status="Leave" />}
+              >
+                <MobileField label="Sessions">0</MobileField>
+                <MobileField label="Total Hours">None</MobileField>
+              </MobileCard>
+            );
+          }
+
+          const { record } = row;
+          const sessions = sessionsOf(record);
+          const day = summariseSessions(sessions, now);
+          const lastOut = day.open ? "Checked in" : formatTime(record.actualCheckOutTime);
+
+          return (
+            <MobileCard
+              key={record.id}
+              title={dateFormatter.format(record.date)}
+              subtitle={`In ${formatTime(record.actualCheckInTime)} · Out ${lastOut}`}
+              status={detailed ? <StatusBadge status={record.status} /> : undefined}
+            >
+              <MobileField label="Shift">
+                {record.scheduledStartTime}–{record.scheduledEndTime}
+              </MobileField>
+              <MobileField label="First In">
+                <span className={`font-medium ${firstInClass(record.actualCheckInTime)}`}>
+                  {formatTime(record.actualCheckInTime)}
+                </span>
+              </MobileField>
+              <MobileField label="Last Out">
+                {day.open ? (
+                  <span className="font-medium text-emerald-700">Checked in</span>
+                ) : (
+                  formatTime(record.actualCheckOutTime)
+                )}
+              </MobileField>
+              <MobileField label="Sessions">
+                {sessions.length > 1 ? (
+                  <ol className="grid gap-1 tabular-nums">
+                    {sessions.map((item) => (
+                      <li key={item.id}>
+                        {timeFormatter.format(item.checkInTime)} →{" "}
+                        {item.checkOutTime ? timeFormatter.format(item.checkOutTime) : "now"}
+                      </li>
+                    ))}
+                  </ol>
+                ) : (
+                  sessions.length
+                )}
+              </MobileField>
+              <MobileField label="Total Hours">
+                <span className="font-medium text-slate-800">
+                  {sessions.length > 0 ? formatDuration(day.workedMinutes) : "None"}
+                </span>
+              </MobileField>
+              {detailed ? (
+                <>
+                  <MobileField label="Breaks">
+                    {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
+                  </MobileField>
+                  <MobileField label="Late">
+                    {record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}
+                  </MobileField>
+                  <MobileField label="Early Departure">
+                    {record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}
+                  </MobileField>
+                </>
+              ) : null}
+            </MobileCard>
+          );
+        })}
+      </MobileCardList>
+    </div>
+  );
+}
+
 /**
  * One person's days, newest first, leave days among them. Employees get the
  * plain log: no Late / Present status, breaks, lateness or early departure.
@@ -164,128 +269,123 @@ function AttendanceTable({
   detailed: boolean;
 }) {
   return (
-    <div className="overflow-x-auto">
-      <table
-        className={`w-full text-left text-sm ${detailed ? "min-w-[900px]" : "min-w-[600px]"}`}
-      >
-        <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
-          <tr>
-            <th className="px-4 py-3">Date</th>
-            {detailed ? <th className="px-4 py-3">Status</th> : null}
-            <th className="px-4 py-3">First In</th>
-            <th className="px-4 py-3">Last Out</th>
-            <th className="px-4 py-3">Sessions</th>
-            <th className="px-4 py-3">Total Hours</th>
-            {detailed ? (
-              <>
-                <th className="px-4 py-3">Breaks</th>
-                <th className="px-4 py-3">Late</th>
-                <th className="px-4 py-3">Early Departure</th>
-              </>
-            ) : null}
-          </tr>
-        </thead>
-        <tbody className="divide-y divide-slate-200">
-          {rows.map((row) => {
-            if (row.kind === "leave") {
+    <>
+      <AttendanceCards rows={rows} now={now} detailed={detailed} />
+      <div className="hidden overflow-x-auto md:block">
+        <table
+          className={`w-full text-left text-sm ${detailed ? "min-w-[900px]" : "min-w-[600px]"}`}
+        >
+          <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase text-slate-500">
+            <tr>
+              <th className="px-4 py-3">Date</th>
+              {detailed ? <th className="px-4 py-3">Status</th> : null}
+              <th className="px-4 py-3">First In</th>
+              <th className="px-4 py-3">Last Out</th>
+              <th className="px-4 py-3">Sessions</th>
+              <th className="px-4 py-3">Total Hours</th>
+              {detailed ? (
+                <>
+                  <th className="px-4 py-3">Breaks</th>
+                  <th className="px-4 py-3">Late</th>
+                  <th className="px-4 py-3">Early Departure</th>
+                </>
+              ) : null}
+            </tr>
+          </thead>
+          <tbody className="divide-y divide-slate-200">
+            {rows.map((row) => {
+              if (row.kind === "leave") {
+                return (
+                  <tr key={`leave-${row.date.getTime()}`} className="align-top bg-rose-50/40">
+                    <td className="px-4 py-4 text-slate-600">
+                      {dateFormatter.format(row.date)}
+                      <div className="mt-0.5 text-xs text-slate-400">No check-in</div>
+                    </td>
+                    {detailed ? (
+                      <td className="px-4 py-4">
+                        <StatusBadge status="Leave" />
+                      </td>
+                    ) : null}
+                    <td className="px-4 py-4 font-medium text-rose-700">Leave</td>
+                    <td className="px-4 py-4 text-slate-400">–</td>
+                    <td className="px-4 py-4 text-slate-400">0</td>
+                    <td className="px-4 py-4 text-slate-400">None</td>
+                    {detailed ? (
+                      <>
+                        <td className="px-4 py-4 text-slate-400">–</td>
+                        <td className="px-4 py-4 text-slate-400">–</td>
+                        <td className="px-4 py-4 text-slate-400">–</td>
+                      </>
+                    ) : null}
+                  </tr>
+                );
+              }
+
+              const { record } = row;
+              const sessions = sessionsOf(record);
+              const day = summariseSessions(sessions, now);
+
               return (
-                <tr key={`leave-${row.date.getTime()}`} className="align-top bg-rose-50/40">
+                <tr key={record.id} className="align-top hover:bg-slate-50">
                   <td className="px-4 py-4 text-slate-600">
-                    {dateFormatter.format(row.date)}
-                    <div className="mt-0.5 text-xs text-slate-400">No check-in</div>
+                    {dateFormatter.format(record.date)}
+                    <div className="mt-0.5 text-xs text-slate-400">
+                      Shift {record.scheduledStartTime}–{record.scheduledEndTime}
+                    </div>
                   </td>
                   {detailed ? (
                     <td className="px-4 py-4">
-                      <StatusBadge status="Leave" />
+                      <StatusBadge status={record.status} />
                     </td>
                   ) : null}
-                  <td className="px-4 py-4 font-medium text-rose-700">Leave</td>
-                  <td className="px-4 py-4 text-slate-400">–</td>
-                  <td className="px-4 py-4 text-slate-400">0</td>
-                  <td className="px-4 py-4 text-slate-400">None</td>
+                  <td className={`px-4 py-4 font-medium ${firstInClass(record.actualCheckInTime)}`}>
+                    {formatTime(record.actualCheckInTime)}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">
+                    {day.open ? (
+                      <span className="font-medium text-emerald-700">Checked in</span>
+                    ) : (
+                      formatTime(record.actualCheckOutTime)
+                    )}
+                  </td>
+                  <td className="px-4 py-4 text-slate-600">
+                    {sessions.length > 1 ? (
+                      <details>
+                        <summary className="cursor-pointer font-medium text-[#770FC2]">
+                          {sessions.length} sessions
+                        </summary>
+                        <ol className="mt-2 grid gap-1 text-xs">
+                          {sessions.map((item) => (
+                            <li key={item.id} className="tabular-nums">
+                              {timeFormatter.format(item.checkInTime)} →{" "}
+                              {item.checkOutTime ? timeFormatter.format(item.checkOutTime) : "now"}
+                            </li>
+                          ))}
+                        </ol>
+                      </details>
+                    ) : (
+                      sessions.length
+                    )}
+                  </td>
+                  <td className="px-4 py-4 font-medium text-slate-800">
+                    {sessions.length > 0 ? formatDuration(day.workedMinutes) : "None"}
+                  </td>
                   {detailed ? (
                     <>
-                      <td className="px-4 py-4 text-slate-400">–</td>
-                      <td className="px-4 py-4 text-slate-400">–</td>
-                      <td className="px-4 py-4 text-slate-400">–</td>
+                      <td className="px-4 py-4 text-slate-600">
+                        {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
+                      </td>
+                      <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
+                      <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
                     </>
                   ) : null}
                 </tr>
               );
-            }
-
-            const { record } = row;
-            const sessions = sessionsOf(record);
-            const day = summariseSessions(sessions, now);
-
-            return (
-              <tr key={record.id} className="align-top hover:bg-slate-50">
-                <td className="px-4 py-4 text-slate-600">
-                  {dateFormatter.format(record.date)}
-                  <div className="mt-0.5 text-xs text-slate-400">
-                    Shift {record.scheduledStartTime}–{record.scheduledEndTime}
-                  </div>
-                </td>
-                {detailed ? (
-                  <td className="px-4 py-4">
-                    <StatusBadge status={record.status} />
-                  </td>
-                ) : null}
-                <td
-                  className={`px-4 py-4 font-medium ${
-                    !record.actualCheckInTime
-                      ? "text-slate-600"
-                      : isRedCheckIn(record.actualCheckInTime)
-                        ? "text-red-600"
-                        : "text-emerald-700"
-                  }`}
-                >
-                  {formatTime(record.actualCheckInTime)}
-                </td>
-                <td className="px-4 py-4 text-slate-600">
-                  {day.open ? (
-                    <span className="font-medium text-emerald-700">Checked in</span>
-                  ) : (
-                    formatTime(record.actualCheckOutTime)
-                  )}
-                </td>
-                <td className="px-4 py-4 text-slate-600">
-                  {sessions.length > 1 ? (
-                    <details>
-                      <summary className="cursor-pointer font-medium text-[#770FC2]">
-                        {sessions.length} sessions
-                      </summary>
-                      <ol className="mt-2 grid gap-1 text-xs">
-                        {sessions.map((item) => (
-                          <li key={item.id} className="tabular-nums">
-                            {timeFormatter.format(item.checkInTime)} →{" "}
-                            {item.checkOutTime ? timeFormatter.format(item.checkOutTime) : "now"}
-                          </li>
-                        ))}
-                      </ol>
-                    </details>
-                  ) : (
-                    sessions.length
-                  )}
-                </td>
-                <td className="px-4 py-4 font-medium text-slate-800">
-                  {sessions.length > 0 ? formatDuration(day.workedMinutes) : "None"}
-                </td>
-                {detailed ? (
-                  <>
-                    <td className="px-4 py-4 text-slate-600">
-                      {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
-                    </td>
-                    <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
-                    <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
-                  </>
-                ) : null}
-              </tr>
-            );
-          })}
-        </tbody>
-      </table>
-    </div>
+            })}
+          </tbody>
+        </table>
+      </div>
+    </>
   );
 }
 

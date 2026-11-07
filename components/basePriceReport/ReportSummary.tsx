@@ -3,6 +3,7 @@ import type { GroupNoun } from "@/components/basePriceReport/BasePriceCharts";
 import type { BasePriceReport, GroupTotal } from "@/lib/basePriceReport";
 import { formatDuration } from "@/lib/duration";
 import { formatInr } from "@/lib/services";
+import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 
 function signedInr(amount: number) {
   return `${amount < 0 ? "−" : "+"}${formatInr(Math.abs(amount))}`;
@@ -119,75 +120,162 @@ export function GroupSummaryTable({
           Nothing priced for these filters yet.
         </p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full min-w-225 text-left text-sm tabular-nums">
-            <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
-              <tr>
-                <th className="px-5 py-3 font-semibold">{heading}</th>
-                <th className="px-4 py-3 text-right font-semibold">Tasks</th>
-                <th className="px-4 py-3 text-right font-semibold">Hours</th>
-                <th className="px-4 py-3 text-right font-semibold">Income</th>
-                <th className="px-4 py-3 text-right font-semibold">Work effort</th>
-                <th className="px-4 py-3 text-right font-semibold">Margin</th>
-                <th className="px-4 py-3 font-semibold">Ratio</th>
-                <th className="px-5 py-3 font-semibold">Share of income</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {groups.map((group) => {
-                const margin = group.income - group.effort;
-                const share = percent(group.income, totals.income);
+        <>
+          <GroupSummaryCards groups={groups} totals={totals} />
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full min-w-225 text-left text-sm tabular-nums">
+              <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
+                <tr>
+                  <th className="px-5 py-3 font-semibold">{heading}</th>
+                  <th className="px-4 py-3 text-right font-semibold">Tasks</th>
+                  <th className="px-4 py-3 text-right font-semibold">Hours</th>
+                  <th className="px-4 py-3 text-right font-semibold">Income</th>
+                  <th className="px-4 py-3 text-right font-semibold">Work effort</th>
+                  <th className="px-4 py-3 text-right font-semibold">Margin</th>
+                  <th className="px-4 py-3 font-semibold">Ratio</th>
+                  <th className="px-5 py-3 font-semibold">Share of income</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {groups.map((group) => {
+                  const margin = group.income - group.effort;
+                  const share = percent(group.income, totals.income);
 
-                return (
-                  <tr key={group.key} className="hover:bg-slate-50">
-                    <td className="px-5 py-3 font-medium text-slate-950">{group.name}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{group.tasks}</td>
-                    <td className="px-4 py-3 text-right text-slate-600">{formatDuration(group.minutes)}</td>
-                    <td className="px-4 py-3 text-right text-slate-900">{formatInr(group.income)}</td>
-                    <td className="px-4 py-3 text-right text-slate-900">{formatInr(group.effort)}</td>
-                    <td className={`px-4 py-3 text-right font-medium ${margin < 0 ? "text-red-700" : "text-emerald-700"}`}>
-                      {signedInr(margin)}
-                    </td>
-                    <td className="px-4 py-3">
-                      {group.ratio === null ? (
-                        <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                          Cost only
-                        </span>
-                      ) : (
-                        <RatioValue ratio={group.ratio} />
-                      )}
-                    </td>
-                    <td className="px-5 py-3">
-                      <div className="flex items-center gap-2">
-                        <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
-                          <div className="h-full rounded-full bg-[#770FC2]" style={{ width: `${share}%` }} />
+                  return (
+                    <tr key={group.key} className="hover:bg-slate-50">
+                      <td className="px-5 py-3 font-medium text-slate-950">{group.name}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{group.tasks}</td>
+                      <td className="px-4 py-3 text-right text-slate-600">{formatDuration(group.minutes)}</td>
+                      <td className="px-4 py-3 text-right text-slate-900">{formatInr(group.income)}</td>
+                      <td className="px-4 py-3 text-right text-slate-900">{formatInr(group.effort)}</td>
+                      <td className={`px-4 py-3 text-right font-medium ${margin < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                        {signedInr(margin)}
+                      </td>
+                      <td className="px-4 py-3">
+                        {group.ratio === null ? (
+                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                            Cost only
+                          </span>
+                        ) : (
+                          <RatioValue ratio={group.ratio} />
+                        )}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="flex items-center gap-2">
+                          <div className="h-1.5 w-24 overflow-hidden rounded-full bg-slate-100">
+                            <div className="h-full rounded-full bg-[#770FC2]" style={{ width: `${share}%` }} />
+                          </div>
+                          <span className="w-9 text-right text-xs text-slate-600">{share}%</span>
                         </div>
-                        <span className="w-9 text-right text-xs text-slate-600">{share}%</span>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-            <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-950">
-              <tr>
-                <td className="px-5 py-3">Total</td>
-                <td className="px-4 py-3 text-right">{totals.tasks}</td>
-                <td className="px-4 py-3 text-right">{formatDuration(totals.minutes)}</td>
-                <td className="px-4 py-3 text-right">{formatInr(totals.income)}</td>
-                <td className="px-4 py-3 text-right">{formatInr(totals.effort)}</td>
-                <td className={`px-4 py-3 text-right ${totals.income - totals.effort < 0 ? "text-red-700" : "text-emerald-700"}`}>
-                  {signedInr(totals.income - totals.effort)}
-                </td>
-                <td className="px-4 py-3">
-                  {totals.ratio === null ? "—" : <RatioValue ratio={totals.ratio} />}
-                </td>
-                <td className="px-5 py-3 text-xs text-slate-500">100%</td>
-              </tr>
-            </tfoot>
-          </table>
-        </div>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+              <tfoot className="border-t border-slate-200 bg-slate-50 font-semibold text-slate-950">
+                <tr>
+                  <td className="px-5 py-3">Total</td>
+                  <td className="px-4 py-3 text-right">{totals.tasks}</td>
+                  <td className="px-4 py-3 text-right">{formatDuration(totals.minutes)}</td>
+                  <td className="px-4 py-3 text-right">{formatInr(totals.income)}</td>
+                  <td className="px-4 py-3 text-right">{formatInr(totals.effort)}</td>
+                  <td className={`px-4 py-3 text-right ${totals.income - totals.effort < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                    {signedInr(totals.income - totals.effort)}
+                  </td>
+                  <td className="px-4 py-3">
+                    {totals.ratio === null ? "—" : <RatioValue ratio={totals.ratio} />}
+                  </td>
+                  <td className="px-5 py-3 text-xs text-slate-500">100%</td>
+                </tr>
+              </tfoot>
+            </table>
+          </div>
+        </>
       )}
     </section>
+  );
+}
+
+/**
+ * The phone form of GroupSummaryTable: a folded card per client or service
+ * showing its income, opening on a tap to the rest of the row, then the totals.
+ */
+function GroupSummaryCards({
+  groups,
+  totals,
+}: {
+  groups: GroupTotal[];
+  totals: BasePriceReport["totals"];
+}) {
+  const totalMargin = totals.income - totals.effort;
+
+  return (
+    <div className="grid gap-3 p-3 md:hidden">
+      <MobileCardList>
+        {groups.map((group) => {
+          const margin = group.income - group.effort;
+          const share = percent(group.income, totals.income);
+
+          return (
+            <MobileCard
+              key={group.key}
+              title={group.name}
+              subtitle={`${group.tasks} ${group.tasks === 1 ? "task" : "tasks"} · ${formatDuration(group.minutes)}`}
+              status={
+                <span className="whitespace-nowrap text-sm font-semibold tabular-nums text-slate-900">
+                  {formatInr(group.income)}
+                </span>
+              }
+            >
+              <div className="grid grid-cols-2 gap-3 tabular-nums">
+                <MobileField label="Income">{formatInr(group.income)}</MobileField>
+                <MobileField label="Work effort">{formatInr(group.effort)}</MobileField>
+                <MobileField label="Margin">
+                  <span className={`font-medium ${margin < 0 ? "text-red-700" : "text-emerald-700"}`}>
+                    {signedInr(margin)}
+                  </span>
+                </MobileField>
+                <MobileField label="Ratio">
+                  {group.ratio === null ? (
+                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                      Cost only
+                    </span>
+                  ) : (
+                    <RatioValue ratio={group.ratio} />
+                  )}
+                </MobileField>
+              </div>
+              <MobileField label="Share of income">
+                <span className="flex items-center gap-2">
+                  <span className="h-1.5 flex-1 overflow-hidden rounded-full bg-slate-100">
+                    <span className="block h-full rounded-full bg-[#770FC2]" style={{ width: `${share}%` }} />
+                  </span>
+                  <span className="w-9 text-right text-xs text-slate-600">{share}%</span>
+                </span>
+              </MobileField>
+            </MobileCard>
+          );
+        })}
+      </MobileCardList>
+
+      <dl className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-slate-50 p-4 tabular-nums">
+        <div className="col-span-2 flex items-baseline justify-between">
+          <dt className="text-sm font-semibold text-slate-950">Total</dt>
+          <dd className="text-xs text-slate-500">
+            {totals.tasks} {totals.tasks === 1 ? "task" : "tasks"} · {formatDuration(totals.minutes)}
+          </dd>
+        </div>
+        <MobileField label="Income">{formatInr(totals.income)}</MobileField>
+        <MobileField label="Work effort">{formatInr(totals.effort)}</MobileField>
+        <MobileField label="Margin">
+          <span className={`font-medium ${totalMargin < 0 ? "text-red-700" : "text-emerald-700"}`}>
+            {signedInr(totalMargin)}
+          </span>
+        </MobileField>
+        <MobileField label="Ratio">
+          {totals.ratio === null ? "—" : <RatioValue ratio={totals.ratio} />}
+        </MobileField>
+      </dl>
+    </div>
   );
 }
