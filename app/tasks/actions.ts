@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { FILTER_TAGS } from "@/lib/filterOptions";
 import {
   ALL_SERVICE_OPTIONS,
   DEFAULT_VIDEO_WEIGHTAGE,
@@ -470,6 +471,8 @@ export async function createTask(formData: FormData) {
     handlePrismaTaskError(error);
   }
 
+  // A new service may now be in the Service filter (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.services);
   revalidatePath("/tasks");
   revalidatePath("/");
   revalidatePath("/manager");
@@ -626,6 +629,8 @@ export async function updateTask(formData: FormData) {
     handlePrismaTaskError(error);
   }
 
+  // The task's service may have changed (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.services);
   revalidatePath("/tasks");
   revalidatePath("/");
   revalidatePath("/manager");
@@ -686,6 +691,8 @@ export async function deleteTask(id: string) {
     handlePrismaTaskError(error);
   }
 
+  // It may have been the last task with its service (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.services);
   revalidatePath("/tasks");
   revalidatePath("/");
   revalidatePath("/manager");

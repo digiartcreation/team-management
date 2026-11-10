@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { FILTER_TAGS } from "@/lib/filterOptions";
 import { CLIENT_STATUS_OPTIONS } from "@/lib/services";
 import { parseServiceMappings } from "@/lib/clientServices";
 import {
@@ -124,6 +125,8 @@ export async function createClient(formData: FormData) {
     handlePrismaClientError(error);
   }
 
+  // The Client filters (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.clients);
   revalidatePath("/clients");
   redirect("/clients");
 }
@@ -205,6 +208,8 @@ export async function updateClient(formData: FormData) {
     handlePrismaClientError(error);
   }
 
+  // The Client filters show the name (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.clients);
   revalidatePath("/clients");
   redirect("/clients");
 }
@@ -266,5 +271,7 @@ export async function deleteClient(id: string) {
     handlePrismaClientError(error);
   }
 
+  // The Client filters (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.clients);
   revalidatePath("/clients");
 }

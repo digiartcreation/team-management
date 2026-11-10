@@ -79,38 +79,54 @@ export function columnTotal(columns: BoardColumn[], status: BoardStatus) {
 /**
  * Loads the dashboard board for whichever slice of tasks the caller owns --
  * everything for an admin, one team for a manager, one person for an employee.
- * The counts come from a single grouped query so the column headers stay true
- * even where the cards below them are capped.
+ *
+ * Two queries, whatever the number of columns: the first lists every task on
+ * the board (id and status only), which gives each column's count -- true even
+ * where its cards are capped -- and picks the cards it shows; the second loads
+ * just those cards. Loading each column on its own took four queries, plus
+ * four more per column for its client, assignee and time logs.
  */
 export async function loadTaskBoard(
   where: Prisma.TaskWhereInput
 ): Promise<BoardColumn[]> {
-  const [counts, ...columns] = await Promise.all([
-    prisma.task.groupBy({
-      by: ["status"],
-      where: visibleTasks(where),
-      _count: { _all: true },
-    }),
-    ...BOARD_COLUMNS.map((status) =>
-      prisma.task.findMany({
-        where: visibleTasks({ ...where, status }),
-        // Most recently touched first, so a column opens on what moved last.
-        orderBy: { updatedAt: "desc" },
-        take: COLUMN_CARD_LIMIT,
-        select: BOARD_CARD_SELECT,
-      })
-    ),
-  ]);
+  const onBoard = await prisma.task.findMany({
+    where: visibleTasks({ ...where, status: { in: [...BOARD_COLUMNS] } }),
+    // Most recently touched first, so a column opens on what moved last.
+    orderBy: { updatedAt: "desc" },
+    select: { id: true, status: true },
+  });
 
-  const totals = new Map(
-    counts.map((row) => [row.status, row._count._all] as const)
-  );
+  const columnIds = new Map<string, string[]>(BOARD_COLUMNS.map((status) => [status, []]));
+  const totals = new Map<string, number>();
 
-  return BOARD_COLUMNS.map((status, index) => ({
+  for (const task of onBoard) {
+    totals.set(task.status, (totals.get(task.status) ?? 0) + 1);
+    const ids = columnIds.get(task.status);
+
+    if (ids && ids.length < COLUMN_CARD_LIMIT) {
+      ids.push(task.id);
+    }
+  }
+
+  const shownIds = [...columnIds.values()].flat();
+  const cards =
+    shownIds.length > 0
+      ? await prisma.task.findMany({
+          where: { id: { in: shownIds } },
+          select: BOARD_CARD_SELECT,
+        })
+      : [];
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+
+  return BOARD_COLUMNS.map((status) => ({
     status,
     label: formatTaskStatus(status),
     total: totals.get(status) ?? 0,
-    cards: columns[index].map(toBoardCard),
+    // In the first query's order; a task deleted in between is left out.
+    cards: (columnIds.get(status) ?? []).flatMap((id) => {
+      const card = cardsById.get(id);
+      return card ? [toBoardCard(card)] : [];
+    }),
   }));
 }
 

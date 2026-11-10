@@ -8,7 +8,6 @@ import {
   useState,
   useTransition,
 } from "react";
-import { useRouter } from "next/navigation";
 import CalendarEntryDialog from "@/components/dashboard/CalendarEntryDialog";
 import { CalendarRsvp, responseSummary } from "@/components/dashboard/CalendarResponses";
 import { deleteCalendarEvent } from "@/app/calendar/actions";
@@ -198,7 +197,6 @@ export default function DashboardCalendar({
   initialEntries,
   people,
 }: DashboardCalendarProps) {
-  const router = useRouter();
   const [month, setMonth] = useState(today.slice(0, 7));
   const [selectedDay, setSelectedDay] = useState(today);
   const [entries, setEntries] = useState(initialEntries);
@@ -301,18 +299,17 @@ export default function DashboardCalendar({
       const target = stay ? month : date.slice(0, 7);
       setMonth(target);
       void loadMonth(target);
-      // The menu's today and tomorrow counts come with the page.
-      router.refresh();
+      // The menu's today and tomorrow counts come back with the save itself:
+      // the action re-renders the page (app/calendar/actions.ts).
     },
-    [days, month, loadMonth, router]
+    [days, month, loadMonth]
   );
 
-  // An answer to a shared entry: reload the month to show it, and the page
-  // for the menu's counts, which leave declined entries out.
+  // An answer to a shared entry: reload the month to show it. The menu's
+  // counts, which leave declined entries out, come back with the answer.
   const handleResponded = useCallback(() => {
     void loadMonth(month);
-    router.refresh();
-  }, [loadMonth, month, router]);
+  }, [loadMonth, month]);
 
   function requestDelete(entry: CalendarEntry) {
     setDialog(null);
@@ -332,8 +329,8 @@ export default function DashboardCalendar({
       if (result?.error) {
         setError(result.error);
       } else {
+        // The menu's counts come back with the delete itself.
         setEntries((current) => current.filter((item) => item.id !== entry.id));
-        router.refresh();
       }
 
       setDeleting(null);
