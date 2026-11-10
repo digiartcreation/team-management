@@ -21,8 +21,6 @@ import {
 import { formatInr } from "@/lib/services";
 
 type ServiceCountFilters = {
-  /** "all" for all time. */
-  period?: string;
   /** "2026-10": one whole month. */
   month?: string;
   from?: string;
@@ -100,14 +98,13 @@ export default async function ServicesCountPage({
   const presets = datePresets(today);
   const thisWeek = presets.find((preset) => preset.label === "This week")!;
 
-  // All time, one month, a range, or -- with nothing chosen -- this week.
-  const allTime = filters.period === "all";
-  const month = !allTime && isMonthKey(filters.month) ? filters.month : null;
+  // One month, a range, or -- with nothing chosen -- this week. There is no
+  // "All time": it read every completed task ever, so the page got slower
+  // every month (as on the Reports page).
+  const month = isMonthKey(filters.month) ? filters.month : null;
   let dates: { from?: string; to?: string };
 
-  if (allTime) {
-    dates = {};
-  } else if (month) {
+  if (month) {
     const { gte, lt } = monthRange(month);
     dates = {
       from: gte.toISOString().slice(0, 10),
@@ -197,13 +194,13 @@ export default async function ServicesCountPage({
     : currentMonth;
   const monthOptions = monthsBetween(firstMonth, currentMonth);
 
-  const scope = allTime ? "All time" : month ? monthLabel(month) : describeRange(from, to);
+  const scope = month ? monthLabel(month) : describeRange(from, to);
   const fileStem = `services-count-${
-    allTime ? "all-time" : month ? month : [dates.from, dates.to].filter(Boolean).join("-to-")
+    month ? month : [dates.from, dates.to].filter(Boolean).join("-to-")
   }`;
-  const activePreset = allTime
-    ? "All time"
-    : presets.find((preset) => preset.from === dates.from && preset.to === dates.to)?.label;
+  const activePreset = presets.find(
+    (preset) => preset.from === dates.from && preset.to === dates.to
+  )?.label;
 
   const unpriced = report.clients.some((client) =>
     client.lines.some((line) => line.amount === null)
@@ -284,23 +281,17 @@ export default async function ServicesCountPage({
             in production a client-side hop that only changes the query string
             sometimes never finishes, leaving the old range on screen. */}
         <div className="flex flex-wrap gap-1.5">
-          {[
-            { label: "All time", href: servicesCountHref({ period: "all" }) },
-            ...presets.map((preset) => ({
-              label: preset.label,
-              href: servicesCountHref({ from: preset.from, to: preset.to }),
-            })),
-          ].map((option) => (
+          {presets.map((preset) => (
             <a
-              key={option.label}
-              href={option.href}
+              key={preset.label}
+              href={servicesCountHref({ from: preset.from, to: preset.to })}
               className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                activePreset === option.label
+                activePreset === preset.label
                   ? "bg-slate-900 text-white ring-slate-900"
                   : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
               }`}
             >
-              {option.label}
+              {preset.label}
             </a>
           ))}
         </div>
@@ -335,7 +326,7 @@ export default async function ServicesCountPage({
               <input
                 name="from"
                 type="date"
-                defaultValue={month || allTime ? "" : (dates.from ?? "")}
+                defaultValue={month ? "" : (dates.from ?? "")}
                 className={inputClass}
               />
             </label>
@@ -344,7 +335,7 @@ export default async function ServicesCountPage({
               <input
                 name="to"
                 type="date"
-                defaultValue={month || allTime ? "" : (dates.to ?? "")}
+                defaultValue={month ? "" : (dates.to ?? "")}
                 className={inputClass}
               />
             </label>
