@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useRouter } from "next/navigation";
 import { useCallback, useEffect, useRef, useState, useTransition } from "react";
 import LogTimeDialog from "@/components/tasks/LogTimeDialog";
 import ReopenCauseField from "@/components/tasks/ReopenCauseField";
@@ -411,6 +412,9 @@ export default function TaskBoard({
   dashboardPath,
   watching = false,
 }: TaskBoardProps) {
+  // Through a ref, so submitStatus -- called from the save handler below, which
+  // has to stay stable -- reads only stable values.
+  const routerRef = useRef(useRouter());
   const [, startTransition] = useTransition();
   const [dragCard, setDragCard] = useState<DragCard | null>(null);
   const [movingCardId, setMovingCardId] = useState<string | null>(null);
@@ -425,7 +429,12 @@ export default function TaskBoard({
   const timePromptRef = useRef<TimePrompt | null>(null);
   timePromptRef.current = timePrompt;
 
-  function submitStatus(id: string, status: TaskStatus, reopen?: ReopenAnswer) {
+  function submitStatus(
+    id: string,
+    status: TaskStatus,
+    reopen?: ReopenAnswer,
+    afterLoggingTime = false
+  ) {
     setError(null);
     setMovingCardId(id);
 
@@ -440,6 +449,12 @@ export default function TaskBoard({
             ? submitError.message
             : "Could not update the task's status."
         );
+
+        // The time just logged did not refresh the board, counting on this
+        // update to; it failed, so refresh it here to show the new entry.
+        if (afterLoggingTime) {
+          routerRef.current.refresh();
+        }
       } finally {
         setMovingCardId(null);
       }
@@ -541,9 +556,10 @@ export default function TaskBoard({
     const prompt = timePromptRef.current;
     setTimePrompt(null);
 
-    // Saving the time already refreshed the board (logTaskTime revalidates).
+    // A plain entry refreshed the board itself (logTaskTime revalidates); one
+    // made to complete the task leaves that to this status update.
     if (prompt?.completing) {
-      submitStatus(prompt.id, "completed");
+      submitStatus(prompt.id, "completed", undefined, true);
     }
     // submitStatus only touches state setters, so this never goes stale.
   }, []);
