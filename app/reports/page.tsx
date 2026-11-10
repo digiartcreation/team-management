@@ -183,13 +183,13 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   const filters = await searchParams;
   const view = isReportView(filters.view) ? filters.view : DEFAULT_REPORT_VIEW;
   const definition = REPORT_VIEW_DEFINITIONS[view];
-  // With no dates chosen the report opens on this month, as the Base Price
-  // Report does. There is no "All time": it read every entry ever logged, so
-  // the page got slower every month.
+  // With no dates chosen the report opens on this week, as the Base Price
+  // Report and Services Count do. There is no "All time": it read every entry
+  // ever logged, so the page got slower every month.
   const presets = datePresets(todayUtcMidnight());
-  const thisMonth = presets.find((preset) => preset.label === "This month")!;
+  const thisWeek = presets.find((preset) => preset.label === "This week")!;
   const dates: { from?: string; to?: string } =
-    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisMonth;
+    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisWeek;
   const from = parseDateInput(dates.from);
   const to = parseDateInput(dates.to);
 

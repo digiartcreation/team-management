@@ -91,11 +91,11 @@ export default async function BasePriceReportPage({
 
   const filters = await searchParams;
   const view: GroupNoun = filters.view === "service" ? "service" : "client";
-  // With no dates chosen the report opens on this month.
+  // With no dates chosen the report opens on this week.
   const presets = datePresets(todayUtcMidnight());
-  const thisMonth = presets.find((preset) => preset.label === "This month")!;
+  const thisWeek = presets.find((preset) => preset.label === "This week")!;
   const dates: { from?: string; to?: string } =
-    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisMonth;
+    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisWeek;
   const from = parseDateInput(dates.from);
   const to = parseDateInput(dates.to);
 

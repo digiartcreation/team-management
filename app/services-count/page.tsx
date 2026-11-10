@@ -98,9 +98,9 @@ export default async function ServicesCountPage({
   const filters = await searchParams;
   const today = todayUtcMidnight();
   const presets = datePresets(today);
-  const thisMonth = presets.find((preset) => preset.label === "This month")!;
+  const thisWeek = presets.find((preset) => preset.label === "This week")!;
 
-  // All time, one month, a range, or -- with nothing chosen -- this month.
+  // All time, one month, a range, or -- with nothing chosen -- this week.
   const allTime = filters.period === "all";
   const month = !allTime && isMonthKey(filters.month) ? filters.month : null;
   let dates: { from?: string; to?: string };
@@ -116,7 +116,7 @@ export default async function ServicesCountPage({
   } else if (filters.from || filters.to) {
     dates = { from: filters.from, to: filters.to };
   } else {
-    dates = thisMonth;
+    dates = thisWeek;
   }
 
   const from = parseDateInput(dates.from);
