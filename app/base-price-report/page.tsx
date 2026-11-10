@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { getActivePeopleOptions, getClientOptions, getMappedWork } from "@/lib/filterOptions";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import BasePriceCharts, { type GroupNoun } from "@/components/basePriceReport/BasePriceCharts";
@@ -74,11 +74,13 @@ function plural(count: number, one: string, many = `${one}s`) {
 export default async function BasePriceReportPage({
   searchParams,
 }: BasePriceReportPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     isSuperAdmin?: boolean;
@@ -146,7 +148,8 @@ export default async function BasePriceReportPage({
   }
 
   const [report, clientOptions, userOptions] = await Promise.all([
-    loadBasePriceReport(where),
+    // The range lets it read only the months it touches, day by day.
+    loadBasePriceReport(where, { from, to }),
     getClientOptions(),
     getActivePeopleOptions(),
   ]);

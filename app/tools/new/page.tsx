@@ -1,13 +1,14 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ToolUsageForm from "@/components/tools/ToolUsageForm";
 import FormPageHeader from "@/components/ui/FormPageHeader";
 import { createToolUsage } from "@/app/tools/actions";
 
 export default async function NewToolPage() {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
 
   return (
     <DashboardLayout>

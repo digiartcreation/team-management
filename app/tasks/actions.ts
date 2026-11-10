@@ -1050,6 +1050,14 @@ export async function logTaskTime(
     return { error: "Could not save the time entry. Please try again." };
   }
 
+  // "Log time to complete": the dialog marks the task completed right after
+  // this (updateOwnTaskStatus), and that refreshes the page, this entry
+  // included. Refreshing here as well rendered the whole dashboard twice, and
+  // kept the dialog on "Saving..." through the first render.
+  if (getValue(formData, "then") === "complete") {
+    return { ok: true };
+  }
+
   revalidatePath("/tasks");
   revalidatePath("/reports");
   revalidatePath("/");

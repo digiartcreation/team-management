@@ -1,17 +1,19 @@
 import BackLink from "@/components/ui/BackLink";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ClientForm from "@/components/clients/ClientForm";
 import { createClient } from "@/app/clients/actions";
 import { getClientPeopleOptions } from "@/lib/clientPeople";
 
 export default async function NewClientPage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;

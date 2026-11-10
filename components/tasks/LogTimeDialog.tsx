@@ -110,6 +110,10 @@ export default function LogTimeDialog({
       >
       <form ref={formRef} action={formAction} className="grid gap-5 p-6">
         <input type="hidden" name="taskId" value={taskId} />
+        {/* Completing: whoever opened this marks the task completed next
+            (onSaved), and that refreshes the page, so saving the time does not
+            refresh it as well (logTaskTime). */}
+        {completing ? <input type="hidden" name="then" value="complete" /> : null}
 
         <div>
           <h2

@@ -1,12 +1,12 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardCalendar from "@/components/dashboard/DashboardCalendar";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { loadCalendarProps } from "@/lib/calendarEvents";
 
 /** The calendar on a page of its own, for every role. */
 export default async function CalendarPage() {
-  const session = await auth();
+  const session = await getShellSession();
   const sessionUser = session?.user as
     | (NonNullable<typeof session>["user"] & { id?: string; role?: string })
     | undefined;
@@ -14,6 +14,8 @@ export default async function CalendarPage() {
   if (!sessionUser?.id) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const calendar = await loadCalendarProps({
     id: sessionUser.id,

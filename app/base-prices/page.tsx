@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ActionMenu from "@/components/ui/ActionMenu";
@@ -17,11 +17,13 @@ function rank(options: string[], value: string) {
 }
 
 export default async function BasePricesPage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     isSuperAdmin?: boolean;

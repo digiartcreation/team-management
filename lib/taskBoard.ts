@@ -218,12 +218,14 @@ export type BoardGroup = {
  * tasks (an admin or manager can be assigned work too), and an Unassigned
  * board when anything is waiting on an owner.
  *
- * Everything on the board is fetched in one query and grouped here, rather
- * than five queries per person. Closed work is not on the board, so this is
- * the open and recently finished tasks only.
+ * Closed work is not on the board, so this is the open and recently finished
+ * tasks only. As on loadTaskBoard, the first query lists every board task
+ * with just enough to count and place it, and full card data -- time logs
+ * included -- is loaded for the cards shown only: a column shows at most
+ * COLUMN_CARD_LIMIT, and finished tasks pile up beyond that.
  */
 export async function loadTaskBoardsByAssignee(): Promise<BoardGroup[]> {
-  const [members, tasks] = await Promise.all([
+  const [members, onBoard] = await Promise.all([
     prisma.user.findMany({
       where: { role: "member", ...ACTIVE_USER },
       orderBy: { name: "asc" },
@@ -231,61 +233,97 @@ export async function loadTaskBoardsByAssignee(): Promise<BoardGroup[]> {
     }),
     prisma.task.findMany({
       where: visibleTasks({ status: { in: [...BOARD_COLUMNS] } }),
+      // Most recently touched first, so a column opens on what moved last.
       orderBy: { updatedAt: "desc" },
-      select: BOARD_CARD_SELECT,
+      select: {
+        id: true,
+        status: true,
+        assignedToId: true,
+        assignedTo: { select: { name: true } },
+      },
     }),
   ]);
 
   const people = new Map(members.map((member) => [member.id, member.name]));
-  const tasksByKey = new Map<string, BoardTask[]>();
+  // Per board ("unassigned" or an assignee's id): its task count, and each
+  // column's count and the ids of the cards it shows.
+  const boards = new Map<
+    string,
+    { taskCount: number; columns: Map<string, { total: number; ids: string[] }> }
+  >();
 
-  for (const task of tasks) {
+  for (const task of onBoard) {
     const key = task.assignedToId ?? "unassigned";
 
     if (task.assignedToId && !people.has(task.assignedToId)) {
       people.set(task.assignedToId, task.assignedTo?.name ?? "Unknown");
     }
 
-    const bucket = tasksByKey.get(key);
+    let board = boards.get(key);
 
-    if (bucket) {
-      bucket.push(task);
-    } else {
-      tasksByKey.set(key, [task]);
+    if (!board) {
+      board = {
+        taskCount: 0,
+        columns: new Map(BOARD_COLUMNS.map((status) => [status, { total: 0, ids: [] }])),
+      };
+      boards.set(key, board);
+    }
+
+    board.taskCount += 1;
+    const column = board.columns.get(task.status);
+
+    if (column) {
+      column.total += 1;
+
+      if (column.ids.length < COLUMN_CARD_LIMIT) {
+        column.ids.push(task.id);
+      }
     }
   }
 
+  const shownIds = [...boards.values()].flatMap((board) =>
+    [...board.columns.values()].flatMap((column) => column.ids)
+  );
+  const cards =
+    shownIds.length > 0
+      ? await prisma.task.findMany({
+          where: { id: { in: shownIds } },
+          select: BOARD_CARD_SELECT,
+        })
+      : [];
+  const cardsById = new Map(cards.map((card) => [card.id, card]));
+
+  const toBoardGroup = (key: string, name: string | null): BoardGroup => {
+    const board = boards.get(key);
+
+    return {
+      key,
+      name,
+      taskCount: board?.taskCount ?? 0,
+      columns: BOARD_COLUMNS.map((status) => {
+        const column = board?.columns.get(status);
+
+        return {
+          status,
+          label: formatTaskStatus(status),
+          total: column?.total ?? 0,
+          // In the first query's order; a task deleted in between is left out.
+          cards: (column?.ids ?? []).flatMap((id) => {
+            const card = cardsById.get(id);
+            return card ? [toBoardCard(card)] : [];
+          }),
+        };
+      }),
+    };
+  };
+
   const groups: BoardGroup[] = [...people.entries()]
     .sort(([, a], [, b]) => a.localeCompare(b))
-    .map(([id, name]) => toBoardGroup(id, name, tasksByKey.get(id) ?? []));
+    .map(([id, name]) => toBoardGroup(id, name));
 
-  const unassigned = tasksByKey.get("unassigned");
-
-  if (unassigned) {
-    groups.push(toBoardGroup("unassigned", null, unassigned));
+  if (boards.has("unassigned")) {
+    groups.push(toBoardGroup("unassigned", null));
   }
 
   return groups;
-}
-
-function toBoardGroup(
-  key: string,
-  name: string | null,
-  tasks: BoardTask[]
-): BoardGroup {
-  return {
-    key,
-    name,
-    taskCount: tasks.length,
-    columns: BOARD_COLUMNS.map((status) => {
-      const inColumn = tasks.filter((task) => task.status === status);
-
-      return {
-        status,
-        label: formatTaskStatus(status),
-        total: inColumn.length,
-        cards: inColumn.slice(0, COLUMN_CARD_LIMIT).map(toBoardCard),
-      };
-    }),
-  };
 }

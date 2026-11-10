@@ -1,16 +1,18 @@
 import FormPageHeader from "@/components/ui/FormPageHeader";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import LearningForm from "@/components/learnings/LearningForm";
 import { createLearning } from "@/app/learnings/actions";
 
 export default async function NewLearningPage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   return (
     <DashboardLayout>

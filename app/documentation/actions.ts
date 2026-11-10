@@ -1,10 +1,11 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { DOCS_INDEX_TAG } from "@/lib/documentationCache";
 import {
   canManageDocumentation,
   hasDocumentationContent,
@@ -99,6 +100,8 @@ export async function createDocumentation(
     return { error: "Could not save the page. Please try again." };
   }
 
+  // The side index lists titles (lib/documentationCache.ts).
+  revalidateTag(DOCS_INDEX_TAG);
   revalidatePath("/documentation");
   redirect(`/documentation/${id}`);
 }
@@ -133,6 +136,8 @@ export async function updateDocumentation(
     await prisma.documentation.update({
       where: { id },
       data: { title: page.title, content: page.content },
+      // Unused: without it the whole page text was read straight back.
+      select: { id: true },
     });
 
     await logActivity({
@@ -146,6 +151,8 @@ export async function updateDocumentation(
     return { error: "Could not save the page. Please try again." };
   }
 
+  // The side index lists titles (lib/documentationCache.ts).
+  revalidateTag(DOCS_INDEX_TAG);
   revalidatePath("/documentation");
   revalidatePath(`/documentation/${id}`);
   redirect(`/documentation/${id}`);
@@ -179,6 +186,8 @@ export async function deleteDocumentation(id: string) {
     description: `Deleted documentation ${existing.title}`,
   });
 
+  // The side index lists titles (lib/documentationCache.ts).
+  revalidateTag(DOCS_INDEX_TAG);
   revalidatePath("/documentation");
   redirect("/documentation");
 }

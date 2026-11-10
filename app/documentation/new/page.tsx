@@ -1,16 +1,18 @@
 import BackLink from "@/components/ui/BackLink";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DocumentationForm from "@/components/documentation/DocumentationForm";
 import { createDocumentation } from "@/app/documentation/actions";
 
 export default async function NewDocumentationPage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   return (
     <DashboardLayout>

@@ -1,6 +1,6 @@
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import MonthFilter from "@/components/attendance/MonthFilter";
@@ -395,8 +395,9 @@ type AttendancePageProps = {
 };
 
 export default async function AttendancePage({ searchParams }: AttendancePageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;

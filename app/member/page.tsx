@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
@@ -18,11 +18,13 @@ function todayInputValue() {
 }
 
 export default async function MemberDashboardPage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;

@@ -48,8 +48,9 @@ function handlePrismaTeamError(error: unknown): never {
   throw error;
 }
 
-async function assignMembers(teamId: string, memberIds: string[]) {
-  await prisma.user.updateMany({
+/** Runs inside the save's transaction (`db`), so a team is never half saved. */
+async function assignMembers(db: Prisma.TransactionClient, teamId: string, memberIds: string[]) {
+  await db.user.updateMany({
     where: {
       teamId,
       id: {
@@ -62,7 +63,7 @@ async function assignMembers(teamId: string, memberIds: string[]) {
   });
 
   if (memberIds.length > 0) {
-    await prisma.user.updateMany({
+    await db.user.updateMany({
       where: {
         id: {
           in: memberIds,
@@ -87,17 +88,22 @@ export async function createTeam(formData: FormData) {
   }
 
   try {
-    const team = await prisma.team.create({
-      data: {
-        name,
-        description: description || null,
-      },
-      select: {
-        id: true,
-      },
+    // The team and its members are written together: all or nothing.
+    const team = await prisma.$transaction(async (tx) => {
+      const created = await tx.team.create({
+        data: {
+          name,
+          description: description || null,
+        },
+        select: {
+          id: true,
+        },
+      });
+
+      await assignMembers(tx, created.id, memberIds);
+      return created;
     });
 
-    await assignMembers(team.id, memberIds);
     await logActivity({
       userId: sessionUser.id,
       action: "created",
@@ -128,15 +134,19 @@ export async function updateTeam(formData: FormData) {
   }
 
   try {
-    await prisma.team.update({
-      where: { id },
-      data: {
-        name,
-        description: description || null,
-      },
-    });
+    // The team and its members are written together: all or nothing.
+    await prisma.$transaction(async (tx) => {
+      await tx.team.update({
+        where: { id },
+        data: {
+          name,
+          description: description || null,
+        },
+        select: { id: true },
+      });
 
-    await assignMembers(id, memberIds);
+      await assignMembers(tx, id, memberIds);
+    });
   } catch (error) {
     handlePrismaTeamError(error);
   }

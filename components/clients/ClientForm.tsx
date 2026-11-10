@@ -2,6 +2,7 @@ import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
 import ServicesField from "@/components/clients/ServicesField";
 import SopField from "@/components/clients/SopField";
 import FileInput from "@/components/ui/FileInput";
+import SubmitButton from "@/components/ui/SubmitButton";
 import { CLIENT_STATUS_OPTIONS, type ServiceMapping } from "@/lib/services";
 import { MAX_SOP_BYTES, SOP_TYPE_LABEL, formatFileSize } from "@/lib/uploads";
 
@@ -208,12 +209,14 @@ export default function ClientForm({
       </div>
 
       <div className="mt-6 flex justify-end">
-        <button
-          type="submit"
+        {/* Locks while saving: an SOP upload can take a while, and a second
+            click created the client twice (or failed on the duplicate name). */}
+        <SubmitButton
+          pendingLabel="Saving..."
           className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
         >
           {submitLabel}
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

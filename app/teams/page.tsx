@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
@@ -21,11 +21,13 @@ type TeamsPageProps = {
 };
 
 export default async function TeamsPage({ searchParams }: TeamsPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;
@@ -50,11 +52,6 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
           },
           orderBy: {
             name: "asc",
-          },
-        },
-        _count: {
-          select: {
-            members: { where: ACTIVE_USER },
           },
         },
       },
@@ -145,7 +142,7 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
                         </div>
                       </td>
                       <td className="px-4 py-4 text-slate-600">
-                        {team._count.members}
+                        {team.members.length}
                       </td>
                       <td className="px-4 py-4 text-slate-600">
                         {dateFormatter.format(team.createdAt)}
@@ -173,8 +170,8 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
               <MobileCard
                 key={team.id}
                 title={team.name}
-                subtitle={`${team._count.members} ${
-                  team._count.members === 1 ? "member" : "members"
+                subtitle={`${team.members.length} ${
+                  team.members.length === 1 ? "member" : "members"
                 }`}
                 actions={isAdmin ? rowMenu(team.id, "Actions") : null}
               >

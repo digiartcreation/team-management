@@ -1,16 +1,18 @@
 import FormPageHeader from "@/components/ui/FormPageHeader";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DailyUpdateForm from "@/components/updates/DailyUpdateForm";
 import { createDailyUpdate } from "@/app/updates/actions";
 
 export default async function NewUpdatePage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   return (
     <DashboardLayout>

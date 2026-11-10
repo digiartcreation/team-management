@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ChangePasswordForm from "@/components/profile/ChangePasswordForm";
@@ -25,12 +25,14 @@ function Detail({ label, children }: { label: string; children: React.ReactNode 
 
 /** Everyone's own page: who they are here, and changing their password. */
 export default async function ProfilePage() {
-  const session = await auth();
+  const session = await getShellSession();
   const userId = (session?.user as { id?: string } | undefined)?.id;
 
   if (!userId) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const user = await prisma.user.findUnique({
     where: { id: userId },

@@ -59,6 +59,14 @@ function lastSettledDay(now: Date) {
 // each reading and closing the same sessions.
 let sweeping: { day: string; done: Promise<void> } | null = null;
 
+// The last sweep that finished, by the day it settled through. Once a day's
+// cut-off has passed, check-in is closed for it, so a finished sweep stays
+// true for that day; re-reading on every page view and action only found the
+// same nothing again. A fresh sweep still runs every few minutes, and the
+// check-out it records comes from the session's own check-in time either way.
+let settled: { day: string; at: number } | null = null;
+const RESWEEP_AFTER_MS = 5 * 60_000;
+
 /**
  * Checks out every session still open past its day's cut-off. There is no
  * background job, so the attendance page and the check-in / check-out actions
@@ -67,12 +75,20 @@ let sweeping: { day: string; done: Promise<void> } | null = null;
 export function closeExpiredSessions(now: Date) {
   const day = lastSettledDay(now).toISOString();
 
+  if (settled?.day === day && now.getTime() - settled.at < RESWEEP_AFTER_MS) {
+    return Promise.resolve();
+  }
+
   if (sweeping?.day !== day) {
-    const done = sweepExpiredSessions(now).finally(() => {
-      if (sweeping?.done === done) {
-        sweeping = null;
-      }
-    });
+    const done = sweepExpiredSessions(now)
+      .then(() => {
+        settled = { day, at: Date.now() };
+      })
+      .finally(() => {
+        if (sweeping?.done === done) {
+          sweeping = null;
+        }
+      });
     sweeping = { day, done };
   }
 

@@ -96,6 +96,10 @@ export default function MobileNav({ title, homeHref, ...navProps }: MobileNavPro
         }}
         className="mobile-drawer m-0 h-dvh max-h-none w-[min(20rem,86vw)] max-w-none border-0 bg-white p-0 text-left shadow-2xl backdrop:bg-slate-950/40 lg:hidden"
       >
+        {/* Built only while open: the closed drawer showed nothing, yet put a
+            second copy of the menu -- and of the push toggle, which registers
+            the service worker -- on every page. It closes without animating. */}
+        {open ? (
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between gap-3 border-b border-[#E5E7EB] px-4 py-3">
             <span className="flex min-w-0 items-center gap-2.5">
@@ -122,6 +126,7 @@ export default function MobileNav({ title, homeHref, ...navProps }: MobileNavPro
             <SidebarNav {...navProps} variant="drawer" />
           </div>
         </div>
+        ) : null}
       </dialog>
     </>
   );

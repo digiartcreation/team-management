@@ -1,5 +1,5 @@
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ToolUsageForm from "@/components/tools/ToolUsageForm";
@@ -9,8 +9,9 @@ import { updateToolUsage } from "@/app/tools/actions";
 type EditToolPageProps = { params: Promise<{ id: string }> };
 
 export default async function EditToolPage({ params }: EditToolPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
   const sessionUser = session.user as typeof session.user & { id?: string };
   const { id } = await params;
   const entry = await prisma.toolUsage.findUnique({ where: { id } });

@@ -232,6 +232,8 @@ export async function updateEmployee(
         designation: placement.designation,
         isActive,
       },
+      // Unused: without it the whole row, password hash included, came back.
+      select: { id: true },
     });
 
     if (before.isActive !== isActive) {
