@@ -1,5 +1,6 @@
 import { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
 import { splitReopenMinutes } from "@/lib/duration";
 import { COMPLETED_STALE_DAYS, formatTaskStatus } from "@/lib/taskStatus";
 
@@ -87,12 +88,12 @@ export async function loadTaskBoard(
   const [counts, ...columns] = await Promise.all([
     prisma.task.groupBy({
       by: ["status"],
-      where,
+      where: visibleTasks(where),
       _count: { _all: true },
     }),
     ...BOARD_COLUMNS.map((status) =>
       prisma.task.findMany({
-        where: { ...where, status },
+        where: visibleTasks({ ...where, status }),
         // Most recently touched first, so a column opens on what moved last.
         orderBy: { updatedAt: "desc" },
         take: COLUMN_CARD_LIMIT,
@@ -208,12 +209,12 @@ export type BoardGroup = {
 export async function loadTaskBoardsByAssignee(): Promise<BoardGroup[]> {
   const [members, tasks] = await Promise.all([
     prisma.user.findMany({
-      where: { role: "member" },
+      where: { role: "member", ...ACTIVE_USER },
       orderBy: { name: "asc" },
       select: { id: true, name: true },
     }),
     prisma.task.findMany({
-      where: { status: { in: [...BOARD_COLUMNS] } },
+      where: visibleTasks({ status: { in: [...BOARD_COLUMNS] } }),
       orderBy: { updatedAt: "desc" },
       select: BOARD_CARD_SELECT,
     }),

@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import BasePriceCharts, { type GroupNoun } from "@/components/basePriceReport/BasePriceCharts";
 import CalculationFlow from "@/components/basePriceReport/CalculationFlow";
@@ -90,11 +91,11 @@ export default async function BasePriceReportPage({
 
   const filters = await searchParams;
   const view: GroupNoun = filters.view === "service" ? "service" : "client";
-  // With no dates chosen the report opens on this month.
+  // With no dates chosen the report opens on this week.
   const presets = datePresets(todayUtcMidnight());
-  const thisMonth = presets.find((preset) => preset.label === "This month")!;
+  const thisWeek = presets.find((preset) => preset.label === "This week")!;
   const dates: { from?: string; to?: string } =
-    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisMonth;
+    filters.from || filters.to ? { from: filters.from, to: filters.to } : thisWeek;
   const from = parseDateInput(dates.from);
   const to = parseDateInput(dates.to);
 
@@ -160,6 +161,7 @@ export default async function BasePriceReportPage({
       select: { id: true, name: true },
     }),
     prisma.user.findMany({
+      where: ACTIVE_USER,
       orderBy: { name: "asc" },
       select: { id: true, name: true, role: true },
     }),

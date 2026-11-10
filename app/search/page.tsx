@@ -4,6 +4,7 @@ import { taskDescriptionText } from "@/lib/taskDescription";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { formatTaskStatus } from "@/lib/taskStatus";
 
@@ -48,8 +49,10 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
           ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999Z`) } : {}),
         }
       : undefined;
-  const userWhere = memberScope ? { id: sessionUser.id } : sessionUser.role === "manager" ? { teamId: managerTeamId } : { ...(role ? { role } : {}), ...(selectedTeamId ? { teamId: selectedTeamId } : {}) };
-  const ownedWhere = memberScope ? { userId: sessionUser.id } : sessionUser.role === "manager" ? { user: { teamId: managerTeamId } } : selectedTeamId ? { user: { teamId: selectedTeamId } } : {};
+  // An inactive employee's work is hidden until they are made active again;
+  // admins still find the person, as on the Employees page, to reactivate them.
+  const userWhere = memberScope ? { id: sessionUser.id } : sessionUser.role === "manager" ? { teamId: managerTeamId, ...ACTIVE_USER } : { ...(role ? { role } : {}), ...(selectedTeamId ? { teamId: selectedTeamId } : {}) };
+  const ownedWhere = memberScope ? { userId: sessionUser.id } : sessionUser.role === "manager" ? { user: { teamId: managerTeamId, ...ACTIVE_USER } } : selectedTeamId ? { user: { teamId: selectedTeamId, ...ACTIVE_USER } } : OWNED_BY_ACTIVE_USER;
   const taskWhere = memberScope ? { assignedToId: sessionUser.id } : sessionUser.role === "manager" ? { teamId: managerTeamId } : selectedTeamId ? { teamId: selectedTeamId } : {};
   const includeModule = (name: string) => !module || module === name;
   const teamsForFilter = sessionUser.role === "admin" ? await prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }) : [];
@@ -61,7 +64,7 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
     ? await Promise.all([
         includeModule("employees") ? prisma.user.findMany({ where: { ...userWhere, ...(createdAt ? { createdAt } : {}), OR: [{ name: { contains: query } }, { email: { contains: query } }] }, take: 5 }) : [],
         includeModule("teams") ? prisma.team.findMany({ where: teamWhere, take: 5 }) : [],
-        includeModule("tasks") ? prisma.task.findMany({ where: { ...taskWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }, take: 5 }) : [],
+        includeModule("tasks") ? prisma.task.findMany({ where: visibleTasks({ ...taskWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }), take: 5 }) : [],
         includeModule("updates") ? prisma.dailyUpdate.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), todaysTasks: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],
         includeModule("learnings") ? prisma.learning.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],
         includeModule("tools") ? prisma.toolUsage.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), toolName: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],

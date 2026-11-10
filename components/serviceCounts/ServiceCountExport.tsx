@@ -12,7 +12,7 @@ import {
 import { formatInr } from "@/lib/services";
 
 type ServiceCountExportProps = {
-  /** "Oct-2026", "All time", "1 Oct 2026 – 15 Oct 2026". */
+  /** "Oct-2026", "1 Oct 2026 – 15 Oct 2026". */
   scope: string;
   fileStem: string;
   report: ServiceCountReport;

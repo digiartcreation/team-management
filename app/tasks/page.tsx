@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
 import { TaskDetailsButton } from "@/components/tasks/TaskDetailsDialog";
@@ -419,9 +420,12 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
     };
   }
 
+  // An inactive employee's tasks are hidden until they are made active again.
+  const shownWhere = visibleTasks(where);
+
   const [tasks, totalTasks, employees, teams, clientOptions] = await Promise.all([
     prisma.task.findMany({
-      where,
+      where: shownWhere,
       ...getPagination(page),
       orderBy: {
         createdAt: "desc",
@@ -431,13 +435,13 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       omit: taskOmit,
       include: taskInclude,
     }),
-    prisma.task.count({ where }),
+    prisma.task.count({ where: shownWhere }),
     prisma.user.findMany({
       where: isMember
         ? { id: sessionUser.id }
         : managerTeamId
-          ? { teamId: managerTeamId }
-          : undefined,
+          ? { teamId: managerTeamId, ...ACTIVE_USER }
+          : ACTIVE_USER,
       orderBy: {
         name: "asc",
       },

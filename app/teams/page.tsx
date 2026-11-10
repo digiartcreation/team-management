@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTeamButton from "@/components/teams/DeleteTeamButton";
 import PaginationControls from "@/components/layout/PaginationControls";
@@ -40,7 +41,9 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
         createdAt: "desc",
       },
       include: {
+        // Inactive employees are left off until they are made active again.
         members: {
+          where: ACTIVE_USER,
           select: {
             id: true,
             name: true,
@@ -51,7 +54,7 @@ export default async function TeamsPage({ searchParams }: TeamsPageProps) {
         },
         _count: {
           select: {
-            members: true,
+            members: { where: ACTIVE_USER },
           },
         },
       },

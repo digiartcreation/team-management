@@ -2,6 +2,7 @@ import Link from "next/link";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import { updateFeedbackStatus } from "@/app/feedback/actions";
@@ -22,7 +23,8 @@ export default async function FeedbackSubmissionsPage() {
   };
   const isAdmin = sessionUser.role === "admin";
   const submissions = await prisma.feedbackSubmission.findMany({
-    where: isAdmin ? {} : { userId: sessionUser.id },
+    // An inactive employee's feedback is hidden until they are made active again.
+    where: isAdmin ? OWNED_BY_ACTIVE_USER : { userId: sessionUser.id },
     orderBy: { createdAt: "desc" },
     include: { user: { select: { name: true } } },
   });

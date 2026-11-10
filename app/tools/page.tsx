@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -23,7 +24,8 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   const { q, category } = await searchParams;
   const page = getPage((await searchParams).page);
   const currentUser = sessionUser.role === "manager" ? await getViewerAccount(sessionUser.id) : null;
-  const where: Prisma.ToolUsageWhereInput = sessionUser.role === "admin" ? {} : sessionUser.role === "manager" ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } } : { userId: sessionUser.id };
+  // An inactive employee's entries are hidden until they are made active again.
+  const where: Prisma.ToolUsageWhereInput = sessionUser.role === "admin" ? { ...OWNED_BY_ACTIVE_USER } : sessionUser.role === "manager" ? { user: { teamId: currentUser?.teamId ?? "__no_team__", ...ACTIVE_USER } } : { userId: sessionUser.id };
   if (q?.trim()) where.toolName = { contains: q.trim() };
   if (category?.trim()) where.category = category.trim();
   const [entries, totalEntries] = await Promise.all([

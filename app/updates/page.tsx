@@ -4,6 +4,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -75,15 +76,17 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
     };
   }
 
+  // An inactive employee's updates are hidden until they are made active again.
   const where: Prisma.DailyUpdateWhereInput =
     sessionUser.role === "admin"
       ? {
+          ...OWNED_BY_ACTIVE_USER,
           ...(employeeId ? { userId: employeeId } : {}),
           ...(dateWhere ? { date: dateWhere } : {}),
         }
       : isManager
         ? {
-            user: { teamId: managerTeamId },
+            user: { teamId: managerTeamId, ...ACTIVE_USER },
             ...(employeeId ? { userId: employeeId } : {}),
             ...(dateWhere ? { date: dateWhere } : {}),
           }
@@ -106,12 +109,13 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
     prisma.dailyUpdate.count({ where }),
     sessionUser.role === "admin"
       ? prisma.user.findMany({
+          where: ACTIVE_USER,
           select: { id: true, name: true },
           orderBy: { name: "asc" },
         })
       : isManager
         ? prisma.user.findMany({
-            where: { teamId: managerTeamId },
+            where: { teamId: managerTeamId, ...ACTIVE_USER },
             select: { id: true, name: true },
             orderBy: { name: "asc" },
           })

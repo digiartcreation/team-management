@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import PaginationControls from "@/components/layout/PaginationControls";
@@ -41,11 +42,12 @@ export default async function ActivityPage({ searchParams }: ActivityPageProps) 
   const { entityType } = await searchParams;
   const page = getPage((await searchParams).page);
 
+  // An inactive employee's activity is hidden until they are made active again.
   const baseWhere: Prisma.ActivityLogWhereInput =
     sessionUser.role === "admin"
-      ? {}
+      ? OWNED_BY_ACTIVE_USER
       : sessionUser.role === "manager"
-        ? { user: { teamId: managerTeamId } }
+        ? { user: { teamId: managerTeamId, ...ACTIVE_USER } }
         : { userId: sessionUser.id };
 
   const where: Prisma.ActivityLogWhereInput = {

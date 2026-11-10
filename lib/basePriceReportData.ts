@@ -1,5 +1,6 @@
 import type { Prisma } from "@prisma/client";
 import { prisma } from "@/lib/prisma";
+import { OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import { buildBasePriceReport } from "@/lib/basePriceReport";
 import { toServiceMapping } from "@/lib/clientServices";
 
@@ -14,7 +15,9 @@ function decimal(value: { toString(): string } | null) {
  */
 export async function loadBasePriceReport(where: Prisma.TaskTimeLogWhereInput) {
   const logs = await prisma.taskTimeLog.findMany({
-    where,
+    // Time logged by an inactive employee is left out until they are made
+    // active again.
+    where: { AND: [where, OWNED_BY_ACTIVE_USER] },
     select: {
       minutes: true,
       date: true,
