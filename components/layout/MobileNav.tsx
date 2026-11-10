@@ -16,7 +16,7 @@ function Logo() {
   return (
     <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md">
       <Image
-        src="/digiart-logo.jpg"
+        src="/digiart-logo.svg"
         alt="Digiart Creation logo"
         fill
         sizes="36px"

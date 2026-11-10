@@ -4,9 +4,11 @@ import "./globals.css";
 export const metadata: Metadata = {
   title: "Digiart Creation",
   description: "Digiart Creation dashboard",
+  // The tab icon is the SVG, sharp at any size; older browsers that cannot
+  // show one use app/favicon.ico, which Next adds on its own. iPhones need a
+  // bitmap for the home screen, so that one stays the JPG.
   icons: {
-    icon: "/digiart-logo.jpg",
-    shortcut: "/digiart-logo.jpg",
+    icon: { url: "/digiart-logo.svg", type: "image/svg+xml" },
     apple: "/digiart-logo.jpg",
   },
 };

@@ -121,7 +121,7 @@ export default function Sidebar({
             <div className="flex items-center gap-3">
               <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md">
                 <Image
-                  src="/digiart-logo.jpg"
+                  src="/digiart-logo.svg"
                   alt="Digiart Creation logo"
                   fill
                   sizes="44px"
