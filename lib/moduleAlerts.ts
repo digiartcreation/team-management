@@ -1,5 +1,6 @@
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
 
 export type ModuleKey = "tasks" | "updates" | "learnings" | "tools";
 
@@ -39,22 +40,25 @@ export async function getSidebarAlertCounts(
   const after = (module: ModuleKey) => ({
     gt: reviewedAt.get(module) ?? new Date(0),
   });
+  // Whose entries count: active people only (see lib/activeUsers.ts), in the
+  // manager's team for a manager.
+  const owners = { ...ACTIVE_USER, ...(managerTeamId ? { teamId: managerTeamId } : {}) };
 
   const [tasks, updates, learnings, tools] = await Promise.all([
     reviewing === "tasks"
       ? 0
       : prisma.task.count({
-          where: {
+          where: visibleTasks({
             updatedAt: after("tasks"),
             ...(managerTeamId ? { teamId: managerTeamId } : {}),
-          },
+          }),
         }),
     reviewing === "updates"
       ? 0
       : prisma.dailyUpdate.count({
           where: {
             updatedAt: after("updates"),
-            ...(managerTeamId ? { user: { teamId: managerTeamId } } : {}),
+            user: owners,
           },
         }),
     reviewing === "learnings"
@@ -62,7 +66,7 @@ export async function getSidebarAlertCounts(
       : prisma.learning.count({
           where: {
             updatedAt: after("learnings"),
-            ...(managerTeamId ? { user: { teamId: managerTeamId } } : {}),
+            user: owners,
           },
         }),
     reviewing === "tools"
@@ -70,7 +74,7 @@ export async function getSidebarAlertCounts(
       : prisma.toolUsage.count({
           where: {
             updatedAt: after("tools"),
-            ...(managerTeamId ? { user: { teamId: managerTeamId } } : {}),
+            user: owners,
           },
         }),
   ]);

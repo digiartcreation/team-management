@@ -4,6 +4,7 @@ import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
@@ -43,11 +44,12 @@ export default async function LearningsPage({
       ? await getViewerAccount(sessionUser.id)
       : null;
 
+  // An inactive employee's learnings are hidden until they are made active again.
   const where: Prisma.LearningWhereInput =
     sessionUser.role === "admin"
-      ? {}
+      ? { ...OWNED_BY_ACTIVE_USER }
       : sessionUser.role === "manager"
-        ? { user: { teamId: currentUser?.teamId ?? "__no_team__" } }
+        ? { user: { teamId: currentUser?.teamId ?? "__no_team__", ...ACTIVE_USER } }
         : { userId: sessionUser.id };
 
   if (q?.trim()) {

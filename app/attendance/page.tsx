@@ -9,6 +9,7 @@ import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileC
 import SubmitButton from "@/components/ui/SubmitButton";
 import { checkIn, checkOut } from "@/app/attendance/actions";
 import { SUPER_ADMIN } from "@/lib/roles";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import {
   monthKeyOf,
   monthLabel,
@@ -405,8 +406,9 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   // Only a super admin sees everyone's attendance. Admins, managers and
   // employees alike see -- and check in for -- their own days.
   const isSuperAdmin = sessionUser.isSuperAdmin === true;
+  // An inactive employee's days are hidden until they are made active again.
   const where: Prisma.AttendanceRecordWhereInput = isSuperAdmin
-    ? {}
+    ? OWNED_BY_ACTIVE_USER
     : { userId: sessionUser.id ?? "__no_user__" };
   const now = new Date();
   // Sessions left open past 10 PM are checked out (30 minutes after their
@@ -440,7 +442,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
     // the super admin's view, yourself for everyone else's.
     prisma.user.findMany({
       where: isSuperAdmin
-        ? { role: { not: SUPER_ADMIN } }
+        ? { role: { not: SUPER_ADMIN }, ...ACTIVE_USER }
         : { id: sessionUser.id ?? "__no_user__" },
       select: { id: true, name: true, createdAt: true },
     }),

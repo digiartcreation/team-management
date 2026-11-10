@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { visibleTasks } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ServiceCountExport from "@/components/serviceCounts/ServiceCountExport";
 import { monthKeyOf, monthLabel, monthRange, monthsBetween } from "@/lib/attendance";
@@ -124,15 +125,16 @@ export default async function ServicesCountPage({
   // Completions are moments, so the range is the office's days, midnight to
   // midnight.
   const [completedTasks, firstCompleted] = await Promise.all([
+    // An inactive employee's tasks are left out until they are made active again.
     prisma.task.findMany({
-      where: {
+      where: visibleTasks({
         clientId: { not: null },
         completedAt: {
           not: null,
           ...(from ? { gte: officeInstant(from, 0) } : {}),
           ...(to ? { lt: officeInstant(new Date(to.getTime() + DAY_MS), 0) } : {}),
         },
-      },
+      }),
       select: {
         id: true,
         title: true,

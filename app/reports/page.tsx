@@ -3,6 +3,7 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
+import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import BreakdownTable from "@/components/reports/BreakdownTable";
 import ReportCharts from "@/components/reports/ReportCharts";
@@ -214,8 +215,9 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
     ),
   ].sort((a, b) => a.localeCompare(b));
 
-  // Everything but the date, so the previous period can reuse it.
-  const scopeWhere: Prisma.TaskTimeLogWhereInput = {};
+  // Everything but the date, so the previous period can reuse it. Time logged
+  // by an inactive employee is left out until they are made active again.
+  const scopeWhere: Prisma.TaskTimeLogWhereInput = { ...OWNED_BY_ACTIVE_USER };
   const taskFilter: Prisma.TaskWhereInput = {};
 
   if (filters.clientId) {
@@ -286,6 +288,7 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
         select: { id: true, name: true },
       }),
       prisma.user.findMany({
+        where: ACTIVE_USER,
         orderBy: { name: "asc" },
         select: { id: true, name: true, role: true },
       }),
