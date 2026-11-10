@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { markAllNotificationsRead, markNotificationRead } from "@/app/notifications/actions";
@@ -22,8 +22,9 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
 });
 
 export default async function NotificationsPage({ searchParams }: NotificationsPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
   const sessionUser = session.user as typeof session.user & { id?: string; role?: string };
   if (!sessionUser.id) redirect("/login");
   if (sessionUser.role === "admin") redirect("/");

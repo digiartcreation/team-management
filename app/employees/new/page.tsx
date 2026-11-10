@@ -1,16 +1,18 @@
 import { redirect } from "next/navigation";
 import BackLink from "@/components/ui/BackLink";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import EmployeeForm from "@/components/employees/EmployeeForm";
 import { createEmployee } from "@/app/employees/actions";
 
 export default async function NewEmployeePage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;

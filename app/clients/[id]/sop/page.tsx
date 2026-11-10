@@ -1,7 +1,7 @@
 import Link from "next/link";
 import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { sanitizeDocumentationHtml } from "@/lib/documentation";
@@ -14,11 +14,13 @@ type ClientSopPageProps = {
 
 /** A client's SOP as written on the client form, with its file if it has one. */
 export default async function ClientSopPage({ params }: ClientSopPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     role?: string;

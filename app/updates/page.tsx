@@ -1,13 +1,14 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import PaginationControls from "@/components/layout/PaginationControls";
 import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
+import { getActivePeopleOptions } from "@/lib/filterOptions";
 import ActionMenu from "@/components/ui/ActionMenu";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import DeleteMenuAction from "@/components/ui/DeleteMenuAction";
@@ -32,11 +33,13 @@ type UpdatesPageProps = {
 };
 
 export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session, "updates");
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
@@ -100,7 +103,15 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
       where,
       ...getPagination(page),
       orderBy: { date: "desc" },
-      include: {
+      // Only what the list shows: the completed-tasks and tomorrow's-plan
+      // texts are on the update's own page, not here.
+      select: {
+        id: true,
+        date: true,
+        todaysTasks: true,
+        blockers: true,
+        createdAt: true,
+        updatedAt: true,
         user: {
           select: { id: true, name: true, role: true },
         },
@@ -108,11 +119,8 @@ export default async function UpdatesPage({ searchParams }: UpdatesPageProps) {
     }),
     prisma.dailyUpdate.count({ where }),
     sessionUser.role === "admin"
-      ? prisma.user.findMany({
-          where: ACTIVE_USER,
-          select: { id: true, name: true },
-          orderBy: { name: "asc" },
-        })
+      ? // The cached list of active people (lib/filterOptions.ts).
+        getActivePeopleOptions().then((people) => people.map(({ id, name }) => ({ id, name })))
       : isManager
         ? prisma.user.findMany({
             where: { teamId: managerTeamId, ...ACTIVE_USER },

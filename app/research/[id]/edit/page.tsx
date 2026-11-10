@@ -1,6 +1,6 @@
 import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ResearchDocumentForm from "@/components/research/ResearchDocumentForm";
@@ -9,8 +9,9 @@ import { updateResearchDocument } from "@/app/research/actions";
 type EditResearchPageProps = { params: Promise<{ id: string }> };
 
 export default async function EditResearchPage({ params }: EditResearchPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
   const sessionUser = session.user as typeof session.user & { id?: string };
   const { id } = await params;
   const document = await prisma.researchDocument.findUnique({ where: { id } });

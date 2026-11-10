@@ -1,6 +1,6 @@
 import { notFound, redirect } from "next/navigation";
 import BackLink from "@/components/ui/BackLink";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import BasePriceForm from "@/components/basePrices/BasePriceForm";
@@ -15,11 +15,13 @@ type EditBasePricePageProps = {
 export default async function EditBasePricePage({
   params,
 }: EditBasePricePageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     isSuperAdmin?: boolean;

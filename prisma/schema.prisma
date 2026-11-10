@@ -224,6 +224,13 @@ model Task {
   @@index([createdAt])
   /// The client work filter's list of distinct values.
   @@index([clientWork])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([status, updatedAt])
+  @@index([assignedToId, status, updatedAt])
+  @@index([teamId, status, updatedAt])
+  @@index([assignedToId, createdAt])
+  @@index([teamId, createdAt])
+  @@index([clientId, completedAt])
 }
 
 /// Someone following a task they are not assigned to. A watcher sees the task
@@ -267,6 +274,9 @@ model TaskTimeLog {
   @@index([taskId], map: "TaskTimeLog_taskId_fkey")
   @@index([userId], map: "TaskTimeLog_userId_fkey")
   @@index([date])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([taskId, date])
+  @@index([userId, date])
 }
 
 /// One reopening of a completed task. Kept as rows rather than a bare counter
@@ -312,6 +322,8 @@ model DailyUpdate {
   @@index([date])
   /// The menu badge.
   @@index([updatedAt])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([userId, date])
 }
 
 model Learning {
@@ -330,6 +342,9 @@ model Learning {
   @@index([userId], map: "Learning_userId_fkey")
   /// The menu badge.
   @@index([updatedAt])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model ToolUsage {
@@ -350,6 +365,9 @@ model ToolUsage {
   @@index([userId], map: "ToolUsage_userId_fkey")
   /// The menu badge.
   @@index([updatedAt])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([date])
+  @@index([userId, date])
 }
 
 model ResearchDocument {
@@ -364,6 +382,9 @@ model ResearchDocument {
   user        User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([userId], map: "ResearchDocument_userId_fkey")
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model ActivityLog {
@@ -381,6 +402,8 @@ model ActivityLog {
   @@index([createdAt])
   /// The Activity type filter.
   @@index([entityType])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([userId, createdAt])
 }
 
 model Notification {
@@ -399,6 +422,8 @@ model Notification {
   @@index([expiresAt])
   /// Unread counts and the banner, on every page.
   @@index([userId, isRead, createdAt])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([userId, type, isRead, createdAt])
 }
 
 model ModuleReview {
@@ -441,6 +466,9 @@ model FeedbackSubmission {
   @@index([userId])
   @@index([type])
   @@index([status])
+  /// Combined indexes for the list, board and report queries (prisma/add-menu-indexes.sql).
+  @@index([createdAt])
+  @@index([userId, createdAt])
 }
 
 model AttendanceRecord {

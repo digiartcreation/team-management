@@ -1,4 +1,5 @@
 import TextareaWithBullet from "@/components/ui/TextareaWithBullet";
+import SubmitButton from "@/components/ui/SubmitButton";
 
 type TeamFormProps = {
   action: (formData: FormData) => void | Promise<void>;
@@ -95,12 +96,13 @@ export default function TeamForm({
       </div>
 
       <div className="mt-6 flex justify-end">
-        <button
-          type="submit"
+        {/* Locks while saving, so a slow save cannot be sent twice. */}
+        <SubmitButton
+          pendingLabel="Saving..."
           className="rounded-md bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
         >
           {submitLabel}
-        </button>
+        </SubmitButton>
       </div>
     </form>
   );

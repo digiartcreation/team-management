@@ -1,3 +1,13 @@
+"use client";
+
+/*
+  Rendered in the browser from the report's rows, drawing each folded section
+  only once it is opened: rendered on the server, every task's full working sat
+  in the page, folded away -- most of a Base Price Report's 9 MB for three
+  months. Opened, it shows exactly what it showed before.
+*/
+
+import { useState, type ReactNode } from "react";
 import Link from "next/link";
 import { RatioScale, RatioValue } from "@/components/basePriceReport/RatioBand";
 import type { GroupNoun } from "@/components/basePriceReport/BasePriceCharts";
@@ -272,11 +282,50 @@ function StatusCell({ row }: { row: TaskRow }) {
   return row.ratio === null ? <span className="text-slate-400">—</span> : <RatioValue ratio={row.ratio} />;
 }
 
-function TaskFlow({ row }: { row: TaskRow }) {
-  const margin = row.income !== null && row.effort !== null ? row.income - row.effort : null;
+/**
+ * A folded section whose contents are drawn the first time it is opened, and
+ * kept after that.
+ */
+function LazyDetails({
+  className,
+  summary,
+  children,
+}: {
+  className: string;
+  summary: ReactNode;
+  children: () => ReactNode;
+}) {
+  const [opened, setOpened] = useState(false);
 
   return (
-    <details className="group border-t border-slate-100 first:border-t-0">
+    <details
+      className={className}
+      onToggle={(event) => {
+        if (event.currentTarget.open) {
+          setOpened(true);
+        }
+      }}
+    >
+      {summary}
+      {opened ? children() : null}
+    </details>
+  );
+}
+
+function TaskFlow({ row }: { row: TaskRow }) {
+  const margin = row.income !== null && row.effort !== null ? row.income - row.effort : null;
+  // The working is drawn the first time the task is opened.
+  const [opened, setOpened] = useState(false);
+
+  return (
+    <details
+      className="group border-t border-slate-100 first:border-t-0"
+      onToggle={(event) => {
+        if (event.currentTarget.open) {
+          setOpened(true);
+        }
+      }}
+    >
       <summary
         className={`${ROW_GRID} cursor-pointer list-none px-5 py-3 transition hover:bg-[#FBF7FF] [&::-webkit-details-marker]:hidden`}
       >
@@ -308,6 +357,7 @@ function TaskFlow({ row }: { row: TaskRow }) {
         <Chevron className="text-slate-400 group-open:rotate-90" />
       </summary>
 
+      {opened ? (
       <div className="grid gap-3 border-t border-slate-100 bg-slate-50/70 px-5 py-4 lg:grid-cols-3">
         {/* Step 1 */}
         <StepCard
@@ -429,6 +479,7 @@ function TaskFlow({ row }: { row: TaskRow }) {
           )}
         </StepCard>
       </div>
+      ) : null}
     </details>
   );
 }
@@ -513,7 +564,10 @@ export default function CalculationFlow({
             const members = inTotals.filter((row) => keyOf(row) === group.key);
 
             return (
-              <details key={group.key} className="group/section border-b border-slate-200 last:border-b-0">
+              <LazyDetails
+                key={group.key}
+                className="group/section border-b border-slate-200 last:border-b-0"
+                summary={
                 <summary
                   className={`${ROW_GRID} cursor-pointer list-none bg-slate-100/70 px-5 py-3 transition hover:bg-[#F3E8FF]/60 [&::-webkit-details-marker]:hidden`}
                 >
@@ -544,15 +598,21 @@ export default function CalculationFlow({
                   </div>
                   <Chevron className="text-slate-500 group-open/section:rotate-90" />
                 </summary>
-                {members.map((row) => (
-                  <TaskFlow key={row.taskId} row={row} />
-                ))}
-              </details>
+                }
+              >
+                {() =>
+                  members.map((row) => (
+                    <TaskFlow key={row.taskId} row={row} />
+                  ))
+                }
+              </LazyDetails>
             );
           })}
 
           {issues.length > 0 || internal.length > 0 ? (
-            <details className="group/section border-t-4 border-slate-100">
+            <LazyDetails
+              className="group/section border-t-4 border-slate-100"
+              summary={
               <summary className="flex cursor-pointer list-none flex-wrap items-center justify-between gap-2 bg-amber-50/60 px-5 py-3 transition hover:bg-amber-50 [&::-webkit-details-marker]:hidden">
                 <p className="font-semibold text-slate-950">
                   Not in the totals
@@ -567,10 +627,14 @@ export default function CalculationFlow({
                   <Chevron className="text-slate-500 group-open/section:rotate-90" />
                 </span>
               </summary>
-              {[...issues, ...internal].map((row) => (
-                <TaskFlow key={row.taskId} row={row} />
-              ))}
-            </details>
+              }
+            >
+              {() =>
+                [...issues, ...internal].map((row) => (
+                  <TaskFlow key={row.taskId} row={row} />
+                ))
+              }
+            </LazyDetails>
           ) : null}
         </>
       )}

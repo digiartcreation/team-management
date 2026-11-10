@@ -1,14 +1,12 @@
 import Link from "next/link";
 import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteDocumentationButton from "@/components/documentation/DeleteDocumentationButton";
-import {
-  canManageDocumentation,
-  sanitizeDocumentationHtml,
-} from "@/lib/documentation";
+import { canManageDocumentation } from "@/lib/documentation";
+import { getDocumentationIndex, sanitizeDocumentationHtmlCached } from "@/lib/documentationCache";
 import { formatFileSize, isImageType } from "@/lib/uploads";
 import "ckeditor5/ckeditor5-content.css";
 
@@ -28,11 +26,13 @@ type DocumentationViewPageProps = {
 export default async function DocumentationViewPage({
   params,
 }: DocumentationViewPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
@@ -57,11 +57,8 @@ export default async function DocumentationViewPage({
         },
       },
     }),
-    prisma.documentation.findMany({
-      orderBy: { title: "asc" },
-      take: INDEX_LIMIT,
-      select: { id: true, title: true },
-    }),
+    // Cached; cleared when a page is added, renamed or removed.
+    getDocumentationIndex(INDEX_LIMIT),
   ]);
 
   if (!doc) {
@@ -71,7 +68,7 @@ export default async function DocumentationViewPage({
   const canManage = canManageDocumentation(sessionUser, doc);
   // Cleaned on save as well; again here so a row written any other way still
   // cannot put script in front of the reader.
-  const html = sanitizeDocumentationHtml(doc.content);
+  const html = sanitizeDocumentationHtmlCached(doc.id, doc.updatedAt, doc.content);
 
   return (
     <DashboardLayout>

@@ -1,11 +1,17 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
+import PaginationControls from "@/components/layout/PaginationControls";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
+import { getPage, getPagination, PAGE_SIZE } from "@/lib/pagination";
 import { updateFeedbackStatus } from "@/app/feedback/actions";
+
+type FeedbackSubmissionsPageProps = {
+  searchParams: Promise<{ page?: string }>;
+};
 
 const dateFormatter = new Intl.DateTimeFormat("en", {
   year: "numeric",
@@ -13,21 +19,33 @@ const dateFormatter = new Intl.DateTimeFormat("en", {
   day: "numeric",
 });
 
-export default async function FeedbackSubmissionsPage() {
-  const session = await auth();
+export default async function FeedbackSubmissionsPage({
+  searchParams,
+}: FeedbackSubmissionsPageProps) {
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
     role?: string;
   };
   const isAdmin = sessionUser.role === "admin";
-  const submissions = await prisma.feedbackSubmission.findMany({
-    // An inactive employee's feedback is hidden until they are made active again.
-    where: isAdmin ? OWNED_BY_ACTIVE_USER : { userId: sessionUser.id },
-    orderBy: { createdAt: "desc" },
-    include: { user: { select: { name: true } } },
-  });
+  const page = getPage((await searchParams).page);
+  // An inactive employee's feedback is hidden until they are made active again.
+  const where = isAdmin ? OWNED_BY_ACTIVE_USER : { userId: sessionUser.id };
+  // A page at a time, as on every other list: the whole history, each with
+  // its review form drawn twice (table and phone card), had grown past a
+  // megabyte.
+  const [submissions, totalSubmissions] = await Promise.all([
+    prisma.feedbackSubmission.findMany({
+      where,
+      orderBy: { createdAt: "desc" },
+      ...getPagination(page),
+      include: { user: { select: { name: true } } },
+    }),
+    prisma.feedbackSubmission.count({ where }),
+  ]);
 
   // Status and a note back to whoever sent it, in the table and on a phone card.
   const reviewForm = (submission: (typeof submissions)[number]) => (
@@ -171,6 +189,17 @@ export default async function FeedbackSubmissionsPage() {
               </MobileCard>
             ))}
           </MobileCardList>
+        ) : null}
+
+        {totalSubmissions > 0 ? (
+          <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+            <PaginationControls
+              page={page}
+              total={totalSubmissions}
+              pageSize={PAGE_SIZE}
+              basePath="/feedback/submissions"
+            />
+          </div>
         ) : null}
       </div>
     </DashboardLayout>

@@ -1,6 +1,6 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteEmployeeButton from "@/components/employees/DeleteEmployeeButton";
@@ -48,11 +48,13 @@ function RolePill({ role }: { role: string }) {
 }
 
 export default async function EmployeesPage({ searchParams }: EmployeesPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
@@ -72,7 +74,7 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
   const status =
     params.status === "active" || params.status === "inactive" ? params.status : "";
   const where = status ? { isActive: status === "active" } : {};
-  const [employees, totalEmployees, activeCount, inactiveCount] = await Promise.all([
+  const [employees, byStatus] = await Promise.all([
     prisma.user.findMany({
       where,
       ...getPagination(page),
@@ -89,15 +91,18 @@ export default async function EmployeesPage({ searchParams }: EmployeesPageProps
         createdAt: true,
       },
     }),
-    prisma.user.count({ where }),
-    prisma.user.count({ where: { isActive: true } }),
-    prisma.user.count({ where: { isActive: false } }),
+    // Active and inactive in one grouped count; the filtered total is one of
+    // them, or both.
+    prisma.user.groupBy({ by: ["isActive"], _count: { _all: true } }),
   ]);
+  const activeCount = byStatus.find((row) => row.isActive)?._count._all ?? 0;
+  const inactiveCount = byStatus.find((row) => !row.isActive)?._count._all ?? 0;
   const counts = {
     "": activeCount + inactiveCount,
     active: activeCount,
     inactive: inactiveCount,
   };
+  const totalEmployees = counts[status];
 
   type EmployeeRow = (typeof employees)[number];
 

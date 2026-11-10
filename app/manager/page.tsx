@@ -1,6 +1,7 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
+import { getViewerAccount } from "@/lib/viewer";
 import StatCard from "@/components/dashboard/StatCard";
 import TaskBoard from "@/components/dashboard/TaskBoard";
 import WatchingBoard from "@/components/dashboard/WatchingBoard";
@@ -18,11 +19,13 @@ function todayInputValue() {
 }
 
 export default async function ManagerDashboardPage() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
@@ -33,7 +36,11 @@ export default async function ManagerDashboardPage() {
     redirect("/member");
   }
 
-  const [watched, manager] = await Promise.all([
+  // The team is known from the shell's account read (request-cached), so the
+  // team board starts alongside the rest instead of after the lookup below.
+  const viewerTeamId = (await getViewerAccount(sessionUser.id))?.teamId ?? null;
+
+  const [watched, manager, earlyBoard] = await Promise.all([
     // A manager can be added as a watcher on any team’s task, team or not.
     loadWatchedBoard(sessionUser.id ?? "__no_user__"),
     prisma.user.findUnique({
@@ -55,6 +62,7 @@ export default async function ManagerDashboardPage() {
         },
       },
     }),
+    viewerTeamId ? loadTaskBoard({ teamId: viewerTeamId }) : null,
   ]);
 
   if (!manager?.teamId || !manager.team) {
@@ -83,7 +91,11 @@ export default async function ManagerDashboardPage() {
     );
   }
 
-  const board = await loadTaskBoard({ teamId: manager.teamId });
+  // Same team as the early read in all but a race with a team change.
+  const board =
+    earlyBoard && viewerTeamId === manager.teamId
+      ? earlyBoard
+      : await loadTaskBoard({ teamId: manager.teamId });
 
   // The stat cards count the same tasks as the board's column headers.
   const backlogTasks = columnTotal(board, "pending");

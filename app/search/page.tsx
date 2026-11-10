@@ -1,10 +1,11 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { taskDescriptionText } from "@/lib/taskDescription";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, OWNED_BY_ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
+import { getTeamOptions } from "@/lib/filterOptions";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import { formatTaskStatus } from "@/lib/taskStatus";
 
@@ -29,8 +30,9 @@ function ResultSection({ title, items }: { title: string; items: { id: string; l
 }
 
 export default async function SearchPage({ searchParams }: SearchPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
   const sessionUser = session.user as typeof session.user & { id?: string; role?: string };
   const { q, module, dateFrom, dateTo, role, teamId } = await searchParams;
   const query = q?.trim() ?? "";
@@ -42,11 +44,19 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const managerTeamId = sessionUser.role === "manager" ? currentUser?.teamId ?? "__no_team__" : undefined;
   const memberTeamId = memberScope ? currentUser?.teamId ?? "__no_team__" : undefined;
   const selectedTeamId = sessionUser.role === "admin" && teamId ? teamId : managerTeamId;
+  // A date that is not a real "YYYY-MM-DD" is left out rather than reaching
+  // the database as an invalid date, which showed the error page.
+  const validDay = (value?: string) =>
+    value && /^\d{4}-\d{2}-\d{2}$/.test(value) && !Number.isNaN(Date.parse(`${value}T00:00:00.000Z`))
+      ? value
+      : undefined;
+  const fromDay = validDay(dateFrom);
+  const toDay = validDay(dateTo);
   const createdAt =
-    dateFrom || dateTo
+    fromDay || toDay
       ? {
-          ...(dateFrom ? { gte: new Date(`${dateFrom}T00:00:00.000Z`) } : {}),
-          ...(dateTo ? { lte: new Date(`${dateTo}T23:59:59.999Z`) } : {}),
+          ...(fromDay ? { gte: new Date(`${fromDay}T00:00:00.000Z`) } : {}),
+          ...(toDay ? { lte: new Date(`${toDay}T23:59:59.999Z`) } : {}),
         }
       : undefined;
   // An inactive employee's work is hidden until they are made active again;
@@ -55,14 +65,16 @@ export default async function SearchPage({ searchParams }: SearchPageProps) {
   const ownedWhere = memberScope ? { userId: sessionUser.id } : sessionUser.role === "manager" ? { user: { teamId: managerTeamId, ...ACTIVE_USER } } : selectedTeamId ? { user: { teamId: selectedTeamId, ...ACTIVE_USER } } : OWNED_BY_ACTIVE_USER;
   const taskWhere = memberScope ? { assignedToId: sessionUser.id } : sessionUser.role === "manager" ? { teamId: managerTeamId } : selectedTeamId ? { teamId: selectedTeamId } : {};
   const includeModule = (name: string) => !module || module === name;
-  const teamsForFilter = sessionUser.role === "admin" ? await prisma.team.findMany({ orderBy: { name: "asc" }, select: { id: true, name: true } }) : [];
+  // The cached team list (lib/filterOptions.ts): same teams, same order.
+  const teamsForFilter = sessionUser.role === "admin" ? await getTeamOptions() : [];
   const teamWhere =
     sessionUser.role === "admin"
       ? { ...(createdAt ? { createdAt } : {}), ...(selectedTeamId ? { id: selectedTeamId } : {}), name: { contains: query } }
       : { id: sessionUser.role === "manager" ? managerTeamId : memberTeamId, name: { contains: query } };
   const [users, teams, tasks, updates, learnings, tools, activity] = query
     ? await Promise.all([
-        includeModule("employees") ? prisma.user.findMany({ where: { ...userWhere, ...(createdAt ? { createdAt } : {}), OR: [{ name: { contains: query } }, { email: { contains: query } }] }, take: 5 }) : [],
+        // Only the fields a result shows: not the whole row, password hash included.
+        includeModule("employees") ? prisma.user.findMany({ where: { ...userWhere, ...(createdAt ? { createdAt } : {}), OR: [{ name: { contains: query } }, { email: { contains: query } }] }, select: { id: true, name: true, email: true }, take: 5 }) : [],
         includeModule("teams") ? prisma.team.findMany({ where: teamWhere, take: 5 }) : [],
         includeModule("tasks") ? prisma.task.findMany({ where: visibleTasks({ ...taskWhere, ...(createdAt ? { createdAt } : {}), title: { contains: query } }), take: 5 }) : [],
         includeModule("updates") ? prisma.dailyUpdate.findMany({ where: { ...ownedWhere, ...(createdAt ? { createdAt } : {}), todaysTasks: { contains: query } }, include: { user: { select: { name: true } } }, take: 5 }) : [],

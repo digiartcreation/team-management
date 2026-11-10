@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
@@ -26,11 +26,13 @@ type LearningsPageProps = {
 export default async function LearningsPage({
   searchParams,
 }: LearningsPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session, "learnings");
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;

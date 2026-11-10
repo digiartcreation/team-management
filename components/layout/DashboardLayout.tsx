@@ -1,13 +1,9 @@
 import { ReactNode } from "react";
-import { auth } from "@/auth";
-import { prisma } from "@/lib/prisma";
 import LogoutButton from "@/components/layout/LogoutButton";
 import Sidebar from "@/components/layout/Sidebar";
 import AnnouncementBanner from "@/components/layout/AnnouncementBanner";
-import { getVisibleNotificationWhere } from "@/lib/notifications";
-import { getSidebarAlertCounts, type ModuleKey } from "@/lib/moduleAlerts";
-import { countTodayAndTomorrow } from "@/lib/calendarEvents";
-import { getViewerAccount } from "@/lib/viewer";
+import type { ModuleKey } from "@/lib/moduleAlerts";
+import { getShellData, getShellSession } from "@/lib/shell";
 
 type DashboardLayoutProps = {
   children: ReactNode;
@@ -16,7 +12,7 @@ type DashboardLayoutProps = {
 };
 
 export default async function DashboardLayout({ children, reviewModule }: DashboardLayoutProps) {
-  const session = await auth();
+  const session = await getShellSession();
   const sessionUser = session?.user as
     | (NonNullable<typeof session>["user"] & {
         id?: string;
@@ -26,31 +22,10 @@ export default async function DashboardLayout({ children, reviewModule }: Dashbo
     | undefined;
   const userId = sessionUser?.id;
 
-  // Everything the menu and the banner show, read together rather than one
-  // query after another.
-  const [account, unreadNotifications, visibleNotifications, moduleAlertCounts, calendarCounts] =
-    await Promise.all([
-      userId ? getViewerAccount(userId) : null,
-      userId && sessionUser?.role !== "admin"
-        ? prisma.notification.count({
-            where: getVisibleNotificationWhere(userId, {
-              isRead: false,
-            }),
-          })
-        : 0,
-      userId
-        ? prisma.notification.findMany({
-            where: getVisibleNotificationWhere(userId, {
-              isRead: false,
-              OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-            }),
-            orderBy: { createdAt: "desc" },
-            take: 8,
-          })
-        : [],
-      getSidebarAlertCounts(userId, sessionUser?.role, reviewModule),
-      userId ? countTodayAndTomorrow({ id: userId, role: sessionUser?.role }) : undefined,
-    ]);
+  // Everything the menu and the banner show (lib/shell.ts). Pages start it as
+  // soon as they have the session (preloadShell), so by now it is usually done.
+  const { account, unreadNotifications, visibleNotifications, moduleAlertCounts, calendarCounts } =
+    await getShellData(userId, sessionUser?.role, reviewModule);
 
   // Made inactive (or deleted) while signed in: the session lives on, but
   // the app does not open for it.

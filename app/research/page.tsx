@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
@@ -13,8 +13,9 @@ import ActionMenu from "@/components/ui/ActionMenu";
 type ResearchPageProps = { searchParams: Promise<{ q?: string; category?: string; page?: string }> };
 
 export default async function ResearchPage({ searchParams }: ResearchPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session);
   const sessionUser = session.user as typeof session.user & { id?: string; role?: string };
   const showEmployeeColumn = sessionUser.role !== "member";
   const { q, category } = await searchParams;
@@ -27,7 +28,7 @@ export default async function ResearchPage({ searchParams }: ResearchPageProps) 
   const [documents, totalDocuments, categories] = await Promise.all([
     prisma.researchDocument.findMany({ where, ...getPagination(page), orderBy: { createdAt: "desc" }, include: { user: { select: { id: true, name: true } } } }),
     prisma.researchDocument.count({ where }),
-    prisma.researchDocument.findMany({ select: { category: true }, distinct: ["category"], orderBy: { category: "asc" } }),
+    prisma.researchDocument.groupBy({ by: ["category"], orderBy: { category: "asc" } }),
   ]);
   return (
     <DashboardLayout>

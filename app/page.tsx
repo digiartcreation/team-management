@@ -1,5 +1,5 @@
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 // Only used by the stat cards, which are commented out for now.
 // import { prisma } from "@/lib/prisma";
 // import StatCard from "@/components/dashboard/StatCard";
@@ -15,11 +15,13 @@ function todayInputValue() {
 }
 
 export default async function Home() {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   // The stat cards below are hidden for now, so their counts are not queried.
   // Bring these back together with the section.

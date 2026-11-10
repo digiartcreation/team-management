@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
@@ -17,8 +17,9 @@ type ToolsPageProps = { searchParams: Promise<{ q?: string; category?: string; p
 const dateFormatter = new Intl.DateTimeFormat("en", { year: "numeric", month: "short", day: "numeric" });
 
 export default async function ToolsPage({ searchParams }: ToolsPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
   if (!session?.user) redirect("/login");
+  preloadShell(session, "tools");
   const sessionUser = session.user as typeof session.user & { id?: string; role?: string };
   const showEmployeeColumn = sessionUser.role !== "member";
   const { q, category } = await searchParams;
@@ -28,11 +29,13 @@ export default async function ToolsPage({ searchParams }: ToolsPageProps) {
   const where: Prisma.ToolUsageWhereInput = sessionUser.role === "admin" ? { ...OWNED_BY_ACTIVE_USER } : sessionUser.role === "manager" ? { user: { teamId: currentUser?.teamId ?? "__no_team__", ...ACTIVE_USER } } : { userId: sessionUser.id };
   if (q?.trim()) where.toolName = { contains: q.trim() };
   if (category?.trim()) where.category = category.trim();
-  const [entries, totalEntries] = await Promise.all([
+  // The category list is read alongside the page, not after it.
+  const [entries, totalEntries, categories] = await Promise.all([
     prisma.toolUsage.findMany({ where, ...getPagination(page), orderBy: { date: "desc" }, include: { user: { select: { id: true, name: true } } } }),
     prisma.toolUsage.count({ where }),
+    // Grouped in SQL; a `distinct` findMany read every row's category.
+    prisma.toolUsage.groupBy({ by: ["category"], orderBy: { category: "asc" } }),
   ]);
-  const categories = await prisma.toolUsage.findMany({ select: { category: true }, distinct: ["category"], orderBy: { category: "asc" } });
 
   // Edit and Delete: a ⋯ menu in the table, a labelled one on a phone card.
   const rowMenu = (id: string, trigger?: string) => (

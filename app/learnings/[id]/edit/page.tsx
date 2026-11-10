@@ -1,6 +1,6 @@
 import FormPageHeader from "@/components/ui/FormPageHeader";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import LearningForm from "@/components/learnings/LearningForm";
@@ -13,11 +13,13 @@ type EditLearningPageProps = {
 export default async function EditLearningPage({
   params,
 }: EditLearningPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & { id?: string };
   const { id } = await params;

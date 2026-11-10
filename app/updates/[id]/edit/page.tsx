@@ -1,6 +1,6 @@
 import FormPageHeader from "@/components/ui/FormPageHeader";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DailyUpdateForm from "@/components/updates/DailyUpdateForm";
@@ -11,11 +11,13 @@ type EditUpdatePageProps = {
 };
 
 export default async function EditUpdatePage({ params }: EditUpdatePageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & { id?: string };
   const { id } = await params;

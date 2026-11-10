@@ -1,6 +1,6 @@
 import BackLink from "@/components/ui/BackLink";
 import { notFound, redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DocumentationForm from "@/components/documentation/DocumentationForm";
@@ -14,11 +14,13 @@ type EditDocumentationPageProps = {
 export default async function EditDocumentationPage({
   params,
 }: EditDocumentationPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session);
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;

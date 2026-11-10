@@ -1,7 +1,7 @@
 import Link from "next/link";
 import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
-import { auth } from "@/auth";
+import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
@@ -326,11 +326,13 @@ function TaskActions({
 
 
 export default async function TasksPage({ searchParams }: TasksPageProps) {
-  const session = await auth();
+  const session = await getShellSession();
 
   if (!session?.user) {
     redirect("/login");
   }
+
+  preloadShell(session, "tasks");
 
   const sessionUser = session.user as typeof session.user & {
     id?: string;
