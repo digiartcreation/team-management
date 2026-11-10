@@ -1,8 +1,7 @@
 "use client";
 
-import Link from "next/link";
-import { usePathname, useRouter } from "next/navigation";
-import { PrefetchKind } from "next/dist/client/components/router-reducer/router-reducer-types";
+import Link, { useLinkStatus } from "next/link";
+import { usePathname } from "next/navigation";
 import LogoutButton from "@/components/layout/LogoutButton";
 import PushNotificationToggle from "@/components/notifications/PushNotificationToggle";
 
@@ -24,6 +23,31 @@ export type SidebarNavProps = {
   variant?: "sidebar" | "drawer";
 };
 
+/**
+ * A small spinner beside a menu item while the page it opens is loading.
+ * Pages have no loading.tsx skeleton -- in this Next.js version a page with
+ * one could not update in place (page 2, filters, the refresh after a save),
+ * which also left "Log time to complete" on "Saving..." for good -- so this
+ * is the sign that a click was taken.
+ */
+function PendingMark() {
+  const { pending } = useLinkStatus();
+
+  if (!pending) {
+    return null;
+  }
+
+  return (
+    <>
+      <span
+        aria-hidden="true"
+        className="ml-2 inline-block h-3.5 w-3.5 shrink-0 animate-spin rounded-full border-2 border-current border-t-transparent align-[-2px] opacity-70"
+      />
+      <span className="sr-only"> (loading)</span>
+    </>
+  );
+}
+
 export default function SidebarNav({
   items,
   unreadNotifications = 0,
@@ -32,15 +56,7 @@ export default function SidebarNav({
   variant = "sidebar",
 }: SidebarNavProps) {
   const pathname = usePathname();
-  const router = useRouter();
   const drawer = variant === "drawer";
-  // Every page here is rendered per request, so the default prefetch of each
-  // menu link in view cost the server one request per link on every page
-  // load. Prefetching when a link is about to be used keeps clicks quick.
-  // AUTO, as <Link> itself uses: only the loading skeleton. router.prefetch
-  // defaults to FULL, which renders the whole page -- its queries, and the
-  // menu badge marking that module reviewed -- just because of a hover.
-  const prefetch = (href: string) => router.prefetch(href, { kind: PrefetchKind.AUTO });
 
   return (
     <nav
@@ -58,10 +74,10 @@ export default function SidebarNav({
           <Link
             key={item.href}
             href={item.href}
+            // Every page here is rendered per request, and with no loading
+            // skeleton there is nothing worth fetching ahead of a click: the
+            // default prefetch cost the server a request per link in view.
             prefetch={false}
-            onMouseEnter={() => prefetch(item.href)}
-            onFocus={() => prefetch(item.href)}
-            onTouchStart={() => prefetch(item.href)}
             aria-current={isActive ? "page" : undefined}
             className={`whitespace-nowrap rounded-md px-3 text-sm font-medium transition duration-200 ${
               drawer ? "flex items-center py-2.5" : "py-2"
@@ -74,6 +90,7 @@ export default function SidebarNav({
             <span className={drawer ? "min-w-0 flex-1 truncate" : undefined}>
               {item.label}
             </span>
+            <PendingMark />
             {alertCounts[item.href] ? (
               <span className="ml-2 rounded-full bg-[#F3E8FF] px-2 py-0.5 text-xs text-[#770FC2]">
                 {alertCounts[item.href]}
