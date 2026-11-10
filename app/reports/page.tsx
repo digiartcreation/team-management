@@ -3,7 +3,8 @@ import { Prisma } from "@prisma/client";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
-import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
+import { OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
+import { getActivePeopleOptions, getClientOptions, getMappedWork } from "@/lib/filterOptions";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import BreakdownTable from "@/components/reports/BreakdownTable";
 import ReportCharts from "@/components/reports/ReportCharts";
@@ -196,16 +197,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
   // Every service a task has actually been mapped to. It both fills the filter
   // and turns the chosen service back into the exact stored values, since
   // "Digital Marketing" has to match "Digital Marketing (SEO)" as well.
-  const mappedWork = await prisma.task.findMany({
-    where: { clientWork: { not: null } },
-    select: { clientWork: true },
-    distinct: ["clientWork"],
-    orderBy: { clientWork: "asc" },
-  });
-
-  const workValues = mappedWork
-    .map((task) => task.clientWork)
-    .filter((work): work is string => Boolean(work));
+  // Cached, as are the client and people lists below: lib/filterOptions.ts.
+  const workValues = await getMappedWork();
 
   const serviceOptions = [
     ...new Set(
@@ -283,15 +276,8 @@ export default async function ReportsPage({ searchParams }: ReportsPageProps) {
           },
         },
       }),
-      prisma.client.findMany({
-        orderBy: { name: "asc" },
-        select: { id: true, name: true },
-      }),
-      prisma.user.findMany({
-        where: ACTIVE_USER,
-        orderBy: { name: "asc" },
-        select: { id: true, name: true, role: true },
-      }),
+      getClientOptions(),
+      getActivePeopleOptions(),
       previousWhere
         ? prisma.taskTimeLog.aggregate({
             where: previousWhere,

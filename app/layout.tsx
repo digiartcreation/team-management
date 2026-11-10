@@ -1,14 +1,16 @@
 import type { Metadata } from "next";
+import { LOGO_ICON_DATA_URL } from "@/lib/digiartLogo";
 import "./globals.css";
 
 export const metadata: Metadata = {
   title: "Digiart Creation",
   description: "Digiart Creation dashboard",
-  // The tab icon is the SVG, sharp at any size; older browsers that cannot
-  // show one use app/favicon.ico, which Next adds on its own. iPhones need a
-  // bitmap for the home screen, so that one stays the JPG.
+  // The tab icon is the logo's SVG, built in code (lib/digiartLogo.ts) and
+  // sharp at any size; older browsers that cannot show one use
+  // app/favicon.ico, which Next adds on its own. iPhones need a bitmap for the
+  // home screen, so that one stays the JPG.
   icons: {
-    icon: { url: "/digiart-logo.svg", type: "image/svg+xml" },
+    icon: { url: LOGO_ICON_DATA_URL, type: "image/svg+xml" },
     apple: "/digiart-logo.jpg",
   },
 };

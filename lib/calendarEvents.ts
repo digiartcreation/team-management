@@ -1,4 +1,5 @@
 import type { Prisma } from "@prisma/client";
+import { unstable_cache } from "next/cache";
 import { prisma } from "@/lib/prisma";
 import {
   calendarGridDays,
@@ -46,6 +47,51 @@ function visibleBetween(viewer: Viewer, from: string, to: string): Prisma.Calend
 }
 
 /**
+ * Cache tag for the entries behind the menu's counts. Every calendar change
+ * (app/calendar/actions.ts) and every employee removal clears it, so a count
+ * is never out of date; the 5-minute expiry is a safety net for changes made
+ * outside the app (in phpMyAdmin, say).
+ */
+export const CALENDAR_TAG = "calendar";
+
+/**
+ * The entries a person may see today or tomorrow, as the menu's counts need
+ * them, cached per person and day: the menu is on every page. Dates are kept
+ * as "YYYY-MM-DD" strings, as the cache stores JSON. Whether an entry has
+ * already ended is worked out on each page from these, not cached.
+ */
+const loadMenuEntries = unstable_cache(
+  async (viewerId: string, today: string, tomorrow: string) => {
+    const events = await prisma.calendarEvent.findMany({
+      where: visibleBetween({ id: viewerId }, today, tomorrow),
+      select: {
+        date: true,
+        startTime: true,
+        endTime: true,
+        recurrence: true,
+        repeatDays: true,
+        repeatMonthDay: true,
+        repeatUntil: true,
+        shares: { where: { userId: viewerId }, select: { response: true } },
+      },
+    });
+
+    return events.map((event) => ({
+      seriesDate: event.date.toISOString().slice(0, 10),
+      startTime: event.startTime,
+      endTime: event.endTime,
+      recurrence: event.recurrence,
+      repeatDays: event.repeatDays,
+      repeatMonthDay: event.repeatMonthDay,
+      repeatUntil: event.repeatUntil?.toISOString().slice(0, 10) ?? null,
+      declined: event.shares[0]?.response === "declined",
+    }));
+  },
+  ["calendar-menu-entries"],
+  { tags: [CALENDAR_TAG], revalidate: 300 }
+);
+
+/**
  * How many entries `viewer` still has today and has tomorrow on the office
  * clock, repeats included: the two counts beside Calendar in the menu. One of
  * today's that has already ended -- past its end time, or its start time when
@@ -59,23 +105,11 @@ export async function countTodayAndTomorrow(viewer: Viewer) {
   const tomorrow = new Date(Date.parse(`${today}T00:00:00.000Z`) + 24 * 60 * 60 * 1000)
     .toISOString()
     .slice(0, 10);
-  const events = await prisma.calendarEvent.findMany({
-    where: visibleBetween(viewer, today, tomorrow),
-    select: {
-      date: true,
-      startTime: true,
-      endTime: true,
-      recurrence: true,
-      repeatDays: true,
-      repeatMonthDay: true,
-      repeatUntil: true,
-      shares: { where: { userId: viewer.id }, select: { response: true } },
-    },
-  });
+  const events = await loadMenuEntries(viewer.id, today, tomorrow);
   const counts = { today: 0, tomorrow: 0 };
 
   for (const event of events) {
-    if (event.shares[0]?.response === "declined") {
+    if (event.declined) {
       continue;
     }
 
@@ -83,11 +117,11 @@ export async function countTodayAndTomorrow(viewer: Viewer) {
     const endedToday = lastTime !== null && minutesFromTime(lastTime) <= nowMinutes;
     const days = occurrencesBetween(
       {
-        seriesDate: event.date.toISOString().slice(0, 10),
+        seriesDate: event.seriesDate,
         recurrence: event.recurrence,
         repeatDays: parseRepeatDays(event.repeatDays),
         repeatMonthDay: event.repeatMonthDay,
-        repeatUntil: event.repeatUntil?.toISOString().slice(0, 10) ?? null,
+        repeatUntil: event.repeatUntil,
       },
       today,
       tomorrow

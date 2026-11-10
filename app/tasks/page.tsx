@@ -5,6 +5,12 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { getViewerAccount } from "@/lib/viewer";
 import { ACTIVE_USER, visibleTasks } from "@/lib/activeUsers";
+import {
+  getActivePeopleOptions,
+  getClientOptions,
+  getMappedWork,
+  getTeamOptions,
+} from "@/lib/filterOptions";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import DeleteTaskButton from "@/components/tasks/DeleteTaskButton";
 import { TaskDetailsButton } from "@/components/tasks/TaskDetailsDialog";
@@ -377,15 +383,8 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
   // Every service a task has been mapped to, as on the Reports page: it fills
   // the filter and turns the chosen service back into the stored values,
   // since "Digital Marketing" has to match "Digital Marketing (SEO)" as well.
-  const mappedWork = await prisma.task.findMany({
-    where: { clientWork: { not: null } },
-    select: { clientWork: true },
-    distinct: ["clientWork"],
-    orderBy: { clientWork: "asc" },
-  });
-  const workValues = mappedWork
-    .map((task) => task.clientWork)
-    .filter((work): work is string => Boolean(work));
+  // Cached: lib/filterOptions.ts.
+  const workValues = await getMappedWork();
   const serviceOptions = [
     ...new Set(
       workValues
@@ -436,40 +435,38 @@ export default async function TasksPage({ searchParams }: TasksPageProps) {
       include: taskInclude,
     }),
     prisma.task.count({ where: shownWhere }),
-    prisma.user.findMany({
-      where: isMember
-        ? { id: sessionUser.id }
-        : managerTeamId
-          ? { teamId: managerTeamId, ...ACTIVE_USER }
-          : ACTIVE_USER,
-      orderBy: {
-        name: "asc",
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    }),
-    prisma.team.findMany({
-      where: managerTeamId ? { id: managerTeamId } : undefined,
-      orderBy: {
-        name: "asc",
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    }),
+    // An admin's lists are the shared cached ones (lib/filterOptions.ts); an
+    // employee's and a manager's are their own, so they are read here.
+    isMember || managerTeamId
+      ? prisma.user.findMany({
+          where: isMember
+            ? { id: sessionUser.id }
+            : { teamId: managerTeamId, ...ACTIVE_USER },
+          orderBy: {
+            name: "asc",
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        })
+      : getActivePeopleOptions().then((people) =>
+          people.map(({ id, name }) => ({ id, name }))
+        ),
+    managerTeamId
+      ? prisma.team.findMany({
+          where: { id: managerTeamId },
+          orderBy: {
+            name: "asc",
+          },
+          select: {
+            id: true,
+            name: true,
+          },
+        })
+      : getTeamOptions(),
     // Every client, not just active ones, so older mappings stay filterable.
-    prisma.client.findMany({
-      orderBy: {
-        name: "asc",
-      },
-      select: {
-        id: true,
-        name: true,
-      },
-    }),
+    getClientOptions(),
   ]);
   const actionRights = { today, canEditTasks, canDeleteTasks, isMember };
   const activeFilters = [

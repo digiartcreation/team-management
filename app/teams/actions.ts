@@ -1,11 +1,12 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { FILTER_TAGS } from "@/lib/filterOptions";
 
 function getValue(formData: FormData, key: string) {
   const value = formData.get(key);
@@ -108,6 +109,8 @@ export async function createTeam(formData: FormData) {
     handlePrismaTeamError(error);
   }
 
+  // The Team filter on Tasks (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.teams);
   revalidatePath("/teams");
   redirect("/teams");
 }
@@ -138,6 +141,8 @@ export async function updateTeam(formData: FormData) {
     handlePrismaTeamError(error);
   }
 
+  // The Team filter on Tasks shows the name (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.teams);
   revalidatePath("/teams");
   redirect("/teams");
 }
@@ -153,5 +158,7 @@ export async function deleteTeam(id: string) {
     handlePrismaTeamError(error);
   }
 
+  // The Team filter on Tasks (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.teams);
   revalidatePath("/teams");
 }

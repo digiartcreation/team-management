@@ -1,12 +1,14 @@
 "use server";
 
-import { revalidatePath } from "next/cache";
+import { revalidatePath, revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import bcrypt from "bcryptjs";
 import { Prisma } from "@prisma/client";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { CALENDAR_TAG } from "@/lib/calendarEvents";
+import { FILTER_TAGS } from "@/lib/filterOptions";
 import {
   isDesignation,
   isDesignationInSector,
@@ -173,6 +175,8 @@ export async function createEmployee(
     return prismaEmployeeError(error);
   }
 
+  // The Employee filters (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.people);
   revalidatePath("/employees");
   redirect("/employees");
 }
@@ -243,6 +247,9 @@ export async function updateEmployee(
     return prismaEmployeeError(error);
   }
 
+  // The Employee filters show the name and list active people only
+  // (lib/filterOptions.ts).
+  revalidateTag(FILTER_TAGS.people);
   revalidatePath("/employees");
   redirect("/employees");
 }
@@ -263,6 +270,11 @@ export async function deleteEmployee(id: string) {
     throw new Error(failure?.error ?? "Could not delete the employee.");
   }
 
+  // The Employee filters, and the menu's calendar counts: their calendar
+  // entries and answers went with them (lib/filterOptions.ts,
+  // lib/calendarEvents.ts).
+  revalidateTag(FILTER_TAGS.people);
+  revalidateTag(CALENDAR_TAG);
   revalidatePath("/employees");
 }
 

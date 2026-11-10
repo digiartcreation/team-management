@@ -1,9 +1,11 @@
 "use server";
 
+import { revalidateTag } from "next/cache";
 import { redirect } from "next/navigation";
 import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
+import { CALENDAR_TAG } from "@/lib/calendarEvents";
 import {
   canManageCalendarEvent,
   isCalendarEventType,
@@ -346,6 +348,10 @@ export async function saveCalendarEvent(
     return { error: "Could not save the entry. Please try again." };
   }
 
+  // Fresh menu counts, and the page comes back re-rendered with this answer:
+  // the calendar no longer asks for a second render with router.refresh().
+  revalidateTag(CALENDAR_TAG);
+
   return { ok: true, date: entry.day, repeats: entry.recurrence !== "none" };
 }
 
@@ -362,6 +368,7 @@ export async function deleteCalendarEvent(
 
     if (!existing) {
       // Already gone, which is what was asked for.
+      revalidateTag(CALENDAR_TAG);
       return null;
     }
 
@@ -385,6 +392,8 @@ export async function deleteCalendarEvent(
   } catch {
     return { error: "Could not delete the entry. Please try again." };
   }
+
+  revalidateTag(CALENDAR_TAG);
 
   return null;
 }
@@ -438,6 +447,8 @@ export async function respondToCalendarEvent(
   } catch {
     return { error: "Could not save your answer. Please try again." };
   }
+
+  revalidateTag(CALENDAR_TAG);
 
   return null;
 }

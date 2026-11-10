@@ -1,7 +1,7 @@
 "use client";
 
-import Image from "next/image";
 import Link from "next/link";
+import DigiartLogo from "@/components/brand/DigiartLogo";
 import { useEffect, useRef, useState } from "react";
 import SidebarNav, { type SidebarNavProps } from "@/components/layout/SidebarNav";
 
@@ -13,17 +13,7 @@ type MobileNavProps = SidebarNavProps & {
 };
 
 function Logo() {
-  return (
-    <span className="relative h-9 w-9 shrink-0 overflow-hidden rounded-md">
-      <Image
-        src="/digiart-logo.svg"
-        alt="Digiart Creation logo"
-        fill
-        sizes="36px"
-        className="object-contain"
-      />
-    </span>
-  );
+  return <DigiartLogo className="h-9 w-9 shrink-0 rounded-md" />;
 }
 
 /**

@@ -1,4 +1,4 @@
-import Image from "next/image";
+import DigiartLogo from "@/components/brand/DigiartLogo";
 import MobileNav from "@/components/layout/MobileNav";
 import SidebarNav from "@/components/layout/SidebarNav";
 
@@ -119,16 +119,7 @@ export default function Sidebar({
         <div className="flex w-full flex-col gap-4 p-4 lg:p-6">
           <div className="rounded-lg border border-[#E5E7EB] bg-[#F8F7FB] p-3">
             <div className="flex items-center gap-3">
-              <div className="relative h-11 w-11 shrink-0 overflow-hidden rounded-md">
-                <Image
-                  src="/digiart-logo.svg"
-                  alt="Digiart Creation logo"
-                  fill
-                  sizes="44px"
-                  className="object-contain"
-                  priority
-                />
-              </div>
+              <DigiartLogo className="h-11 w-11 shrink-0 rounded-md" />
               <div className="min-w-0">
                 <p className="whitespace-nowrap text-base font-semibold leading-tight text-[#1F2937] lg:text-[15px] xl:text-base">
                   Digiart Creation
