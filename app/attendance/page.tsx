@@ -3,7 +3,7 @@ import { Prisma } from "@prisma/client";
 import { getShellSession, preloadShell } from "@/lib/shell";
 import { prisma } from "@/lib/prisma";
 import DashboardLayout from "@/components/layout/DashboardLayout";
-import MonthFilter from "@/components/attendance/MonthFilter";
+import AttendanceFilter, { type AttendanceView } from "@/components/attendance/AttendanceFilter";
 import Avatar from "@/components/ui/Avatar";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 import SubmitButton from "@/components/ui/SubmitButton";
@@ -108,17 +108,17 @@ type DayRow =
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
- * The working days of `month` that went by without a check-in: every day but
- * Sunday, from `from` -- when the person joined, or attendance began -- up to
- * yesterday. Today is left alone; there is still time to check in.
+ * The working days of the period shown (`gte` to `lt`) that went by without a
+ * check-in: every day but Sunday, from `from` -- when the person joined, or
+ * attendance began -- up to yesterday. Today is left alone; there is still
+ * time to check in.
  */
 function leaveDaysOf(
-  month: string,
+  { gte, lt }: { gte: Date; lt: Date },
   from: Date,
   today: Date,
   recorded: Set<number>
 ) {
-  const { gte, lt } = monthRange(month);
   const days: Date[] = [];
 
   for (
@@ -147,6 +147,28 @@ function dayRowsOf(records: AttendanceRow[], leaveDays: Date[]): DayRow[] {
       (a.kind === "record" ? a.record.date : a.date).getTime()
   );
 }
+
+const shortDayFormatter = new Intl.DateTimeFormat("en", {
+  timeZone: "UTC",
+  month: "short",
+  day: "numeric",
+  year: "numeric",
+});
+
+/** The Monday starting the week `day` falls in (weeks run Monday to Sunday). */
+function weekStartOf(day: Date) {
+  return new Date(day.getTime() - ((day.getUTCDay() + 6) % 7) * DAY_MS);
+}
+
+/** "Nov 10 – Nov 16, 2026" for the week starting `monday`. */
+function weekLabel(monday: Date) {
+  const sunday = new Date(monday.getTime() + 6 * DAY_MS);
+  const start = shortDayFormatter.format(monday).replace(/, \d{4}$/, "");
+  return `${start} – ${shortDayFormatter.format(sunday)}`;
+}
+
+/** At most this many weeks back in the week picker. */
+const WEEK_CHOICES = 26;
 
 function plural(count: number, one: string, many = `${one}s`) {
   return `${count} ${count === 1 ? one : many}`;
@@ -391,7 +413,7 @@ function AttendanceTable({
 }
 
 type AttendancePageProps = {
-  searchParams: Promise<{ month?: string }>;
+  searchParams: Promise<{ view?: string; week?: string; month?: string }>;
 };
 
 export default async function AttendancePage({ searchParams }: AttendancePageProps) {
@@ -450,19 +472,59 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
   ]);
   const trackingStart = isSuperAdmin ? earliest : firstCheckIn;
 
-  // The filter offers every month from the first recorded day to this one, and
-  // opens on this month.
+  // The page opens on today. Week and Month look back: the week picker offers
+  // every week (Monday to Sunday) from the first recorded one, up to
+  // WEEK_CHOICES of them, and the month picker every month, newest first.
+  const params = await searchParams;
+  const view: AttendanceView =
+    params.view === "week" || params.view === "month" ? params.view : "today";
+
   const currentMonth = monthKeyOf(todayDate);
   const earliestMonth = earliest ? monthKeyOf(earliest.date) : currentMonth;
   const months = monthsBetween(
     earliestMonth < currentMonth ? earliestMonth : currentMonth,
     currentMonth
   );
-  const { month } = await searchParams;
-  const selectedMonth = month && months.includes(month) ? month : currentMonth;
+  const selectedMonth = params.month && months.includes(params.month) ? params.month : currentMonth;
+
+  const thisWeek = weekStartOf(todayDate);
+  const firstWeek = earliest ? weekStartOf(earliest.date) : thisWeek;
+  const weeks: Date[] = [];
+  for (
+    let monday = thisWeek.getTime();
+    monday >= firstWeek.getTime() && weeks.length < WEEK_CHOICES;
+    monday -= 7 * DAY_MS
+  ) {
+    weeks.push(new Date(monday));
+  }
+  const weekKey = (monday: Date) => monday.toISOString().slice(0, 10);
+  const selectedWeek =
+    weeks.find((monday) => weekKey(monday) === params.week) ?? thisWeek;
+
+  // The days on screen, and how the page names them.
+  const period =
+    view === "today"
+      ? {
+          gte: todayDate,
+          lt: new Date(todayDate.getTime() + DAY_MS),
+          title: `Today · ${shortDayFormatter.format(todayDate)}`,
+          empty: "today",
+        }
+      : view === "week"
+        ? {
+            gte: selectedWeek,
+            lt: new Date(selectedWeek.getTime() + 7 * DAY_MS),
+            title: weekLabel(selectedWeek),
+            empty: `in the week of ${weekLabel(selectedWeek)}`,
+          }
+        : {
+            ...monthRange(selectedMonth),
+            title: monthLabel(selectedMonth),
+            empty: `in ${monthLabel(selectedMonth)}`,
+          };
 
   const records = await prisma.attendanceRecord.findMany({
-    where: { ...where, date: monthRange(selectedMonth) },
+    where: { ...where, date: { gte: period.gte, lt: period.lt } },
     orderBy: { date: "desc" },
     include: recordInclude,
   });
@@ -494,7 +556,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
       const leaveDays =
         trackingStart && person.joined
           ? leaveDaysOf(
-              selectedMonth,
+              period,
               new Date(
                 Math.max(trackingStart.date.getTime(), officeDate(person.joined).getTime())
               ),
@@ -680,7 +742,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
           <div className="flex flex-wrap items-end justify-between gap-3">
             <div>
               <h2 className="text-lg font-semibold text-slate-950">
-                {monthLabel(selectedMonth)}
+                {period.title}
               </h2>
               <p className="mt-1 text-sm text-slate-500">
                 {isSuperAdmin
@@ -688,16 +750,18 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
                   : `${plural(records.length, "day")} recorded · ${plural(ownLeaveDays, "leave day")}`}
               </p>
             </div>
-            <MonthFilter
+            <AttendanceFilter
+              view={view}
+              weeks={weeks.map((monday) => ({ value: weekKey(monday), label: weekLabel(monday) }))}
+              selectedWeek={weekKey(selectedWeek)}
               months={months.map((key) => ({ value: key, label: monthLabel(key) }))}
-              selected={selectedMonth}
-              path="/attendance"
+              selectedMonth={selectedMonth}
             />
           </div>
 
           {groups.length === 0 ? (
             <p className="rounded-lg border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-              No attendance recorded in {monthLabel(selectedMonth)}.
+              No attendance recorded {period.empty}.
             </p>
           ) : !isSuperAdmin ? (
             <div className="overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
@@ -705,9 +769,11 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             </div>
           ) : (
             groups.map((group) => (
+              // Every person's days start folded but the signed-in person's
+              // own, as on the dashboard's task board; a click opens anyone's.
               <details
                 key={group.id}
-                open
+                open={group.id === sessionUser.id}
                 className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">

@@ -35,6 +35,11 @@ type TaskBoardProps = {
    */
   columns?: BoardColumn[];
   groups?: BoardGroup[];
+  /**
+   * With `groups`: the one board that starts open -- the signed-in person's
+   * own. Every other person's board starts folded.
+   */
+  openGroupKey?: string;
   /** Today as "YYYY-MM-DD", for the log time dialog. */
   today: string;
   /**
@@ -408,6 +413,7 @@ export default function TaskBoard({
   description,
   columns,
   groups,
+  openGroupKey,
   today,
   dashboardPath,
   watching = false,
@@ -772,10 +778,11 @@ export default function TaskBoard({
             </p>
           ) : (
             groups.map((group) => (
-              // Empty boards start folded, so the people with work lead.
+              // Every board starts folded but the signed-in person's own; a
+              // tap opens anyone else's.
               <details
                 key={group.key}
-                open={group.taskCount > 0}
+                open={group.key === openGroupKey}
                 className="group rounded-lg border border-slate-200 bg-white"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
