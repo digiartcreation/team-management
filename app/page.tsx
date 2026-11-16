@@ -98,6 +98,7 @@ export default async function Home() {
           heading="Task Board"
           description="Each member's tasks by stage. Drag a card to a new column to move its status."
           groups={boards}
+          openGroupKey={sessionUser.id}
           today={todayInputValue()}
           dashboardPath="/"
         />
