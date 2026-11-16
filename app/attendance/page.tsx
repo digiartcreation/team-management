@@ -769,9 +769,11 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             </div>
           ) : (
             groups.map((group) => (
+              // Every person's days start folded but the signed-in person's
+              // own, as on the dashboard's task board; a click opens anyone's.
               <details
                 key={group.id}
-                open
+                open={group.id === sessionUser.id}
                 className="group overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm"
               >
                 <summary className="flex cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
