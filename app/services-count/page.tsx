@@ -4,8 +4,11 @@ import { prisma } from "@/lib/prisma";
 import { visibleTasks } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ServiceCountExport from "@/components/serviceCounts/ServiceCountExport";
+import EmployeeFilter from "@/components/serviceCounts/EmployeeFilter";
 import { monthKeyOf, monthLabel, monthRange, monthsBetween } from "@/lib/attendance";
 import { toServiceMapping } from "@/lib/clientServices";
+import { getActivePeopleOptions } from "@/lib/filterOptions";
+import { formatRole } from "@/lib/roles";
 import { formatOfficeDate, officeDate, officeInstant } from "@/lib/officeTime";
 import { datePresets } from "@/lib/reportAnalytics";
 import { describeRange, parseDateInput, todayUtcMidnight } from "@/lib/reportFilters";
@@ -25,6 +28,8 @@ type ServiceCountFilters = {
   month?: string;
   from?: string;
   to?: string;
+  /** A user id: only the tasks assigned to them. */
+  employee?: string;
 };
 
 type ServicesCountPageProps = {
@@ -121,6 +126,11 @@ export default async function ServicesCountPage({
   const from = parseDateInput(dates.from);
   const to = parseDateInput(dates.to);
 
+  // Active people only, as everywhere else: an inactive employee's tasks are
+  // hidden. An id not on the list (removed, made inactive) means everyone.
+  const people = await getActivePeopleOptions();
+  const employee = people.find((person) => person.id === filters.employee) ?? null;
+
   // Completions are moments, so the range is the office's days, midnight to
   // midnight.
   const [completedTasks, firstCompleted] = await Promise.all([
@@ -128,6 +138,7 @@ export default async function ServicesCountPage({
     prisma.task.findMany({
       where: visibleTasks({
         clientId: { not: null },
+        ...(employee ? { assignedToId: employee.id } : {}),
         completedAt: {
           not: null,
           ...(from ? { gte: officeInstant(from, 0) } : {}),
@@ -196,10 +207,38 @@ export default async function ServicesCountPage({
     : currentMonth;
   const monthOptions = monthsBetween(firstMonth, currentMonth);
 
-  const scope = month ? monthLabel(month) : describeRange(from, to);
+  const dateScope = month ? monthLabel(month) : describeRange(from, to);
+  // What the totals and the exports cover: the dates, and the employee if one
+  // is chosen.
+  const scope = employee ? `${dateScope} · ${employee.name}` : dateScope;
+  const employeeSlug = employee
+    ? employee.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
+    : "";
   const fileStem = `services-count-${
     month ? month : [dates.from, dates.to].filter(Boolean).join("-to-")
-  }`;
+  }${employeeSlug ? `-${employeeSlug}` : ""}`;
+
+  // The dates on screen, as the address gives them, so picking an employee
+  // keeps them.
+  const dateFilters: ServiceCountFilters = month
+    ? { month }
+    : { from: filters.from, to: filters.to };
+  // A person who shares a name with someone else is told apart by role.
+  const nameCounts = new Map<string, number>();
+  for (const person of people) {
+    nameCounts.set(person.name, (nameCounts.get(person.name) ?? 0) + 1);
+  }
+  const employeeOptions = [
+    { value: "", label: "All employees", href: servicesCountHref(dateFilters) },
+    ...people.map((person) => ({
+      value: person.id,
+      label:
+        (nameCounts.get(person.name) ?? 0) > 1
+          ? `${person.name} (${formatRole(person.role)})`
+          : person.name,
+      href: servicesCountHref({ ...dateFilters, employee: person.id }),
+    })),
+  ];
   const activePreset = presets.find(
     (preset) => preset.from === dates.from && preset.to === dates.to
   )?.label;
@@ -209,6 +248,7 @@ export default async function ServicesCountPage({
   );
   const notes = [
     "Counts are client tasks completed in the period, by the date each was first completed. Videos count by weightage, the number of videos each bills as; the brackets give the number of tasks.",
+    ...(employee ? [`Only tasks assigned to ${employee.name} are counted.`] : []),
     "Rates come from each client's services on Client Management: per-count rate for videos and posters, percentage of the amount for Digital Marketing.",
     ...(unpriced
       ? [
@@ -267,8 +307,17 @@ export default async function ServicesCountPage({
                   <rect x="3" y="4" width="14" height="13" rx="2" />
                   <path d="M3 8h14M7 2.5v3M13 2.5v3" />
                 </svg>
-                {scope}
+                {dateScope}
               </span>
+              {employee ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-[#F3E8FF] px-2.5 py-1 text-xs font-medium text-[#770FC2] ring-1 ring-[#A05DD0]/40">
+                  <svg aria-hidden viewBox="0 0 20 20" className="h-3.5 w-3.5" fill="none" stroke="currentColor" strokeWidth="1.8">
+                    <circle cx="10" cy="6.5" r="3" />
+                    <path d="M4 17c.8-3.2 3.1-5 6-5s5.2 1.8 6 5" />
+                  </svg>
+                  {employee.name}
+                </span>
+              ) : null}
             </p>
           </div>
           <ServiceCountExport
@@ -282,25 +331,33 @@ export default async function ServicesCountPage({
         {/* Quick ranges. Plain links, a full page load like the forms below:
             in production a client-side hop that only changes the query string
             sometimes never finishes, leaving the old range on screen. */}
-        <div className="flex flex-wrap gap-1.5">
-          {presets.map((preset) => (
-            <a
-              key={preset.label}
-              href={servicesCountHref({ from: preset.from, to: preset.to })}
-              className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                activePreset === preset.label
-                  ? "bg-slate-900 text-white ring-slate-900"
-                  : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
-              }`}
-            >
-              {preset.label}
-            </a>
-          ))}
+        <div className="flex flex-wrap items-center justify-between gap-3">
+          <div className="flex flex-wrap gap-1.5">
+            {presets.map((preset) => (
+              <a
+                key={preset.label}
+                href={servicesCountHref({
+                  from: preset.from,
+                  to: preset.to,
+                  employee: employee?.id,
+                })}
+                className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
+                  activePreset === preset.label
+                    ? "bg-slate-900 text-white ring-slate-900"
+                    : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
+                }`}
+              >
+                {preset.label}
+              </a>
+            ))}
+          </div>
+          <EmployeeFilter options={employeeOptions} selected={employee?.id ?? ""} />
         </div>
 
         {/* A month, or any range */}
         <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] lg:items-end">
           <form className="flex items-end gap-2">
+            {employee ? <input type="hidden" name="employee" value={employee.id} /> : null}
             <label className="grid flex-1 gap-1.5">
               <span className={labelClass}>Month</span>
               <select name="month" required defaultValue={month ?? ""} className={inputClass}>
@@ -323,6 +380,7 @@ export default async function ServicesCountPage({
           </form>
 
           <form className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+            {employee ? <input type="hidden" name="employee" value={employee.id} /> : null}
             <label className="grid gap-1.5">
               <span className={labelClass}>From</span>
               <input
@@ -371,7 +429,9 @@ export default async function ServicesCountPage({
         {/* Per client: count × rate = amount */}
         {report.clients.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-            No videos, posters or Digital Marketing work was completed for a client in this period.
+            {employee
+              ? `No videos, posters or Digital Marketing work was completed for a client by ${employee.name} in this period.`
+              : "No videos, posters or Digital Marketing work was completed for a client in this period."}
           </p>
         ) : (
           <div className="grid gap-4">
