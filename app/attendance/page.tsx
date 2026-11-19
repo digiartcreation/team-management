@@ -11,6 +11,8 @@ import { checkIn, checkOut } from "@/app/attendance/actions";
 import { SUPER_ADMIN } from "@/lib/roles";
 import { ACTIVE_USER, OWNED_BY_ACTIVE_USER } from "@/lib/activeUsers";
 import {
+  attendanceStatusOf,
+  lateLabelOf,
   monthKeyOf,
   monthLabel,
   monthRange,
@@ -52,7 +54,8 @@ function formatTime(value: Date | null) {
 
 /**
  * Past 9:20 on the office clock: when the Check-In button turns red, and when
- * a day's First In is shown in red. (The Late status itself starts at 9:01.)
+ * a day's First In is shown in red. The Late status starts then too
+ * (LATE_GRACE_MINUTES in lib/attendance.ts).
  */
 function isRedCheckIn(value: Date) {
   return officeMinutes(value) > 9 * 60 + 20;
@@ -221,7 +224,7 @@ function AttendanceCards({
               key={record.id}
               title={dateFormatter.format(record.date)}
               subtitle={`In ${formatTime(record.actualCheckInTime)} · Out ${lastOut}`}
-              status={detailed ? <StatusBadge status={record.status} /> : undefined}
+              status={detailed ? <StatusBadge status={attendanceStatusOf(record)} /> : undefined}
             >
               <MobileField label="Shift">
                 {record.scheduledStartTime}–{record.scheduledEndTime}
@@ -263,7 +266,7 @@ function AttendanceCards({
                     {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
                   </MobileField>
                   <MobileField label="Late">
-                    {record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}
+                    {lateLabelOf(record.lateDurationMinutes)}
                   </MobileField>
                   <MobileField label="Early Departure">
                     {record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}
@@ -358,7 +361,7 @@ function AttendanceTable({
                   </td>
                   {detailed ? (
                     <td className="px-4 py-4">
-                      <StatusBadge status={record.status} />
+                      <StatusBadge status={attendanceStatusOf(record)} />
                     </td>
                   ) : null}
                   <td className={`px-4 py-4 font-medium ${firstInClass(record.actualCheckInTime)}`}>
@@ -398,7 +401,7 @@ function AttendanceTable({
                       <td className="px-4 py-4 text-slate-600">
                         {day.breakMinutes > 0 ? formatDuration(day.breakMinutes) : "None"}
                       </td>
-                      <td className="px-4 py-4 text-slate-600">{record.lateDurationMinutes ? `${record.lateDurationMinutes} min` : "None"}</td>
+                      <td className="px-4 py-4 text-slate-600">{lateLabelOf(record.lateDurationMinutes)}</td>
                       <td className="px-4 py-4 text-slate-600">{record.earlyDepartureMinutes ? `${record.earlyDepartureMinutes} min` : "None"}</td>
                     </>
                   ) : null}
@@ -576,7 +579,7 @@ export default async function AttendancePage({ searchParams }: AttendancePagePro
             sum + summariseSessions(sessionsOf(record), now).workedMinutes,
           0
         ),
-        lateDays: person.records.filter((record) => record.status === "Late").length,
+        lateDays: person.records.filter((record) => attendanceStatusOf(record) === "Late").length,
       };
     })
     .filter((person) => person.rows.length > 0)
