@@ -7,6 +7,7 @@ import { auth } from "@/auth";
 import { prisma } from "@/lib/prisma";
 import { logActivity } from "@/lib/activity";
 import { closeExpiredSessions, isCheckOutClosed } from "@/lib/autoCheckOut";
+import { isLateCheckIn } from "@/lib/attendance";
 import {
   minutesFromTime,
   officeDate,
@@ -81,10 +82,13 @@ export async function checkIn() {
       }),
     ]);
   } else {
-    const lateDurationMinutes = Math.max(
+    // Up to 9:20 is on time (lib/attendance.ts); from 9:21 the day is Late
+    // and its lateness counts from 9:00.
+    const minutesPastStart = Math.max(
       0,
       officeMinutes(now) - minutesFromTime(scheduledStartTime)
     );
+    const lateDurationMinutes = isLateCheckIn(minutesPastStart) ? minutesPastStart : 0;
 
     try {
       const attendance = await prisma.attendanceRecord.create({

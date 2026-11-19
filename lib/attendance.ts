@@ -1,3 +1,34 @@
+/**
+ * Minutes after the shift start (9:00) that a first check-in still counts as
+ * on time: up to 9:20 is Present, from 9:21 the day is Late -- the same moment
+ * the Check-In button turns red. Past it, lateness counts from the shift
+ * start (9:25 is 25 minutes late).
+ */
+export const LATE_GRACE_MINUTES = 20;
+
+/** Whether a day that began this many minutes after the shift start is late. */
+export function isLateCheckIn(lateMinutes: number | null | undefined) {
+  return (lateMinutes ?? 0) > LATE_GRACE_MINUTES;
+}
+
+/**
+ * The status a day shows. Days stored before the grace period existed may say
+ * Late for a 9:01-9:20 check-in; they show as Present, like a new one would.
+ */
+export function attendanceStatusOf(record: {
+  status: string;
+  lateDurationMinutes: number | null;
+}) {
+  return record.status === "Late" && !isLateCheckIn(record.lateDurationMinutes)
+    ? "Present"
+    : record.status;
+}
+
+/** The Late column: the minutes past 9:00, or "None" within the grace period. */
+export function lateLabelOf(lateMinutes: number | null) {
+  return isLateCheckIn(lateMinutes) ? `${lateMinutes} min` : "None";
+}
+
 /** A check-in and, once it has happened, the check-out that closed it. */
 export type WorkSession = {
   id: string;
