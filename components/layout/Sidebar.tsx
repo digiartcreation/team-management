@@ -26,7 +26,8 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Learnings", href: "/learnings" },
       { label: "AI Tools", href: "/tools" },
       { label: "Feedback Center", href: "/feedback/submissions" },
-      { label: "Activity", href: "/activity" },
+      // Activity is switched off (lib/activity.ts).
+      // { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
       PROFILE_ITEM,
     ];
@@ -43,7 +44,8 @@ function getNavItems(role?: string, isSuperAdmin = false) {
       { label: "Learnings", href: "/learnings" },
       { label: "AI Tools", href: "/tools" },
       { label: "Feedback Center", href: "/feedback/submissions" },
-      { label: "Activity", href: "/activity" },
+      // Activity is switched off (lib/activity.ts).
+      // { label: "Activity", href: "/activity" },
       { label: "Search", href: "/search" },
       PROFILE_ITEM,
     ];
@@ -61,7 +63,8 @@ function getNavItems(role?: string, isSuperAdmin = false) {
     { label: "AI Tools", href: "/tools" },
     { label: "Feedback Center", href: "/feedback/submissions" },
     { label: "Reports", href: "/reports" },
-    { label: "Activity", href: "/activity" },
+    // Activity is switched off (lib/activity.ts).
+    // { label: "Activity", href: "/activity" },
     { label: "Search", href: "/search" },
   ];
 
