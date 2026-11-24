@@ -213,7 +213,8 @@ export function buildServiceCounts(
 
       return { clientId, name: client.name, lines, total: clientTotal };
     })
-    .sort((a, b) => a.name.localeCompare(b.name));
+    // Highest revenue first; clients with the same total, A to Z.
+    .sort((a, b) => b.total - a.total || a.name.localeCompare(b.name));
 
   return { clients: list, byService, total, postersWithoutCount };
 }
