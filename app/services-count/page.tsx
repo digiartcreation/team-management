@@ -4,7 +4,6 @@ import { prisma } from "@/lib/prisma";
 import { visibleTasks } from "@/lib/activeUsers";
 import DashboardLayout from "@/components/layout/DashboardLayout";
 import ServiceCountExport from "@/components/serviceCounts/ServiceCountExport";
-import EmployeeFilter from "@/components/serviceCounts/EmployeeFilter";
 import { monthKeyOf, monthLabel, monthRange, monthsBetween } from "@/lib/attendance";
 import { toServiceMapping } from "@/lib/clientServices";
 import { getActivePeopleOptions } from "@/lib/filterOptions";
@@ -21,7 +20,7 @@ import {
   tasksLabel,
   type CountedService,
 } from "@/lib/serviceCounts";
-import { formatInr } from "@/lib/services";
+import { formatInr, splitService } from "@/lib/services";
 
 type ServiceCountFilters = {
   /** "2026-10": one whole month. */
@@ -30,6 +29,8 @@ type ServiceCountFilters = {
   to?: string;
   /** A user id: only the tasks assigned to them. */
   employee?: string;
+  /** One of COUNTED_SERVICES: only that service's tasks. */
+  service?: string;
 };
 
 type ServicesCountPageProps = {
@@ -42,6 +43,20 @@ const inputClass =
   "w-full rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm";
 
 const labelClass = "text-xs font-medium uppercase tracking-wide text-slate-500";
+
+const buttonClass =
+  "rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800 focus:outline-none focus-visible:ring-2 focus-visible:ring-[#A05DD0]/50";
+
+/** The filters a form does not ask for, carried along so submitting keeps them. */
+function HiddenFilters({ filters }: { filters: ServiceCountFilters }) {
+  return (
+    <>
+      {Object.entries(filters).map(([name, value]) =>
+        value ? <input key={name} type="hidden" name={name} value={value} /> : null
+      )}
+    </>
+  );
+}
 
 /** The dot each service is marked with. */
 const SERVICE_DOT: Record<CountedService, string> = {
@@ -130,6 +145,8 @@ export default async function ServicesCountPage({
   // hidden. An id not on the list (removed, made inactive) means everyone.
   const people = await getActivePeopleOptions();
   const employee = people.find((person) => person.id === filters.employee) ?? null;
+  const service =
+    COUNTED_SERVICES.find((counted) => counted === filters.service) ?? null;
 
   // Completions are moments, so the range is the office's days, midnight to
   // midnight.
@@ -181,7 +198,10 @@ export default async function ServicesCountPage({
 
   const report = buildServiceCounts(
     completedTasks.flatMap((task) =>
-      task.client && task.completedAt
+      task.client &&
+      task.completedAt &&
+      // "Digital Marketing (SEO)" is Digital Marketing.
+      (!service || (task.clientWork && splitService(task.clientWork).name === service))
         ? [
             {
               id: task.id,
@@ -208,37 +228,41 @@ export default async function ServicesCountPage({
   const monthOptions = monthsBetween(firstMonth, currentMonth);
 
   const dateScope = month ? monthLabel(month) : describeRange(from, to);
-  // What the totals and the exports cover: the dates, and the employee if one
-  // is chosen.
-  const scope = employee ? `${dateScope} · ${employee.name}` : dateScope;
-  const employeeSlug = employee
-    ? employee.name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "")
-    : "";
-  const fileStem = `services-count-${
-    month ? month : [dates.from, dates.to].filter(Boolean).join("-to-")
-  }${employeeSlug ? `-${employeeSlug}` : ""}`;
+  // What the totals and the exports cover: the dates, and the employee and
+  // service if chosen.
+  const scope = [dateScope, employee?.name, service].filter(Boolean).join(" · ");
+  const slug = (value: string) =>
+    value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "");
+  const fileStem = [
+    `services-count-${month ? month : [dates.from, dates.to].filter(Boolean).join("-to-")}`,
+    employee ? slug(employee.name) : "",
+    service ? slug(service) : "",
+  ]
+    .filter(Boolean)
+    .join("-");
 
-  // The dates on screen, as the address gives them, so picking an employee
-  // keeps them.
+  // The dates on screen, as the address gives them, which the Employee and
+  // Service form keeps; and the employee and service, which every date link
+  // and form keeps.
   const dateFilters: ServiceCountFilters = month
     ? { month }
     : { from: filters.from, to: filters.to };
+  const whoAndWhat: ServiceCountFilters = {
+    employee: employee?.id,
+    service: service ?? undefined,
+  };
   // A person who shares a name with someone else is told apart by role.
   const nameCounts = new Map<string, number>();
   for (const person of people) {
     nameCounts.set(person.name, (nameCounts.get(person.name) ?? 0) + 1);
   }
-  const employeeOptions = [
-    { value: "", label: "All employees", href: servicesCountHref(dateFilters) },
-    ...people.map((person) => ({
-      value: person.id,
-      label:
-        (nameCounts.get(person.name) ?? 0) > 1
-          ? `${person.name} (${formatRole(person.role)})`
-          : person.name,
-      href: servicesCountHref({ ...dateFilters, employee: person.id }),
-    })),
-  ];
+  const employeeOptions = people.map((person) => ({
+    value: person.id,
+    label:
+      (nameCounts.get(person.name) ?? 0) > 1
+        ? `${person.name} (${formatRole(person.role)})`
+        : person.name,
+  }));
   const activePreset = presets.find(
     (preset) => preset.from === dates.from && preset.to === dates.to
   )?.label;
@@ -248,7 +272,13 @@ export default async function ServicesCountPage({
   );
   const notes = [
     "Counts are client tasks completed in the period, by the date each was first completed. Videos count by weightage, the number of videos each bills as; the brackets give the number of tasks.",
-    ...(employee ? [`Only tasks assigned to ${employee.name} are counted.`] : []),
+    ...(employee || service
+      ? [
+          `Only ${service ? `${service} ` : ""}tasks${
+            employee ? ` assigned to ${employee.name}` : ""
+          } are counted.`,
+        ]
+      : []),
     "Rates come from each client's services on Client Management: per-count rate for videos and posters, percentage of the amount for Digital Marketing.",
     ...(unpriced
       ? [
@@ -318,6 +348,12 @@ export default async function ServicesCountPage({
                   {employee.name}
                 </span>
               ) : null}
+              {service ? (
+                <span className="inline-flex items-center gap-1.5 rounded-full bg-white px-2.5 py-1 text-xs font-medium text-slate-700 ring-1 ring-slate-200">
+                  <span aria-hidden className={`h-2 w-2 rounded-full ${SERVICE_DOT[service]}`} />
+                  {service}
+                </span>
+              ) : null}
             </p>
           </div>
           <ServiceCountExport
@@ -331,88 +367,107 @@ export default async function ServicesCountPage({
         {/* Quick ranges. Plain links, a full page load like the forms below:
             in production a client-side hop that only changes the query string
             sometimes never finishes, leaving the old range on screen. */}
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="flex flex-wrap gap-1.5">
-            {presets.map((preset) => (
-              <a
-                key={preset.label}
-                href={servicesCountHref({
-                  from: preset.from,
-                  to: preset.to,
-                  employee: employee?.id,
-                })}
-                className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
-                  activePreset === preset.label
-                    ? "bg-slate-900 text-white ring-slate-900"
-                    : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
-                }`}
-              >
-                {preset.label}
-              </a>
-            ))}
-          </div>
-          <EmployeeFilter options={employeeOptions} selected={employee?.id ?? ""} />
+        <div className="flex flex-wrap gap-1.5">
+          {presets.map((preset) => (
+            <a
+              key={preset.label}
+              href={servicesCountHref({ from: preset.from, to: preset.to, ...whoAndWhat })}
+              className={`rounded-full px-3 py-1.5 text-xs font-medium ring-1 transition ${
+                activePreset === preset.label
+                  ? "bg-slate-900 text-white ring-slate-900"
+                  : "bg-white text-slate-600 ring-slate-200 hover:ring-[#A05DD0]"
+              }`}
+            >
+              {preset.label}
+            </a>
+          ))}
         </div>
 
-        {/* A month, or any range */}
-        <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] lg:items-end">
-          <form className="flex items-end gap-2">
-            {employee ? <input type="hidden" name="employee" value={employee.id} /> : null}
-            <label className="grid flex-1 gap-1.5">
-              <span className={labelClass}>Month</span>
-              <select name="month" required defaultValue={month ?? ""} className={inputClass}>
-                <option value="" disabled>
-                  Choose a month
-                </option>
-                {monthOptions.map((key) => (
-                  <option key={key} value={key}>
-                    {monthLabel(key)}
+        <div className="grid gap-4 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {/* Who and what: applied with its button, keeping the dates. */}
+          <form className="grid items-end gap-2 sm:grid-cols-[minmax(0,1fr)_minmax(0,1fr)_auto] lg:max-w-3xl">
+            <HiddenFilters filters={dateFilters} />
+            <label className="grid gap-1.5">
+              <span className={labelClass}>Employee</span>
+              <select name="employee" defaultValue={employee?.id ?? ""} className={inputClass}>
+                <option value="">All employees</option>
+                {employeeOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
             </label>
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
-              View
-            </button>
-          </form>
-
-          <form className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
-            {employee ? <input type="hidden" name="employee" value={employee.id} /> : null}
             <label className="grid gap-1.5">
-              <span className={labelClass}>From</span>
-              <input
-                name="from"
-                type="date"
-                defaultValue={month ? "" : (dates.from ?? "")}
-                className={inputClass}
-              />
+              <span className={labelClass}>Service</span>
+              <select name="service" defaultValue={service ?? ""} className={inputClass}>
+                <option value="">All services</option>
+                {COUNTED_SERVICES.map((counted) => (
+                  <option key={counted} value={counted}>
+                    {counted}
+                  </option>
+                ))}
+              </select>
             </label>
-            <label className="grid gap-1.5">
-              <span className={labelClass}>To</span>
-              <input
-                name="to"
-                type="date"
-                defaultValue={month ? "" : (dates.to ?? "")}
-                className={inputClass}
-              />
-            </label>
-            <button
-              type="submit"
-              className="rounded-lg bg-slate-950 px-4 py-2 text-sm font-medium text-white transition hover:bg-slate-800"
-            >
+            <button type="submit" className={buttonClass}>
               Apply
             </button>
           </form>
 
-          <a
-            href="/services-count"
-            className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
-          >
-            Reset
-          </a>
+          {/* A month, or any range */}
+          <div className="grid gap-4 border-t border-slate-100 pt-4 lg:grid-cols-[minmax(0,1fr)_minmax(0,2fr)_auto] lg:items-end">
+            <form className="flex items-end gap-2">
+              <HiddenFilters filters={whoAndWhat} />
+              <label className="grid flex-1 gap-1.5">
+                <span className={labelClass}>Month</span>
+                <select name="month" required defaultValue={month ?? ""} className={inputClass}>
+                  <option value="" disabled>
+                    Choose a month
+                  </option>
+                  {monthOptions.map((key) => (
+                    <option key={key} value={key}>
+                      {monthLabel(key)}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <button type="submit" className={buttonClass}>
+                View
+              </button>
+            </form>
+
+            <form className="grid items-end gap-2 sm:grid-cols-[1fr_1fr_auto]">
+              <HiddenFilters filters={whoAndWhat} />
+              <label className="grid gap-1.5">
+                <span className={labelClass}>From</span>
+                <input
+                  name="from"
+                  type="date"
+                  defaultValue={month ? "" : (dates.from ?? "")}
+                  className={inputClass}
+                />
+              </label>
+              <label className="grid gap-1.5">
+                <span className={labelClass}>To</span>
+                <input
+                  name="to"
+                  type="date"
+                  defaultValue={month ? "" : (dates.to ?? "")}
+                  className={inputClass}
+                />
+              </label>
+              <button type="submit" className={buttonClass}>
+                Apply
+              </button>
+            </form>
+
+            <a
+              href="/services-count"
+              className="inline-flex items-center justify-center rounded-lg border border-slate-300 px-3 py-2 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+            >
+              Reset
+            </a>
+          </div>
         </div>
 
         {/* Totals */}
@@ -429,9 +484,9 @@ export default async function ServicesCountPage({
         {/* Per client: count × rate = amount */}
         {report.clients.length === 0 ? (
           <p className="rounded-xl border border-dashed border-slate-300 bg-white p-8 text-center text-sm text-slate-500">
-            {employee
-              ? `No videos, posters or Digital Marketing work was completed for a client by ${employee.name} in this period.`
-              : "No videos, posters or Digital Marketing work was completed for a client in this period."}
+            {`No ${service ?? "videos, posters or Digital Marketing"} work was completed for a client${
+              employee ? ` by ${employee.name}` : ""
+            } in this period.`}
           </p>
         ) : (
           <div className="grid gap-4">
