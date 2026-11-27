@@ -19,6 +19,7 @@ import {
   todayUtcMidnight,
 } from "@/lib/reportFilters";
 import { INTERNAL_LABEL, UNMAPPED_SERVICE_LABEL, serviceNameOf } from "@/lib/reports";
+import { formatInr } from "@/lib/services";
 
 type ReportFilters = {
   view?: string;
@@ -153,7 +154,8 @@ export default async function BasePriceReportPage({
     getClientOptions(),
     getActivePeopleOptions(),
   ]);
-  const { leftOut } = report;
+  const { leftOut, internal } = report;
+  const onlyInternal = filters.clientId === "__internal__";
   const groups = view === "client" ? report.byClient : report.byService;
 
   // What keeps tasks out of the totals, most common first.
@@ -329,6 +331,54 @@ export default async function BasePriceReportPage({
 
         <ReportKpis report={report} />
 
+        {/* Work with no client: nothing to bill, so it is shown on its own and
+            kept out of the income, effort and margin above. */}
+        {internal.tasks > 0 ? (
+          <section className="flex flex-col gap-4 rounded-xl border border-slate-200 bg-white px-5 py-4 shadow-sm md:flex-row md:items-center md:justify-between">
+            <div className="min-w-0">
+              <h2 className="flex flex-wrap items-center gap-2 text-sm font-semibold text-slate-950">
+                {INTERNAL_LABEL}
+                <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+                  Not in the totals
+                </span>
+              </h2>
+              <p className="mt-1 text-xs text-slate-500">
+                Internal work has no client to bill, so its cost is shown here and not in the
+                work effort or margin above.
+                {internal.unpricedMinutes > 0
+                  ? ` ${formatDuration(internal.unpricedMinutes)} of it has no base price and is not in the cost.`
+                  : ""}
+              </p>
+            </div>
+            <dl className="grid shrink-0 grid-cols-3 gap-4 tabular-nums sm:gap-8">
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Tasks</dt>
+                <dd className="mt-0.5 text-lg font-semibold text-slate-950">{internal.tasks}</dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Hours</dt>
+                <dd className="mt-0.5 text-lg font-semibold text-slate-950">
+                  {formatDuration(internal.minutes)}
+                </dd>
+              </div>
+              <div>
+                <dt className="text-xs font-medium text-slate-500">Cost</dt>
+                <dd className="mt-0.5 text-lg font-semibold text-slate-950">
+                  {formatInr(internal.effort)}
+                </dd>
+              </div>
+            </dl>
+            {onlyInternal ? null : (
+              <a
+                href={reportHref({ ...filters, view, clientId: "__internal__" })}
+                className="shrink-0 text-sm font-semibold text-[#770FC2] hover:underline focus:outline-none focus-visible:underline"
+              >
+                Show only internal work →
+              </a>
+            )}
+          </section>
+        ) : null}
+
         {leftOut.tasks > 0 ? (
           <div className="rounded-xl border border-amber-200 bg-amber-50 px-5 py-4 text-sm text-amber-900">
             <p className="font-semibold">
@@ -359,9 +409,9 @@ export default async function BasePriceReportPage({
 
         <BasePriceCharts groups={groups} noun={view} />
 
-        <GroupSummaryTable groups={groups} noun={view} totals={report.totals} />
+        <GroupSummaryTable groups={groups} noun={view} totals={report.totals} internal={internal} />
 
-        <CalculationFlow rows={report.rows} groups={groups} noun={view} />
+        <CalculationFlow rows={report.rows} groups={groups} noun={view} internal={internal} />
       </div>
     </DashboardLayout>
   );
