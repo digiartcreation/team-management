@@ -532,10 +532,13 @@ export default function CalculationFlow({
   rows,
   groups,
   noun,
+  internal: internalTotal,
 }: {
   rows: TaskRow[];
   groups: GroupTotal[];
   noun: GroupNoun;
+  /** The internal tasks' total, shown on their own section's line. */
+  internal: { tasks: number; minutes: number; effort: number; unpricedMinutes: number };
 }) {
   const keyOf = (row: TaskRow) => (noun === "client" ? row.clientId : row.service);
   const inTotals = rows.filter((row) => row.status === "counted" || row.status === "included");
@@ -609,7 +612,46 @@ export default function CalculationFlow({
             );
           })}
 
-          {issues.length > 0 || internal.length > 0 ? (
+          {/* Internal work: its own section, with its cost, kept out of the totals. */}
+          {internal.length > 0 ? (
+            <LazyDetails
+              className="group/section border-t-4 border-slate-100"
+              summary={
+              <summary
+                className={`${ROW_GRID} cursor-pointer list-none bg-slate-50 px-5 py-3 transition hover:bg-[#F3E8FF]/60 [&::-webkit-details-marker]:hidden`}
+              >
+                <p className="min-w-0 truncate font-semibold text-slate-950">
+                  {INTERNAL_LABEL}
+                  <span className="ml-2 text-xs font-normal text-slate-500">
+                    {internal.length} {internal.length === 1 ? "task" : "tasks"} · not in the totals
+                  </span>
+                </p>
+                <span className="hidden md:block" />
+                <p className="hidden text-right text-sm font-semibold text-slate-700 tabular-nums md:block">
+                  {formatDuration(internalTotal.minutes)}
+                </p>
+                <p className="hidden text-right text-sm font-semibold text-slate-400 md:block">—</p>
+                <p className="hidden text-right text-sm font-semibold text-slate-950 tabular-nums md:block">
+                  {formatInr(internalTotal.effort)}
+                </p>
+                <div className="justify-self-end md:justify-self-start">
+                  <span className="rounded-full bg-white px-2 py-0.5 text-xs font-medium text-slate-600">
+                    Cost only
+                  </span>
+                </div>
+                <Chevron className="text-slate-500 group-open/section:rotate-90" />
+              </summary>
+              }
+            >
+              {() =>
+                internal.map((row) => (
+                  <TaskFlow key={row.taskId} row={row} />
+                ))
+              }
+            </LazyDetails>
+          ) : null}
+
+          {issues.length > 0 ? (
             <LazyDetails
               className="group/section border-t-4 border-slate-100"
               summary={
@@ -617,9 +659,7 @@ export default function CalculationFlow({
                 <p className="font-semibold text-slate-950">
                   Not in the totals
                   <span className="ml-2 text-xs font-normal text-slate-500">
-                    {issues.length > 0 ? `${issues.length} to fix` : null}
-                    {issues.length > 0 && internal.length > 0 ? " · " : null}
-                    {internal.length > 0 ? `${internal.length} internal` : null}
+                    {issues.length} to fix
                   </span>
                 </p>
                 <span className="flex items-center gap-3 text-xs text-slate-500">
@@ -630,7 +670,7 @@ export default function CalculationFlow({
               }
             >
               {() =>
-                [...issues, ...internal].map((row) => (
+                issues.map((row) => (
                   <TaskFlow key={row.taskId} row={row} />
                 ))
               }

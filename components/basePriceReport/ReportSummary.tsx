@@ -2,6 +2,7 @@ import { BandChip, RatioScale, RatioValue } from "@/components/basePriceReport/R
 import type { GroupNoun } from "@/components/basePriceReport/BasePriceCharts";
 import type { BasePriceReport, GroupTotal } from "@/lib/basePriceReport";
 import { formatDuration } from "@/lib/duration";
+import { INTERNAL_LABEL } from "@/lib/reports";
 import { formatInr } from "@/lib/services";
 import { MobileCard, MobileCardList, MobileField } from "@/components/ui/MobileCard";
 
@@ -89,17 +90,32 @@ export function ReportKpis({ report }: { report: BasePriceReport }) {
   );
 }
 
-/** One row per client or service: the numbers behind both charts. */
+/** The badge for a group with effort and nothing billed. */
+function CostOnlyChip() {
+  return (
+    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
+      Cost only
+    </span>
+  );
+}
+
+/**
+ * One row per client or service: the numbers behind both charts. Internal
+ * work follows the total on a row of its own, as it is not part of it.
+ */
 export function GroupSummaryTable({
   groups,
   noun,
   totals,
+  internal,
 }: {
   groups: GroupTotal[];
   noun: GroupNoun;
   totals: BasePriceReport["totals"];
+  internal: BasePriceReport["internal"];
 }) {
   const heading = noun === "client" ? "Client" : "Service";
+  const hasInternal = internal.tasks > 0;
 
   return (
     <section className="overflow-hidden rounded-xl border border-slate-200 bg-white shadow-sm">
@@ -115,13 +131,13 @@ export function GroupSummaryTable({
         </p>
       </div>
 
-      {groups.length === 0 ? (
+      {groups.length === 0 && !hasInternal ? (
         <p className="p-8 text-center text-sm text-slate-500">
           Nothing priced for these filters yet.
         </p>
       ) : (
         <>
-          <GroupSummaryCards groups={groups} totals={totals} />
+          <GroupSummaryCards groups={groups} totals={totals} internal={internal} />
           <div className="hidden overflow-x-auto md:block">
             <table className="w-full min-w-225 text-left text-sm tabular-nums">
               <thead className="border-b border-slate-200 bg-slate-50 text-xs uppercase tracking-wide text-slate-500">
@@ -152,13 +168,7 @@ export function GroupSummaryTable({
                         {signedInr(margin)}
                       </td>
                       <td className="px-4 py-3">
-                        {group.ratio === null ? (
-                          <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                            Cost only
-                          </span>
-                        ) : (
-                          <RatioValue ratio={group.ratio} />
-                        )}
+                        {group.ratio === null ? <CostOnlyChip /> : <RatioValue ratio={group.ratio} />}
                       </td>
                       <td className="px-5 py-3">
                         <div className="flex items-center gap-2">
@@ -187,6 +197,27 @@ export function GroupSummaryTable({
                   </td>
                   <td className="px-5 py-3 text-xs text-slate-500">100%</td>
                 </tr>
+                {hasInternal ? (
+                  <tr className="border-t border-slate-200 bg-white font-normal">
+                    <td className="px-5 py-3">
+                      <span className="font-medium text-slate-950">{INTERNAL_LABEL}</span>
+                      <span className="ml-2 text-xs text-slate-500">not in the total</span>
+                    </td>
+                    <td className="px-4 py-3 text-right text-slate-600">{internal.tasks}</td>
+                    <td className="px-4 py-3 text-right text-slate-600">{formatDuration(internal.minutes)}</td>
+                    <td className="px-4 py-3 text-right text-slate-400">—</td>
+                    <td className="px-4 py-3 text-right text-slate-900">{formatInr(internal.effort)}</td>
+                    <td className="px-4 py-3 text-right text-slate-400">—</td>
+                    <td className="px-4 py-3">
+                      <CostOnlyChip />
+                    </td>
+                    <td className="px-5 py-3 text-xs text-slate-500">
+                      {internal.unpricedMinutes > 0
+                        ? `${formatDuration(internal.unpricedMinutes)} without a base price`
+                        : "—"}
+                    </td>
+                  </tr>
+                ) : null}
               </tfoot>
             </table>
           </div>
@@ -203,9 +234,11 @@ export function GroupSummaryTable({
 function GroupSummaryCards({
   groups,
   totals,
+  internal,
 }: {
   groups: GroupTotal[];
   totals: BasePriceReport["totals"];
+  internal: BasePriceReport["internal"];
 }) {
   const totalMargin = totals.income - totals.effort;
 
@@ -236,13 +269,7 @@ function GroupSummaryCards({
                   </span>
                 </MobileField>
                 <MobileField label="Ratio">
-                  {group.ratio === null ? (
-                    <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs font-medium text-slate-600">
-                      Cost only
-                    </span>
-                  ) : (
-                    <RatioValue ratio={group.ratio} />
-                  )}
+                  {group.ratio === null ? <CostOnlyChip /> : <RatioValue ratio={group.ratio} />}
                 </MobileField>
               </div>
               <MobileField label="Share of income">
@@ -276,6 +303,24 @@ function GroupSummaryCards({
           {totals.ratio === null ? "—" : <RatioValue ratio={totals.ratio} />}
         </MobileField>
       </dl>
+
+      {internal.tasks > 0 ? (
+        <dl className="grid grid-cols-2 gap-3 rounded-lg border border-slate-200 bg-white p-4 tabular-nums">
+          <div className="col-span-2 flex flex-wrap items-baseline justify-between gap-2">
+            <dt className="text-sm font-semibold text-slate-950">{INTERNAL_LABEL}</dt>
+            <dd className="text-xs text-slate-500">not in the total</dd>
+          </div>
+          <MobileField label="Tasks · hours">
+            {internal.tasks} · {formatDuration(internal.minutes)}
+          </MobileField>
+          <MobileField label="Cost">{formatInr(internal.effort)}</MobileField>
+          {internal.unpricedMinutes > 0 ? (
+            <p className="col-span-2 text-xs text-slate-500">
+              {formatDuration(internal.unpricedMinutes)} without a base price, not in the cost.
+            </p>
+          ) : null}
+        </dl>
+      ) : null}
     </div>
   );
 }

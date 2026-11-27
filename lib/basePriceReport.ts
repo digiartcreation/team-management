@@ -223,7 +223,11 @@ export type BasePriceReport = {
   byService: GroupTotal[];
   totals: { income: number; effort: number; minutes: number; ratio: number | null; tasks: number };
   leftOut: { tasks: number; minutes: number };
-  internal: { tasks: number; minutes: number };
+  /**
+   * Work with no client: shown on its own, never in the totals. `effort` is
+   * what its priced hours cost; `unpricedMinutes` had no base price to use.
+   */
+  internal: { tasks: number; minutes: number; effort: number; unpricedMinutes: number };
 };
 
 type ReportInput = {
@@ -650,12 +654,21 @@ export function buildBasePriceReport(input: ReportInput): BasePriceReport {
 
   const totals = { income: 0, effort: 0, minutes: 0, ratio: null as number | null, tasks: 0 };
   const leftOut = { tasks: 0, minutes: 0 };
-  const internal = { tasks: 0, minutes: 0 };
+  const internal = { tasks: 0, minutes: 0, effort: 0, unpricedMinutes: 0 };
 
   for (const row of rows) {
     if (row.status === "internal") {
       internal.tasks += 1;
       internal.minutes += row.minutes;
+
+      // Per person, so one unpriced person does not hide the others' cost.
+      for (const line of row.employees) {
+        if (line.effort === null) {
+          internal.unpricedMinutes += line.minutes;
+        } else {
+          internal.effort += line.effort;
+        }
+      }
     } else if (row.status === "issue") {
       leftOut.tasks += 1;
       leftOut.minutes += row.minutes;
